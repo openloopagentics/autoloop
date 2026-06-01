@@ -53,7 +53,7 @@ top-level `users` collection backs the read allowlist.
 
 ```
 projects/{slug}
-  ├─ slug:            string   (client-supplied ID, e.g. "acme/web")
+  ├─ slug:            string   (client-supplied ID, e.g. "acme-web")
   ├─ title:           string
   ├─ status:          Status
   ├─ design:          Design | null   (optional; may be added by a later write)
@@ -208,8 +208,8 @@ Client requests never set server-owned fields (`currentPhaseId`, `createdAt`,
   malformed bodies with `400` and a clear message.
 - Cap `design.content` length (e.g. 100 KB) to stay under Firestore's per-doc
   limit; reject oversized payloads with `400`.
-- Slugs validated against `^[a-z0-9._/-]+$`; `phaseId` and `sha` similarly
-  constrained to safe ID characters.
+- Slugs validated against `^[a-z0-9._-]+$` (no slashes — each ID is a single
+  URL path segment); `phaseId` and `sha` use the same pattern.
 - Consistent error envelope: `{ error: { code, message } }`.
   - `400` validation, `401` auth, `404` missing parent (project/phase),
     `500` unexpected.
