@@ -56,7 +56,7 @@ projects/{slug}
   ├─ slug:            string   (client-supplied ID, e.g. "acme/web")
   ├─ title:           string
   ├─ status:          Status
-  ├─ design:          Design
+  ├─ design:          Design | null   (optional; may be added by a later write)
   ├─ currentPhaseId:  string | null   (server-owned; denormalized for the UI)
   ├─ createdAt:       Timestamp        (server-stamped on first write)
   ├─ updatedAt:       Timestamp        (server-stamped on every write)
@@ -114,6 +114,21 @@ Per-project. `content` is capped (see Validation) to stay well under Firestore's
   skill is responsible for upserting the project before its phases, and a phase
   before its commits.
 
+### Required-on-create vs. optional-on-update
+
+PUTs are merge-upserts, so the validator distinguishes the **creating** write
+(target doc does not yet exist) from an **updating** write:
+
+- **Project — required on create:** `title`, `status`. `design` is optional
+  (nullable) and may be added/updated by a later write.
+- **Phase — required on create:** `name`, `order`, `status`.
+- **Commit — always required:** `message`, `author` (the `sha` is the doc ID).
+  `url` and `committedAt` are optional.
+
+On an updating write, any subset of the agent-supplied fields may be sent;
+omitted fields are left unchanged. A creating write missing a required field is
+rejected with `400`.
+
 ## API surface (write-only)
 
 All endpoints are under `/v1` and require the write API key. All are idempotent
@@ -130,12 +145,23 @@ Client requests never set server-owned fields (`currentPhaseId`, `createdAt`,
 
 ### Server-owned side effects
 
-- **Every write:** stamp `updatedAt` (and `createdAt`/`startedAt` on first
-  write of a doc).
-- **Phase upsert:** if the phase's status is non-terminal, set the project's
-  `currentPhaseId` to this phase. If the status is terminal, stamp the phase's
-  `endedAt`, and if it was the current phase, clear the project's
-  `currentPhaseId` (to `null`).
+- **Every write:** stamp `updatedAt`, and stamp `createdAt`/`startedAt` **only
+  on first write** of a doc (never overwritten on later upserts).
+- **Phase upsert — `endedAt`:** if the phase's status is terminal and `endedAt`
+  is not already set, stamp it. Already-set `endedAt` is never overwritten, so
+  retrying a terminal-phase write is a true no-op.
+- **Phase upsert — `currentPhaseId` (derived, not event-driven):** after the
+  phase write, the server **recomputes** the project's `currentPhaseId` by
+  reading the sibling phases: it is the non-terminal phase with the **lowest
+  `order`**, or `null` if every phase is terminal. This is deterministic
+  regardless of write order, survives retries and interleaving, and advances to
+  the next phase automatically when the current one ends. (Phase counts are
+  small, so the sibling read is cheap; the recompute and the phase write happen
+  in a single transaction.)
+
+  This means `currentPhaseId` reflects true phase state rather than the last
+  event received. If the loop ever legitimately has two non-terminal phases at
+  once, the lowest-`order` one is reported as current.
 
 ## Auth & security
 
@@ -160,10 +186,21 @@ Client requests never set server-owned fields (`currentPhaseId`, `createdAt`,
   allow write: if false;   // only the Admin SDK (REST API) writes
   ```
 
+- A signed-in user with **no** `users/{uid}` doc (the default for a brand-new
+  Google sign-in before an admin provisions them) is **denied**: the `get()`
+  resolves to null and the `isAllowed == true` check fails closed.
 - Because all reads require an allowlisted, authenticated user, the data
   (including inline designs and commit messages) is **not** publicly exposed.
-- Managing `isAllowed` on user records (granting/revoking access) is handled
-  out-of-band by an admin and is part of the UI/admin spec, not this one.
+- **Cost note:** the allowlist `get()` runs per document read. With real-time
+  listeners over the `projects/**` tree this is a billed lookup per document;
+  acceptable at this scale, but flagged so it's a conscious choice. (A future
+  optimization is mirroring `isAllowed` into a custom auth claim to avoid the
+  per-doc `get()`.)
+- **`users` doc lifecycle is out of scope here.** This API exposes no `users`
+  endpoint, and rules forbid client writes. User docs are created/managed by
+  the admin UI via the Admin SDK (or a future auth-creation trigger) — defined
+  in the UI/admin spec, not this one. Managing `isAllowed` (granting/revoking)
+  lives there too.
 
 ## Validation & errors
 
@@ -180,9 +217,12 @@ Client requests never set server-owned fields (`currentPhaseId`, `createdAt`,
 ## Testing
 
 - **TDD throughout** (red-green-refactor).
-- Unit-test validation, constant-time key check, and the side-effect logic
-  (`currentPhaseId` set/clear, `endedAt` on terminal, `updatedAt`/`startedAt`
-  stamping) against the **Firestore emulator**.
+- Unit-test validation (including required-on-create vs. optional-on-update),
+  constant-time key check, and the side-effect logic against the **Firestore
+  emulator**: `currentPhaseId` recompute (advances to next non-terminal phase
+  by `order`; `null` when all terminal; lowest-`order` wins with two
+  non-terminal), `endedAt` stamped once and never overwritten on retry, and
+  `createdAt`/`startedAt`/`updatedAt` stamping.
 - Integration tests hit the emulated functions end-to-end:
   upsert project → upsert phase → record commit → assert Firestore state,
   including the `404`-on-missing-parent and idempotent-retry cases.
