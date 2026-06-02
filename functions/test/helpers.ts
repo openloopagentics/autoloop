@@ -9,6 +9,8 @@ process.env.GCLOUD_PROJECT ??= "daloop-test";
 const PROJECT_ID = process.env.GCLOUD_PROJECT;
 
 export const TEST_UID = "agent1";
+// Deliberately short — not a real generateKey() output; the middleware only checks
+// that hashKey(TEST_KEY) exists in apiKeys, so length/format don't matter for tests.
 export const TEST_KEY = "dl_testkey";
 const TEST_KEY_HASH = createHash("sha256").update(TEST_KEY).digest("hex");
 

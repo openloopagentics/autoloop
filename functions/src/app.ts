@@ -21,6 +21,8 @@ export function makeApp() {
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);
 
+  // Unknown route -> consistent 404 envelope (intentionally unauthenticated:
+  // there is no blanket /v1 guard; each route group declares its own auth above).
   app.use((_req, _res, next) => next(new AppError(404, "not_found", "unknown route")));
   app.use(errorHandler);
   return app;
