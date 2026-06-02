@@ -259,3 +259,14 @@ describe("rules: projects + isolation", () => {
     await assertFails(alice.doc("teams/t2/invites/i9").get());
   });
 });
+
+describe("rules: apiKeys", () => {
+  it("clients cannot read or write apiKeys (managed only by the API)", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("apiKeys/abc").set({ uid: "alice", label: "x" });
+    });
+    const db = authed("alice"); // even the owner, authenticated
+    await assertFails(db.doc("apiKeys/abc").get());
+    await assertFails(db.doc("apiKeys/def").set({ uid: "alice" }));
+  });
+});

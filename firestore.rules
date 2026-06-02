@@ -29,6 +29,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // API keys: hashes managed only by the API (Admin SDK bypasses rules). No client access.
+    match /apiKeys/{keyHash} {
+      allow read, write: if false;
+    }
+
     // Reverse lookup: a user reads their own member docs across all teams.
     match /{path=**}/members/{memberId} {
       allow read: if isSignedIn() && request.auth.uid == resource.data.uid;
