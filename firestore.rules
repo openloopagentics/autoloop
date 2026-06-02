@@ -39,6 +39,15 @@ service cloud.firestore {
       allow read: if isSignedIn() && request.auth.uid == resource.data.uid;
     }
 
+    // Reverse lookup: an invitee discovers their own pending invites across all
+    // teams (collectionGroup query by email). A nested teams/{id}/invites rule
+    // does NOT authorize a collectionGroup query — this recursive match does.
+    match /{path=**}/invites/{inviteId} {
+      allow read: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && resource.data.email == request.auth.token.email.lower();
+    }
+
     match /teams/{teamId} {
       allow read: if isMember(teamId);
       allow create: if isAllowedUser() && request.resource.data.createdBy == request.auth.uid;

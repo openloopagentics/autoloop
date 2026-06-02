@@ -174,6 +174,21 @@ describe("rules: invites", () => {
     await assertFails(authed("stranger", "stranger@x.com").doc("teams/t1/invites/i1").get());
   });
 
+  it("an invitee discovers their pending invites across teams via a collectionGroup query", async () => {
+    await seedTeam("t1", "alice");
+    await seedInvite("t1", "i1", "new@x.com");
+    // invitee querying their own (verified) email is allowed
+    await assertSucceeds(
+      authed("newbie", "New@X.com").collectionGroup("invites").where("email", "==", "new@x.com").get(),
+    );
+    // a query scoped to someone else's email is denied (would expose others' invites)
+    await assertFails(
+      authed("stranger", "stranger@x.com").collectionGroup("invites").where("email", "==", "new@x.com").get(),
+    );
+    // an unscoped collectionGroup query is denied for everyone
+    await assertFails(authed("newbie", "New@X.com").collectionGroup("invites").get());
+  });
+
   it("a valid invitee accepts atomically: member created + invite deleted", async () => {
     await setAllowed("newbie", "new@x.com");
     await seedTeam("t1", "alice");
