@@ -67,9 +67,9 @@ merge-upserts.
 
 | Method & path | Purpose |
 |---|---|
-| `PUT /v1/projects/{slug}` | Upsert a project (`title`, `status`, `design`). `title` and `status` required on create. |
-| `PUT /v1/projects/{slug}/phases/{phaseId}` | Upsert a phase (`name`, `order`, `status`). All required on create. |
-| `PUT /v1/projects/{slug}/phases/{phaseId}/commits/{sha}` | Record a commit (`message`, `author` always required; `url`, `committedAt` optional). |
+| `PUT /v1/teams/{teamId}/projects/{slug}` | Upsert a project (`title`, `status`, `design`). `title` and `status` required on create. 404 if the team doesn't exist. |
+| `PUT /v1/teams/{teamId}/projects/{slug}/phases/{phaseId}` | Upsert a phase (`name`, `order`, `status`). All required on create. |
+| `PUT /v1/teams/{teamId}/projects/{slug}/phases/{phaseId}/commits/{sha}` | Record a commit (`message`, `author` always required; `url`, `committedAt` optional). |
 
 `status` is one of: `queued | running | blocked | paused | completed | failed | cancelled`.
 IDs (`slug`, `phaseId`, `sha`) must match `^[a-z0-9._-]+$` (single path segment,
@@ -93,10 +93,28 @@ zero-downtime rotation.
   firebase functions:secrets:set DALOOP_WRITE_KEYS
   ```
 
-Reads are gated by Firestore security rules: a user must be authenticated
-(Google sign-in) and have a `users/{uid}` document with `isAllowed: true`.
-Provisioning user docs / the allowlist is handled by the admin UI (out of scope
-for this repo).
+## Teams & access
+
+Projects are owned by **teams**. Each user belongs to teams with a role
+(`owner` / `admin` / `member`); all roles can write project status, and reads
+are scoped to team membership. Team, membership, and invite management is done
+by the UI writing Firestore directly, governed by `firestore.rules`:
+
+- Any signed-in, `isAllowed` user can create a team (becoming its owner).
+- New members join via an email invite + accept flow.
+- Owners manage roles; admins manage plain members; admins cannot demote/promote
+  owners or other admins.
+- Reads of a team's projects/phases/commits require membership; all client
+  writes to project data are denied (only the API's Admin SDK writes it).
+
+`isAllowed` (on `users/{uid}`) is the global "allowed into Daloop at all" gate,
+checked at the entry points (creating a team, accepting an invite). Provisioning
+user docs / the allowlist is handled by the admin UI (out of scope for this repo).
+
+> **Coming next (Sub-project B):** per-user API keys and membership-based write
+> authorization. Today, agent writes are still gated by the shared
+> `DALOOP_WRITE_KEYS` (any valid key may write to any team); the keys above are
+> that stopgap until per-user keys land.
 
 ## Deploy
 
