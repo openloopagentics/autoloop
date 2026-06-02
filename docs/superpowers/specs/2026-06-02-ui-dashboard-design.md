@@ -38,46 +38,93 @@ pages compose hooks + components; the components hold all the testable rendering
 - The `AppShell` "Dashboard" nav link points to `/dashboard`. The index route
   (`/`) redirects to `/dashboard`.
 
+## Status enum + colors (pure, tested — `web/src/dashboard/status.ts`)
+
+The 7 statuses and their badge colors are a pure table/function `statusColor(status)`:
+
+| status | color (class) |
+|---|---|
+| queued | gray |
+| running | blue |
+| blocked | red |
+| paused | amber |
+| completed | green |
+| failed | red |
+| cancelled | gray |
+
+`statusColor` is unit-tested for all 7 values (+ a safe default for an unknown
+string). Kept out of the Firebase layer so the "status colors" test is trivial.
+
 ## Data hooks (Firebase glue — `web/src/dashboard/hooks.ts`)
 
-Each returns `{ data, loading, error }` and lives behind `onSnapshot`:
+Each returns `{ data, loading, error }` and lives behind `onSnapshot`; all listeners
+unsubscribe on unmount / dependency change; errors set `error` (shown inline, never
+a crash). These are Firebase glue, **not unit-tested** (consistent with UI-A).
 
-- `useMyTeams()` → `collectionGroup(db, "members")` where `uid == auth.uid`, live →
-  `[{ teamId, role }]` (teamId from the parent path: `snap.ref.parent.parent.id`).
-  Then a per-team team-doc read for the name (or read lazily in the team section).
+- `useMyTeams()` → `collectionGroup(db, "members")` **`where("uid", "==", auth.uid)`**
+  (this `where` is **load-bearing for rules compliance** — the rules only permit a
+  user to read their OWN member docs across teams; broadening/removing it makes the
+  whole query fail, not over-fetch). Live → `[{ teamId, role }]`, with
+  `teamId = snap.ref.parent.parent?.id` (parent = `members` collection,
+  parent.parent = team doc; guard the nullable `parent.parent`).
 - `useTeamProjects(teamId)` → live collection on `teams/{teamId}/projects`.
-- `useProject(teamId, slug)` → live doc.
-- `usePhases(teamId, slug)` → live `phases` collection, `orderBy("order")`.
+- `useTeam(teamId)` → live team doc (for the name).
+- `useProject(teamId, slug)` → live doc; **returns `data: null` when
+  `!snapshot.exists()`** (distinct from `undefined` = still loading) so the detail
+  page can show a "not found" state.
+- `usePhases(teamId, slug)` → live `phases` collection, `orderBy("order")` (`order`
+  is always set on phase create, so no docs are dropped).
 - `useCommits(teamId, slug, phaseId)` → live `commits` collection,
-  `orderBy("committedAt", "desc")` (fallback: `createdAt`).
-
-All listeners unsubscribe on unmount / dependency change. Errors set `error` (shown
-as an inline message, not a crash). These are firebase glue, not unit-tested.
+  **`orderBy("createdAt", "desc")`** — `createdAt` is server-stamped on every commit,
+  so ordering by it drops nothing. (Do NOT order by `committedAt`: it's optional, and
+  Firestore `orderBy` excludes docs missing the field. `committedAt` is still
+  displayed, just not used for ordering.)
 
 ## Presentational components (`web/src/dashboard/components/` — unit-tested)
 
 Pure, props-only, no Firebase:
 
-- `StatusBadge({ status })` — colored label per the 7-status enum.
-- `ProjectCard({ teamId, project })` — title, `StatusBadge`, current-phase line; links
-  to the detail route.
-- `TeamSection({ team, projects })` — team name + its `ProjectCard`s (or an empty
-  state).
-- `ProjectHeader({ project })`, `PhaseItem({ phase, commits })`,
-  `CommitItem({ commit })`, `EmptyState({ message })`, `ErrorNote({ message })`,
-  `Spinner()`.
+- `StatusBadge({ status })` — label colored via `statusColor`.
+- `ProjectCard({ teamId, project })` — title, `StatusBadge`, and the **current phase
+  from `project.currentPhaseId`** (the server-maintained field — no derivation, no
+  extra listener); shows "no active phase" when it's null. Links to the detail route.
+- `TeamSection({ team, projects, loading, error })` — **props-only/tested**: team name +
+  its `ProjectCard`s, or `Spinner`/`ErrorNote`/empty ("No projects yet"). It does NOT
+  call any hook.
+- `ProjectHeader({ project })` — title, `StatusBadge`, and `design`: a link when
+  `project.design?.format === "url"`, otherwise the content as preformatted text;
+  nothing when there's no design.
+- `PhaseItem({ phase, commits })` — phase name + `StatusBadge` + started/ended; its
+  commits, or "No commits yet" when empty.
+- `CommitItem({ commit })` — short sha, message, author, committedAt (if present).
+- `EmptyState({ message })`, `ErrorNote({ message })`, `Spinner()`.
 
-Each is unit-tested with fixtures (status colors; empty/loaded/error rendering; the
-ProjectCard link target; phases render in order with their commits; commit fields).
+## Pages / containers (thin Firebase glue — not unit-tested)
 
-## Pages (thin glue — `web/src/dashboard/`)
+- `DashboardHome` calls `useMyTeams()` once, then renders one
+  **`<TeamSectionContainer team={t} key={t.teamId} />` per team** (keyed by `teamId`).
+  `TeamSectionContainer` calls `useTeam(teamId)` + `useTeamProjects(teamId)` **once
+  each** (fixed hook count per component → no rules-of-hooks violation) and passes
+  `{ team, projects, loading, error }` to the presentational `TeamSection`.
+  `DashboardHome` shows its own `Spinner`/`ErrorNote` and the no-teams empty state.
+- `ProjectDetail` reads `:teamId`/`:slug`, calls `useProject`/`usePhases`/`useCommits`
+  (one `useCommits` per phase via a keyed `<PhaseItemContainer phase={p} />` child, so
+  again a fixed hook count per component), and renders header + phases. `data === null`
+  (or malformed params) → "Project not found" `EmptyState`; loading → `Spinner`;
+  error → `ErrorNote`; no phases → "No phases yet".
 
-- `DashboardHome` composes `useMyTeams` + `useTeamProjects` per team + `TeamSection`.
-- `ProjectDetail` reads route params, composes `useProject`/`usePhases`/`useCommits`
-  + the header/phase/commit components. Both render `Spinner`/`ErrorNote`/empty
-  states from the hook results.
+The per-team / per-phase container split keeps every component's hook count fixed;
+the containers are thin glue (untested), the presentational pieces they wrap are tested.
 
-Pages are thin (hook → components); the rendering logic they delegate to is tested.
+## Testing
+
+Vitest + jsdom + RTL (UI-A harness). Test the pure `statusColor` (all 7 + default)
+and the **presentational components** with fixtures: StatusBadge per status;
+ProjectCard content + current-phase line (incl. null) + link `href`; TeamSection
+loading/error/empty/populated; ProjectHeader url-design (link) vs non-url
+(preformatted) vs none; PhaseItem with commits in order and the empty-commits case;
+CommitItem fields; EmptyState/ErrorNote/Spinner. Pages, containers, and hooks
+(Firebase glue) are not unit-tested; `npm run build` type-checks the whole tree.
 
 ## Testing
 
