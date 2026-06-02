@@ -504,17 +504,22 @@ Add the members block **inside** `match /teams/{teamId} { ... }` (replacing the 
 
         allow update: if isManager(teamId)
           && request.auth.uid != uid
-          && request.resource.data.uid == resource.data.uid
-          && request.resource.data.joinedAt == resource.data.joinedAt
-          && request.resource.data.email == resource.data.email
-          && request.resource.data.inviteId == resource.data.inviteId
+          && request.resource.data.get('uid', null) == resource.data.get('uid', null)
+          && request.resource.data.get('joinedAt', null) == resource.data.get('joinedAt', null)
+          && request.resource.data.get('email', null) == resource.data.get('email', null)
+          && request.resource.data.get('inviteId', null) == resource.data.get('inviteId', null)
           && (isOwner(teamId) || request.resource.data.role == 'member');
 
         allow delete: if isManager(teamId) || request.auth.uid == uid;
       }
 ```
 
-> Note: the seeded member docs omit `joinedAt`; the immutable-field test changes `email`, which is present, so the pin fires. (`joinedAt`/`inviteId` equality holds because both sides are absent/null.)
+> **Why `.get(field, default)`:** in Firestore rules, reading an *absent* field via dot
+> notation (`request.resource.data.joinedAt` when the doc has no `joinedAt`) raises an
+> error and denies the request — it does NOT evaluate to null. The seeded member docs
+> omit `joinedAt`, so the immutable pins MUST use the absent-safe `map.get(key, default)`
+> form on both sides. This keeps legitimate role updates passing while still pinning any
+> field a client tries to change.
 
 - [ ] **Step 4: Run GREEN** — `npm run test:rules` → all member tests PASS (plus the Task 3 team tests still pass).
 
@@ -536,8 +541,6 @@ The invite-accept member-create branch is added to the existing `members/{uid}` 
 - [ ] **Step 1: Append invite tests** to `rules.test.ts`
 
 ```typescript
-import { writeBatch } from "firebase/firestore"; // add to imports at top if not present
-
 describe("rules: invites", () => {
   async function seedInvite(teamId: string, inviteId: string, email: string, role = "member") {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
@@ -570,7 +573,7 @@ describe("rules: invites", () => {
     await seedTeam("t1", "alice");
     await seedInvite("t1", "i1", "new@x.com", "member");
     const db = authed("newbie", "new@x.com");
-    const batch = writeBatch(db);
+    const batch = db.batch();
     batch.set(db.doc("teams/t1/members/newbie"), { uid: "newbie", role: "member", email: "new@x.com", inviteId: "i1" });
     batch.delete(db.doc("teams/t1/invites/i1"));
     await assertSucceeds(batch.commit());
@@ -581,7 +584,7 @@ describe("rules: invites", () => {
     await seedTeam("t1", "alice");
     await seedInvite("t1", "i1", "new@x.com", "member");
     const db = authed("newbie", "new@x.com");
-    const batch = writeBatch(db);
+    const batch = db.batch();
     batch.set(db.doc("teams/t1/members/newbie"), { uid: "newbie", role: "owner", email: "new@x.com", inviteId: "i1" });
     batch.delete(db.doc("teams/t1/invites/i1"));
     await assertFails(batch.commit());
@@ -592,15 +595,29 @@ describe("rules: invites", () => {
     await seedTeam("t1", "alice");
     await seedInvite("t1", "i1", "new@x.com", "member");
     const db = authed("newbie", "new@x.com");
-    const batch = writeBatch(db);
+    const batch = db.batch();
     batch.set(db.doc("teams/t1/members/newbie"), { uid: "newbie", role: "member", email: "new@x.com", inviteId: "i1" });
     batch.delete(db.doc("teams/t1/invites/i1"));
     await assertFails(batch.commit());
   });
+
+  it("accept fails when the member doc carries a missing/unknown inviteId", async () => {
+    await setAllowed("newbie", "new@x.com");
+    await seedTeam("t1", "alice");
+    await seedInvite("t1", "i1", "new@x.com", "member");
+    const db = authed("newbie", "new@x.com");
+    // inviteId points at a non-existent invite -> exists() in the OR-branch fails -> denied
+    await assertFails(db.doc("teams/t1/members/newbie")
+      .set({ uid: "newbie", role: "member", email: "new@x.com", inviteId: "nope" }));
+  });
 });
 ```
 
-> Note: `@firebase/rules-unit-testing` returns a Firestore client whose API matches the `firebase/firestore` modular SDK, so `writeBatch(db)` works against the context's `.firestore()`.
+> Note: the rules-unit-testing context's `.firestore()` returns a compat Firestore
+> instance (same style the rest of the rules suite already uses), so `db.batch()` /
+> `batch.set(ref, data)` / `batch.delete(ref)` / `batch.commit()` work with no extra
+> dependency. Both writes in the batch are evaluated against pre-batch state, so the
+> accept is atomic.
 
 - [ ] **Step 2: Run RED** — `npm run test:rules` → the invite tests FAIL.
 
