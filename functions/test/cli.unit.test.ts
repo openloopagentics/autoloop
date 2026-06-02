@@ -160,6 +160,14 @@ describe("project set", () => {
     const body = JSON.parse(captured.init.body);
     expect(body).toMatchObject({ title: "Web", status: "running", design: { format: "markdown", content: "# Plan" } });
   });
+  it("returns 1 (no crash) when --design-file is missing", async () => {
+    const errs: string[] = [];
+    const code = await run(["project", "set", "--title", "Web", "--status", "running", "--design-file", "nope.md"],
+      { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+        fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/could not read --design-file/);
+  });
   it("rejects an invalid status (exit 1, no network)", async () => {
     const errs: string[] = [];
     const code = await run(["project", "set", "--title", "Web", "--status", "nope"],

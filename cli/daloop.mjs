@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
 export const STATUSES = ["queued", "running", "blocked", "paused", "completed", "failed", "cancelled"];
@@ -134,8 +134,14 @@ export async function run(argv, deps = {}) {
         const body = {};
         if (flags.title) body.title = flags.title;
         if (flags.status) { validateStatus(flags.status); body.status = flags.status; }
-        if (flags["design-file"]) body.design = { format: "markdown", content: readFileSync(join(cwd, flags["design-file"]), "utf8") };
-        else if (flags["design-url"]) body.design = { format: "url", content: flags["design-url"] };
+        if (flags["design-file"]) {
+          let content;
+          try { content = readFileSync(join(cwd, flags["design-file"]), "utf8"); }
+          catch (e) { throw new UsageError(`could not read --design-file '${flags["design-file"]}': ${e.message}`); }
+          body.design = { format: "markdown", content };
+        } else if (flags["design-url"]) {
+          body.design = { format: "url", content: flags["design-url"] };
+        }
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
         return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
       }
@@ -194,5 +200,7 @@ export async function run(argv, deps = {}) {
 
 // Entry point (only when run directly, not when imported by tests).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  run(process.argv.slice(2)).then((code) => process.exit(code));
+  run(process.argv.slice(2))
+    .then((code) => process.exit(code))
+    .catch((e) => { console.error(`daloop: unexpected error: ${e.message}`); process.exit(1); });
 }
