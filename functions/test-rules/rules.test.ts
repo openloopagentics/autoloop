@@ -134,3 +134,72 @@ describe("rules: members", () => {
     await assertSucceeds(authed("alice").doc("teams/t1/members/carol").delete());
   });
 });
+
+describe("rules: invites", () => {
+  async function seedInvite(teamId: string, inviteId: string, email: string, role = "member") {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`teams/${teamId}/invites/${inviteId}`).set({
+        email: email.toLowerCase(), role, invitedBy: "alice", status: "pending",
+      });
+    });
+  }
+
+  it("only a manager can create a pending invite", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedMember("t1", "carol", "member");
+    await assertSucceeds(authed("alice").doc("teams/t1/invites/i1")
+      .set({ email: "new@x.com", role: "member", invitedBy: "alice", status: "pending" }));
+    await assertFails(authed("carol").doc("teams/t1/invites/i2")
+      .set({ email: "new@x.com", role: "member", invitedBy: "carol", status: "pending" }));
+  });
+
+  it("the invitee (by verified email, case-insensitive) can read their invite; others cannot", async () => {
+    await seedTeam("t1", "alice");
+    await seedInvite("t1", "i1", "new@x.com");
+    await assertSucceeds(authed("newbie", "New@X.com").doc("teams/t1/invites/i1").get());
+    await assertFails(authed("stranger", "stranger@x.com").doc("teams/t1/invites/i1").get());
+  });
+
+  it("a valid invitee accepts atomically: member created + invite deleted", async () => {
+    await setAllowed("newbie", "new@x.com");
+    await seedTeam("t1", "alice");
+    await seedInvite("t1", "i1", "new@x.com", "member");
+    const db = authed("newbie", "new@x.com");
+    const batch = db.batch();
+    batch.set(db.doc("teams/t1/members/newbie"), { uid: "newbie", role: "member", email: "new@x.com", inviteId: "i1" });
+    batch.delete(db.doc("teams/t1/invites/i1"));
+    await assertSucceeds(batch.commit());
+  });
+
+  it("accept fails if the role does not match the invite", async () => {
+    await setAllowed("newbie", "new@x.com");
+    await seedTeam("t1", "alice");
+    await seedInvite("t1", "i1", "new@x.com", "member");
+    const db = authed("newbie", "new@x.com");
+    const batch = db.batch();
+    batch.set(db.doc("teams/t1/members/newbie"), { uid: "newbie", role: "owner", email: "new@x.com", inviteId: "i1" });
+    batch.delete(db.doc("teams/t1/invites/i1"));
+    await assertFails(batch.commit());
+  });
+
+  it("accept fails for a non-isAllowed invitee", async () => {
+    await setAllowed("newbie", "new@x.com", false);
+    await seedTeam("t1", "alice");
+    await seedInvite("t1", "i1", "new@x.com", "member");
+    const db = authed("newbie", "new@x.com");
+    const batch = db.batch();
+    batch.set(db.doc("teams/t1/members/newbie"), { uid: "newbie", role: "member", email: "new@x.com", inviteId: "i1" });
+    batch.delete(db.doc("teams/t1/invites/i1"));
+    await assertFails(batch.commit());
+  });
+
+  it("accept fails when the member doc carries a missing/unknown inviteId", async () => {
+    await setAllowed("newbie", "new@x.com");
+    await seedTeam("t1", "alice");
+    await seedInvite("t1", "i1", "new@x.com", "member");
+    const db = authed("newbie", "new@x.com");
+    await assertFails(db.doc("teams/t1/members/newbie")
+      .set({ uid: "newbie", role: "member", email: "new@x.com", inviteId: "nope" }));
+  });
+});

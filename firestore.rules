@@ -43,11 +43,20 @@ service cloud.firestore {
       match /members/{uid} {
         allow read: if isMember(teamId);
 
-        // bootstrap owner (team already committed); invite-accept branch added in Task 5
-        allow create: if request.auth.uid == uid
-          && request.resource.data.role == 'owner'
-          && isAllowedUser()
-          && request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy;
+        allow create: if request.auth.uid == uid && (
+          // bootstrap owner
+          (request.resource.data.role == 'owner'
+            && isAllowedUser()
+            && request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy)
+          ||
+          // invite accept (inviteId carried in the new member doc)
+          (isAllowedUser()
+            && request.auth.token.email_verified == true
+            && exists(/databases/$(database)/documents/teams/$(teamId)/invites/$(request.resource.data.inviteId))
+            && get(/databases/$(database)/documents/teams/$(teamId)/invites/$(request.resource.data.inviteId)).data.status == 'pending'
+            && get(/databases/$(database)/documents/teams/$(teamId)/invites/$(request.resource.data.inviteId)).data.email == request.auth.token.email.lower()
+            && request.resource.data.role == get(/databases/$(database)/documents/teams/$(teamId)/invites/$(request.resource.data.inviteId)).data.role)
+        );
 
         allow update: if isManager(teamId)
           && request.auth.uid != uid
@@ -60,7 +69,33 @@ service cloud.firestore {
         allow delete: if isManager(teamId) || request.auth.uid == uid;
       }
 
-      // invites/{inviteId}, projects/** added in Tasks 5-6
+      match /invites/{inviteId} {
+        allow read: if isManager(teamId)
+          || (isSignedIn() && request.auth.token.email_verified == true
+              && resource.data.email == request.auth.token.email.lower());
+
+        allow create: if isManager(teamId)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.invitedBy == request.auth.uid
+          && request.resource.data.email == request.resource.data.email.lower();
+
+        // invitee consumes by deleting (preferred); managers can also delete/manage
+        allow delete: if isManager(teamId)
+          || (isSignedIn() && request.auth.token.email_verified == true
+              && resource.data.email == request.auth.token.email.lower());
+
+        // optional "mark accepted" path: invitee-only, pending->accepted, other fields pinned
+        allow update: if isSignedIn()
+          && request.auth.token.email_verified == true
+          && resource.data.email == request.auth.token.email.lower()
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.invitedBy == resource.data.invitedBy;
+      }
+
+      // projects/{slug} added in Task 6
     }
   }
 }
