@@ -63,6 +63,16 @@ export async function run(argv, deps = {}) {
 
   try {
     switch (`${cmd} ${sub ?? ""}`.trim()) {
+      case "init": {
+        const teamId = flags.team, projectSlug = flags.project;
+        if (!teamId || !projectSlug) throw new UsageError("init requires --team <teamId> --project <slug>");
+        validateId("teamId", teamId);
+        validateId("projectSlug", projectSlug);
+        const apiUrl = (typeof flags.url === "string" && flags.url) || DEFAULT_API_URL;
+        saveConfig(cwd, { apiUrl, teamId, projectSlug, currentPhaseId: null, phases: {} });
+        log(`daloop: initialized .daloop.json (team=${teamId}, project=${projectSlug})`);
+        return 0;
+      }
       // commands added in later tasks
       default:
         throw new UsageError(`unknown command: ${argv.join(" ")}`);

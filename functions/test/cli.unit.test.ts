@@ -44,3 +44,23 @@ describe("run dispatch", () => {
     expect(errs.join(" ")).toMatch(/unknown command/i);
   });
 });
+
+describe("init", () => {
+  it("writes .daloop.json with team/project/url and empty phase state", async () => {
+    const dir = tmp();
+    const code = await run(["init", "--team", "acme", "--project", "web", "--url", "http://x"], { cwd: dir, env: {}, log: () => {}, err: () => {} });
+    expect(code).toBe(0);
+    const cfg = loadConfig(dir);
+    expect(cfg).toMatchObject({ apiUrl: "http://x", teamId: "acme", projectSlug: "web", currentPhaseId: null, phases: {} });
+  });
+
+  it("defaults apiUrl when --url omitted, and validates ids", async () => {
+    const dir = tmp();
+    await run(["init", "--team", "acme", "--project", "web"], { cwd: dir, env: {}, log: () => {}, err: () => {} });
+    expect(loadConfig(dir).apiUrl).toBeTruthy();
+    const errs: string[] = [];
+    const code = await run(["init", "--team", "Bad Team", "--project", "web"], { cwd: tmp(), env: {}, log: () => {}, err: (m: string) => errs.push(m) });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/invalid teamId/);
+  });
+});
