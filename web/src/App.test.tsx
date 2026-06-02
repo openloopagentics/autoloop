@@ -7,6 +7,15 @@ vi.mock("./dashboard/hooks", () => ({
   usePhases: () => ({ data: [], loading: false, error: null }),
   useCommits: () => ({ data: [], loading: false, error: null }),
 }));
+vi.mock("./teams/hooks", () => ({
+  useTeamMembers: () => ({ data: [], loading: false, error: null }),
+  useTeamInvites: () => ({ data: [], loading: false, error: null }),
+  useMyPendingInvites: () => ({ data: [], loading: false, error: null }),
+}));
+vi.mock("./teams/actions", () => ({
+  createTeam: vi.fn(), inviteMember: vi.fn(), revokeInvite: vi.fn(), acceptInvite: vi.fn(),
+  declineInvite: vi.fn(), changeRole: vi.fn(), removeMember: vi.fn(),
+}));
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
