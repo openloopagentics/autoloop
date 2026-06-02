@@ -21,6 +21,10 @@ vi.mock("./keys/client", () => ({
   listKeys: () => Promise.resolve([]),
   revokeKey: vi.fn(),
 }));
+vi.mock("./admin/client", () => ({
+  listUsers: () => Promise.resolve([]),
+  setAllowed: vi.fn(),
+}));
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";

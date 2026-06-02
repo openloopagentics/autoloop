@@ -7,6 +7,7 @@ import { DashboardHome } from "./dashboard/DashboardHome";
 import { ProjectDetail } from "./dashboard/ProjectDetail";
 import { TeamsPage } from "./teams/TeamsPage";
 import { KeysPage } from "./keys/KeysPage";
+import { AdminPage } from "./admin/AdminPage";
 
 export function App() {
   const { state } = useAuth();
@@ -22,6 +23,7 @@ export function App() {
           <Route path="dashboard/:teamId/:slug" element={<ProjectDetail />} />
           <Route path="teams" element={<TeamsPage />} />
           <Route path="keys" element={<KeysPage />} />
+          <Route path="admin" element={<AdminPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
