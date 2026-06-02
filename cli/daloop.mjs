@@ -117,6 +117,18 @@ export async function run(argv, deps = {}) {
         log(`daloop: initialized .daloop.json (team=${teamId}, project=${projectSlug})`);
         return 0;
       }
+      case "project set": {
+        const cfg = loadConfig(cwd);
+        validateId("teamId", cfg.teamId);
+        validateId("projectSlug", cfg.projectSlug);
+        const body = {};
+        if (flags.title) body.title = flags.title;
+        if (flags.status) { validateStatus(flags.status); body.status = flags.status; }
+        if (flags["design-file"]) body.design = { format: "markdown", content: readFileSync(join(cwd, flags["design-file"]), "utf8") };
+        else if (flags["design-url"]) body.design = { format: "url", content: flags["design-url"] };
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
       // commands added in later tasks
       default:
         throw new UsageError(`unknown command: ${argv.join(" ")}`);

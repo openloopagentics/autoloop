@@ -105,3 +105,31 @@ describe("report (exit policy)", () => {
     expect(await report({ method: "PUT", url: "http://x", body: {} }, { ...d, strict: true })).toBe(1);
   });
 });
+
+describe("project set", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, phases: {} });
+    return dir;
+  }
+  it("PUTs the project with title/status/design-file", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "plan.md"), "# Plan");
+    let captured: any;
+    const code = await run(["project", "set", "--title", "Web", "--status", "running", "--design-file", "plan.md"],
+      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {},
+        fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
+    expect(code).toBe(0);
+    expect(captured.url).toBe("http://api/v1/teams/acme/projects/web");
+    const body = JSON.parse(captured.init.body);
+    expect(body).toMatchObject({ title: "Web", status: "running", design: { format: "markdown", content: "# Plan" } });
+  });
+  it("rejects an invalid status (exit 1, no network)", async () => {
+    const errs: string[] = [];
+    const code = await run(["project", "set", "--title", "Web", "--status", "nope"],
+      { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+        fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/invalid status/);
+  });
+});
