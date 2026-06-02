@@ -126,15 +126,6 @@ loading/error/empty/populated; ProjectHeader url-design (link) vs non-url
 CommitItem fields; EmptyState/ErrorNote/Spinner. Pages, containers, and hooks
 (Firebase glue) are not unit-tested; `npm run build` type-checks the whole tree.
 
-## Testing
-
-Vitest + jsdom + RTL (UI-A harness). Test the **presentational components** with
-fixtures: StatusBadge per status; ProjectCard content + link href; TeamSection
-empty vs populated; ProjectHeader (markdown vs url design); PhaseItem renders its
-commits in order; CommitItem fields; EmptyState/ErrorNote/Spinner. Pages and hooks
-(Firebase glue) are not unit-tested (consistent with UI-A); `npm run build` type-checks
-the whole tree. (A later emulator/Playwright smoke can exercise the live hooks.)
-
 ## Out of scope
 
 - Any writes / management (teams, invites, keys, allowlist — UI-C/D/E).
