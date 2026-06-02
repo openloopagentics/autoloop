@@ -9,8 +9,6 @@ import {
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 
-// Resolve firestore.rules relative to THIS file (repo root), not the cwd.
-// __dirname = functions/test-rules → ../../firestore.rules = repo root.
 const here = dirname(fileURLToPath(import.meta.url));
 const rulesPath = resolve(here, "../../firestore.rules");
 
@@ -22,65 +20,60 @@ beforeAll(async () => {
     firestore: { rules: readFileSync(rulesPath, "utf8") },
   });
 });
-
 afterAll(async () => { await testEnv.cleanup(); });
 beforeEach(async () => { await testEnv.clearFirestore(); });
 
-async function seedProject() {
+// --- seed helpers (bypass rules) ---
+async function setAllowed(uid: string, email = `${uid}@x.com`, isAllowed = true) {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().doc("projects/acme").set({ title: "Acme", status: "running" });
+    await ctx.firestore().doc(`users/${uid}`).set({ email, isAllowed });
   });
 }
-async function seedNested() {
+async function seedTeam(teamId: string, createdBy: string) {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().doc("projects/acme/phases/p1").set({ name: "A", order: 1, status: "running" });
-    await ctx.firestore().doc("projects/acme/phases/p1/commits/abc").set({ message: "m", author: "a" });
+    await ctx.firestore().doc(`teams/${teamId}`).set({ name: "T", createdBy });
   });
 }
-async function allow(uid: string) {
+async function seedMember(teamId: string, uid: string, role: string) {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().doc(`users/${uid}`).set({ isAllowed: true });
+    await ctx.firestore().doc(`teams/${teamId}/members/${uid}`).set({ uid, role, email: `${uid}@x.com`, inviteId: null });
   });
 }
+function authed(uid: string, email = `${uid}@x.com`) {
+  return testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+}
 
-describe("firestore.rules", () => {
-  it("denies anonymous reads", async () => {
-    await seedProject();
-    const db = testEnv.unauthenticatedContext().firestore();
-    await assertFails(db.doc("projects/acme").get());
+describe("rules: teams/{teamId}", () => {
+  it("an isAllowed user can create a team with themselves as createdBy", async () => {
+    await setAllowed("alice");
+    const db = authed("alice");
+    await assertSucceeds(db.doc("teams/t1").set({ name: "T", createdBy: "alice" }));
   });
 
-  it("denies signed-in users with no user doc", async () => {
-    await seedProject();
-    const db = testEnv.authenticatedContext("nobody").firestore();
-    await assertFails(db.doc("projects/acme").get());
+  it("a non-isAllowed user cannot create a team", async () => {
+    await setAllowed("mallory", "mallory@x.com", false);
+    const db = authed("mallory");
+    await assertFails(db.doc("teams/t1").set({ name: "T", createdBy: "mallory" }));
   });
 
-  it("allows reads for allowlisted users", async () => {
-    await seedProject();
-    await allow("vip");
-    const db = testEnv.authenticatedContext("vip").firestore();
-    await assertSucceeds(db.doc("projects/acme").get());
+  it("cannot create a team with someone else as createdBy", async () => {
+    await setAllowed("alice");
+    const db = authed("alice");
+    await assertFails(db.doc("teams/t1").set({ name: "T", createdBy: "bob" }));
   });
 
-  it("denies all client writes even for allowlisted users", async () => {
-    await allow("vip");
-    const db = testEnv.authenticatedContext("vip").firestore();
-    await assertFails(db.doc("projects/acme").set({ title: "x" }));
+  it("only members can read a team; non-members cannot", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await assertSucceeds(authed("alice").doc("teams/t1").get());
+    await assertFails(authed("bob").doc("teams/t1").get());
   });
 
-  it("allows allowlisted users to read nested phase and commit docs", async () => {
-    await seedNested();
-    await allow("vip");
-    const db = testEnv.authenticatedContext("vip").firestore();
-    await assertSucceeds(db.doc("projects/acme/phases/p1").get());
-    await assertSucceeds(db.doc("projects/acme/phases/p1/commits/abc").get());
-  });
-
-  it("denies non-allowlisted users from reading nested phase and commit docs", async () => {
-    await seedNested();
-    const db = testEnv.authenticatedContext("nobody").firestore();
-    await assertFails(db.doc("projects/acme/phases/p1").get());
-    await assertFails(db.doc("projects/acme/phases/p1/commits/abc").get());
+  it("a manager can update the team; a plain member cannot", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedMember("t1", "carol", "member");
+    await assertSucceeds(authed("alice").doc("teams/t1").update({ name: "New" }));
+    await assertFails(authed("carol").doc("teams/t1").update({ name: "Nope" }));
   });
 });
