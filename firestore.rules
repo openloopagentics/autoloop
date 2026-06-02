@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAllowed() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAllowed == true;
+    }
+
+    // Project tree: allowlisted users read; clients never write (Admin SDK bypasses rules).
+    match /projects/{slug} {
+      allow read: if isAllowed();
+      allow write: if false;
+      match /{document=**} {
+        allow read: if isAllowed();
+        allow write: if false;
+      }
+    }
+
+    // User docs: a user may read their own doc (to check access); writes are admin-only.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+  }
+}
