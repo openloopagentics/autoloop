@@ -29,17 +29,55 @@ after Google sign-in.
 /v1/teams/:teamId/projects/**            → requireApiKeyMember   (API key → user → membership)
 ```
 
-- **`requireUser`** — verifies the caller's Firebase ID token with the Admin SDK
-  (`getAuth().verifyIdToken`), checks `users/{uid}.isAllowed == true`, and sets
-  `req.uid`. Used by the human-facing key-management endpoints.
-- **`requireApiKeyMember`** — replaces the old shared-key `requireWriteKey`.
-  Hashes the presented API key, looks up `apiKeys/{hash}` → `uid`, then checks
-  membership in the `:teamId` from the path. Mounted on the team route subtree
-  (with `mergeParams`) so it can see `teamId`, not blanket-applied to all `/v1`.
+- **`requireUser`** (net-new middleware — there is no existing server-side ID-token
+  path; Sub-project A did all human auth in Firestore rules) — verifies the caller's
+  Firebase ID token via the Admin SDK (`getAuth().verifyIdToken`, importing `getAuth`
+  from `firebase-admin/auth`), checks `users/{uid}.isAllowed == true`, sets `req.uid`.
+- **`requireApiKeyMember`** (net-new; replaces the old shared-key `requireWriteKey`) —
+  hashes the presented API key, looks up `apiKeys/{hash}` → `uid`, then checks
+  membership in the `:teamId` from the path.
 
-The old shared-key middleware, the `DALOOP_WRITE_KEYS` env/secret, and the
-constant-time-compare machinery are removed (lookup is now a hash equality on a
-document id, not a secret comparison).
+### Concrete mounting (against the real `app.ts`)
+
+Today `app.ts` mounts three sibling routes plus a blanket `app.use("/v1", requireWriteKey)`.
+This is restructured to:
+
+```
+const keysRouter = Router();                       // requireUser applied here
+app.use("/v1/keys", requireUser, keysRouter);
+
+const teamRouter = Router({ mergeParams: true });  // requireApiKeyMember applied here
+teamRouter.use("/:slug/phases/:phaseId/commits", commitsRouter);
+teamRouter.use("/:slug/phases", phasesRouter);
+teamRouter.use("/:slug", projectsRouter);          // careful ordering: most-specific first
+app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);
+// catch-all 404 + errorHandler remain LAST
+```
+
+(Equivalent alternative: apply `requireApiKeyMember` inline on each of the three existing
+`app.use("/v1/teams/:teamId/projects...")` lines. Either is fine; the parent-router form
+keeps the auth in one place. The implementer picks whichever is cleaner, but the three
+project/phase/commit routers and their `mergeParams` behavior must be preserved exactly.)
+
+### Invariant: no blanket `/v1` guard
+
+The blanket `app.use("/v1", requireWriteKey)` is **removed**. Each route group declares
+its own middleware (`requireUser` for `/v1/keys`, `requireApiKeyMember` for the team
+subtree). Consequently the **catch-all 404 is intentionally unauthenticated** — an unknown
+`/v1/whatever` returns the 404 envelope without needing a key, which is correct. There are
+no other `/v1` write paths today; any future one MUST declare its own auth (it will not be
+protected by default).
+
+### Removed in this sub-project
+
+- The shared-key `requireWriteKey` middleware and the constant-time-compare machinery in
+  `auth.ts` (lookup is now a hash equality on a document id, not a secret comparison). The
+  key-extraction helper (`extractKey`) is **reused** by `requireApiKeyMember`.
+- `index.ts`: drop `defineSecret("DALOOP_WRITE_KEYS")` and the `secrets: [writeKeys]` option
+  on `onRequest`.
+- After rollout, **decommission the deployed Functions secret** (`firebase functions:secrets:destroy DALOOP_WRITE_KEYS`).
+- `auth.test.ts` (which unit-tests the deleted `isValidKey`/`requireWriteKey`) is deleted or
+  rewritten against the new middleware; `helpers.ts` drops the `DALOOP_WRITE_KEYS` env line.
 
 ## Data model
 
@@ -53,7 +91,9 @@ apiKeys/{keyHash}            // keyHash = SHA-256(plaintext) hex — the documen
 
 - **Key format:** `dl_` + 32 random bytes encoded base64url.
 - The **plaintext is returned once** at creation and never stored — only its
-  SHA-256 hash (as the doc ID) and the display `prefix` are persisted.
+  SHA-256 hash (as the doc ID) and the display `prefix` are persisted. The hash
+  input is the **full plaintext including the `dl_` prefix** (so tests pin the
+  exact preimage), hex-encoded.
 - **Write-path lookup** is an O(1) `get(apiKeys/{hash})`.
 - **Listing** is `apiKeys where uid == caller` — Firestore auto-indexes single
   fields, so no declared composite index is needed.
@@ -71,9 +111,9 @@ All require a valid Firebase ID token (`Authorization: Bearer <idToken>`) and
 
 | Method & path | Behavior |
 |---|---|
-| `POST /v1/keys` | Mint. Body `{ label }` (non-empty, max ~100 chars). Generates `dl_…`, stores `apiKeys/{hash}` with `uid`/`label`/`prefix`/`createdAt`. Returns `{ id, key, label, prefix, createdAt }` — `key` (plaintext) is shown **only here**. |
+| `POST /v1/keys` | Mint. Body `{ label }` — trimmed, non-empty, **max 100 chars**; duplicate labels allowed (keys are identified by hash, not label). Generates `dl_…`, stores `apiKeys/{hash}` with `uid`/`label`/`prefix`/`createdAt`. Returns `{ id, key, label, prefix, createdAt }` — `key` (plaintext) is shown **only here**. |
 | `GET /v1/keys` | List the caller's keys: `[{ id, label, prefix, createdAt }]`. Never returns the plaintext or anything reversible beyond `prefix`. |
-| `DELETE /v1/keys/{id}` | Revoke. `{id}` is the keyHash. Verifies the doc's `uid == caller` before deleting; `404` if not found or not owned by the caller. |
+| `DELETE /v1/keys/{id}` | Revoke. `{id}` is the keyHash. `get` the doc, verify `uid == caller`, then `delete`; `404` if not found or not owned. The get-then-delete is not transactional and doesn't need to be — a concurrent double-revoke is harmless (the second is a no-op / 404). |
 
 `id` in every response is the keyHash. If a mint response is lost, the user
 revokes and mints a new key.
@@ -91,6 +131,10 @@ revokes and mints a new key.
    (they already 404 on a missing team/project/phase).
 
 So: unknown/revoked key → 401; valid key whose user isn't on the team → 403.
+
+This is two reads per write (`apiKeys/{hash}`, then the member doc) — both plain
+`get`s, no transaction needed (it's a read-only authorization check; the actual
+mutation happens later in the service's own transaction).
 
 ## Security rules
 
@@ -112,23 +156,49 @@ client reads. (The Admin SDK bypasses rules, so the API still reads/writes it.)
 - `401` for missing/invalid API key (write path) and missing/invalid ID token
   (key endpoints); `404` for revoking a nonexistent/not-owned key.
 
-## Testing
+### Reworking the existing shared-key tests (required migration)
 
-- **Unit:** key generation + SHA-256 hashing (stable hash; plaintext never
-  persisted); `dl_` format and `prefix` extraction; `label` validation.
-- **Emulator + Supertest — key endpoints:** mint returns plaintext once and
-  persists only the hash; list returns the caller's keys without plaintext;
-  revoke is owner-scoped (cannot revoke another user's key → 404); all reject a
-  missing/invalid ID token (401).
-- **Emulator + Supertest — write path:** with a minted key whose user is a team
-  member, a write succeeds; valid key but non-member team → 403; unknown/revoked
-  key → 401; end-to-end project → phase → commit under a real key.
+The current suite is built around the shared key and must be migrated:
+
+- `test/helpers.ts`: `authHeader()` currently returns `Bearer test-key`. It is
+  reworked to **mint a real per-user key** — write an `apiKeys/{hash}` doc (via the
+  Admin SDK) for a test uid and return `Bearer <plaintext>`. Add a companion helper
+  to seed that uid as a member of the team under test (`teams/{teamId}/members/{uid}`),
+  since writes now require membership (403 otherwise). Remove the
+  `DALOOP_WRITE_KEYS ??= "test-key"` line.
+- `test/projects.test.ts`, `phases.test.ts`, `commits.test.ts`, `integration.test.ts`:
+  every write test must now seed the key's user as a team member (in addition to the
+  existing `seedTeam`). The auth-related assertions still hold (401 without a key).
+- `test/auth.test.ts`: targets the deleted `extractKey`/`isValidKey`/`requireWriteKey`.
+  Keep+repurpose the `extractKey` tests (it's reused), delete the `isValidKey`/
+  `requireWriteKey` tests, and add tests for the new middleware behavior.
+
+### New tests
+
+- **Unit:** key generation + SHA-256 hashing (stable hash over the full `dl_…`
+  plaintext; plaintext never persisted); `dl_` format and `prefix` extraction;
+  `label` validation (trim, non-empty, max 100).
+- **`requireUser` unit tests via an injectable verifier seam (lead with this):**
+  `requireUser` takes its token-verifier as an injected dependency (default =
+  `getAuth().verifyIdToken`), so unit tests stub it to return a uid without any
+  emulator/token plumbing. This is the primary way `requireUser` is tested — it
+  avoids the custom-token-exchange dance, the single most likely thing to stall
+  implementation.
+- **Emulator + Supertest — key endpoints:** mint persists only the hash and returns
+  plaintext once; list returns the caller's keys without plaintext; revoke is
+  owner-scoped (cannot revoke another user's key → 404); missing/invalid token → 401.
+  These inject a stub verifier (or pass a known uid) rather than minting real tokens.
+- **Emulator + Supertest — write path:** minted key whose user is a team member →
+  write succeeds; valid key, non-member team → 403; unknown/revoked key → 401;
+  end-to-end project → phase → commit under a real key.
 - **Rules test:** `apiKeys/**` denies all client reads and writes.
-- **ID-token verification in tests:** use the **Firebase Auth emulator** so
-  `verifyIdToken` runs against real (emulator-issued) tokens end-to-end; wire it
-  into `firebase.json` emulators and the test harness. (Fallback if that proves
-  awkward: a thin, injectable token-verifier seam stubbed in tests — decided in
-  planning.)
+- **One Auth-emulator end-to-end happy path (optional, nice-to-have):** if time
+  permits, wire the Firebase **Auth emulator** into `firebase.json` (add an `auth`
+  block) and set `FIREBASE_AUTH_EMULATOR_HOST` in the harness before the Admin SDK
+  initializes, mint a real ID token (custom token → `signInWithCustomToken` REST
+  exchange), and verify one `/v1/keys` call end-to-end through the real
+  `verifyIdToken`. The seam-based tests above are the source of truth; this is a
+  single confidence check, not the primary coverage.
 
 ## Out of scope
 
