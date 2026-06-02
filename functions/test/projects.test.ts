@@ -13,6 +13,20 @@ describe("PUT /v1/projects/:slug", () => {
     expect(res.status).toBe(401);
   });
 
+  it("accepts the x-api-key header as a fallback to Authorization", async () => {
+    const res = await request(app)
+      .put("/v1/projects/acme")
+      .set("x-api-key", "test-key")
+      .send({ title: "Acme", status: "queued" });
+    expect(res.status).toBe(200);
+  });
+
+  it("returns a 404 error envelope for an unknown route", async () => {
+    const res = await request(app).get("/v1/nope").set(authHeader());
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe("not_found");
+  });
+
   it("creates a project and stamps timestamps", async () => {
     const res = await request(app)
       .put("/v1/projects/acme")

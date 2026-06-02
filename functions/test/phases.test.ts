@@ -48,6 +48,15 @@ describe("PUT /v1/projects/:slug/phases/:phaseId", () => {
     expect((await db().doc("projects/acme").get()).data()!.currentPhaseId).toBe("p2");
   });
 
+  it("picks the lowest-order phase as current when two are non-terminal", async () => {
+    await createProject();
+    // insert the higher-order phase first to prove ordering is by `order`, not write time
+    await request(app).put("/v1/projects/acme/phases/p2").set(authHeader()).send({ name: "B", order: 2, status: "running" });
+    expect((await db().doc("projects/acme").get()).data()!.currentPhaseId).toBe("p2");
+    await request(app).put("/v1/projects/acme/phases/p1").set(authHeader()).send({ name: "A", order: 1, status: "running" });
+    expect((await db().doc("projects/acme").get()).data()!.currentPhaseId).toBe("p1");
+  });
+
   it("sets currentPhaseId to null when all phases are terminal", async () => {
     await createProject();
     await request(app).put("/v1/projects/acme/phases/p1").set(authHeader()).send({ name: "A", order: 1, status: "running" });

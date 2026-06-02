@@ -31,6 +31,12 @@ async function seedProject() {
     await ctx.firestore().doc("projects/acme").set({ title: "Acme", status: "running" });
   });
 }
+async function seedNested() {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc("projects/acme/phases/p1").set({ name: "A", order: 1, status: "running" });
+    await ctx.firestore().doc("projects/acme/phases/p1/commits/abc").set({ message: "m", author: "a" });
+  });
+}
 async function allow(uid: string) {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().doc(`users/${uid}`).set({ isAllowed: true });
@@ -61,5 +67,20 @@ describe("firestore.rules", () => {
     await allow("vip");
     const db = testEnv.authenticatedContext("vip").firestore();
     await assertFails(db.doc("projects/acme").set({ title: "x" }));
+  });
+
+  it("allows allowlisted users to read nested phase and commit docs", async () => {
+    await seedNested();
+    await allow("vip");
+    const db = testEnv.authenticatedContext("vip").firestore();
+    await assertSucceeds(db.doc("projects/acme/phases/p1").get());
+    await assertSucceeds(db.doc("projects/acme/phases/p1/commits/abc").get());
+  });
+
+  it("denies non-allowlisted users from reading nested phase and commit docs", async () => {
+    await seedNested();
+    const db = testEnv.authenticatedContext("nobody").firestore();
+    await assertFails(db.doc("projects/acme/phases/p1").get());
+    await assertFails(db.doc("projects/acme/phases/p1/commits/abc").get());
   });
 });
