@@ -260,11 +260,79 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .btn-text:hover { color: var(--fg); }
 
+/* header right-side actions */
+.hdr-actions { display: flex; align-items: center; gap: 14px; }
+.help-link {
+  font-size: 13px; color: var(--fg-soft); white-space: nowrap;
+  padding: 6px 11px; border-radius: var(--radius-md);
+  border: 1px solid var(--border); transition: color .15s, border-color .15s, background .15s;
+}
+.help-link:hover { color: var(--fg); border-color: var(--border-strong); background: var(--surface-hover); }
+.help-link.active { color: var(--fg); border-color: color-mix(in oklab, var(--brand) 45%, transparent); }
+
+/* profile avatar + dropdown */
+.profile { position: relative; }
+.avatar-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: 0; padding: 2px 4px 2px 2px; border-radius: var(--radius-full);
+  color: var(--fg-soft); transition: color .15s;
+}
+.avatar-btn:hover { color: var(--fg); }
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12.5px; font-weight: 600; color: #1c1912;
+  background: var(--brand); flex-shrink: 0;
+}
+.caret { transition: transform .18s; }
+.caret.open { transform: rotate(180deg); }
+
+.menu {
+  position: absolute; top: calc(100% + 8px); right: 0; min-width: 220px;
+  background: var(--surface-raised); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 6px; z-index: 60;
+  box-shadow: 0 12px 34px rgba(0,0,0,.34);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.menu-head { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 6px; }
+.menu-label { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--fg-meta); }
+.menu-email { font-size: 13px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu .rule { margin: 4px 0; }
+.menu-item {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  font-size: 13px; color: var(--fg-body); padding: 8px 10px; border-radius: var(--radius-md);
+  transition: background .15s, color .15s; cursor: pointer;
+}
+.menu-item:hover { background: var(--surface-hover); color: var(--fg); }
+.menu-item--danger:hover { color: var(--st-failed); background: color-mix(in oklab, var(--st-failed) 12%, transparent); }
+
+/* getting-started page */
+.gs-intro { font-size: 14.5px; color: var(--fg-body); line-height: 1.7; margin: 0 0 var(--section-gap); }
+.gs-intro strong { color: var(--fg); font-weight: 600; }
+.gs-steps { display: flex; flex-direction: column; gap: 18px; }
+.gs-step { display: flex; gap: 16px; align-items: flex-start; padding: 18px 20px;
+  background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.gs-num { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-serif); font-weight: 600; font-size: 14px;
+  color: var(--brand); border: 1px solid color-mix(in oklab, var(--brand) 40%, transparent); }
+.gs-step-body { flex: 1; min-width: 0; }
+.gs-step-title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--fg); margin: 2px 0 8px; }
+.gs-step-body p { font-size: 13.5px; color: var(--fg-body); line-height: 1.65; margin: 0 0 10px; }
+.gs-step-body p:last-child { margin-bottom: 0; }
+.gs-link { color: var(--accent); border-bottom: 1px solid var(--accent-soft); }
+.gs-link:hover { border-bottom-color: var(--accent); }
+.gs-pre { background: var(--surface-inset); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md); padding: 12px 14px; margin: 0 0 10px; overflow-x: auto; }
+.gs-pre code { font-family: var(--font-mono); font-size: 12.5px; color: var(--fg-body); line-height: 1.7; white-space: pre; }
+.gs-muted { font-size: 12px; color: var(--fg-meta); }
+.gs-cta { display: flex; align-items: center; gap: 14px; margin-top: var(--section-gap); }
+
 .nav-toggle { display: none; }
 .nav-sheet { display: none; }
 @media (max-width: 760px) {
   .hdr { gap: 12px; padding: 0 16px; }
-  .nav--desktop, .hdr-user--desktop { display: none; }
+  .nav--desktop, .hdr-user--desktop, .hdr-actions--desktop { display: none; }
   .nav-toggle { display: inline-flex; }
   .nav-sheet {
     display: flex; flex-direction: column; gap: 4px;

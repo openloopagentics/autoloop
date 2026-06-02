@@ -8,6 +8,7 @@ import { ProjectDetail } from "./dashboard/ProjectDetail";
 import { TeamsPage } from "./teams/TeamsPage";
 import { KeysPage } from "./keys/KeysPage";
 import { AdminPage } from "./admin/AdminPage";
+import { GettingStarted } from "./routes/GettingStarted";
 import { LoopMark } from "./ui/LoopMark";
 
 export function App() {
@@ -27,6 +28,7 @@ export function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="getting-started" element={<GettingStarted />} />
           <Route path="dashboard" element={<DashboardHome />} />
           <Route path="dashboard/:teamId/:slug" element={<ProjectDetail />} />
           <Route path="teams" element={<TeamsPage />} />

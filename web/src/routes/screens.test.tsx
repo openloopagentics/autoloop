@@ -34,10 +34,18 @@ describe("RequestAccess", () => {
 });
 
 describe("AppShell", () => {
-  it("renders nav + email and Sign out calls signOut", async () => {
+  it("renders nav + a Getting started link", () => {
+    withAuth({}, <AppShell />);
+    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /getting started/i }).length).toBeGreaterThan(0);
+  });
+
+  it("profile menu reveals the email and Sign out calls signOut", async () => {
     const signOut = vi.fn();
     withAuth({ signOut }, <AppShell />);
-    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
+    // email + sign out live inside the profile dropdown, hidden until opened
+    expect(screen.queryByText("u@x.com")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /account menu/i }));
     expect(screen.getByText("u@x.com")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
     expect(signOut).toHaveBeenCalled();
