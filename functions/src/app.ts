@@ -3,6 +3,7 @@ import { requireWriteKey } from "./auth.js";
 import { errorHandler } from "./errors.js";
 import { projectsRouter } from "./routes/projects.js";
 import { phasesRouter } from "./routes/phases.js";
+import { commitsRouter } from "./routes/commits.js";
 
 export function makeApp() {
   const app = express();
@@ -11,6 +12,7 @@ export function makeApp() {
   app.use("/v1", requireWriteKey);
   app.use("/v1/projects", projectsRouter);
   app.use("/v1/projects/:slug/phases", phasesRouter);
+  app.use("/v1/projects/:slug/phases/:phaseId/commits", commitsRouter);
   app.use(errorHandler);
   return app;
 }
