@@ -17,31 +17,49 @@ mint/revoke), not real-time.
 
 ## Key decisions
 
-- **API base URL** from `import.meta.env.VITE_API_URL`, defaulting to the deployed
-  function URL `https://api-5ds5e4zsxq-uc.a.run.app`. Add `VITE_API_URL` to
-  `web/.env.example`.
+- **Same-origin via a scoped Hosting rewrite (avoids CORS).** The deployed function
+  is `onRequest({ cors: false })`; a cross-origin browser fetch from the Hosting
+  domain to the `*.run.app` URL with an `Authorization` header triggers a CORS
+  preflight that the function would reject — blocking it 100%. So the UI calls the
+  API **same-origin**: add a Hosting rewrite **`/v1/** → the `api` function**,
+  ordered BEFORE the SPA catch-all, and have the client use a **relative** base
+  (`VITE_API_URL` defaults to `""`, i.e. requests go to `/v1/keys` on the Hosting
+  origin). No CORS, no preflight, no backend change. (This intentionally revises
+  UI-A's "no `/v1` rewrite" note — that predated the browser needing the API; the
+  scoped, first-ordered `/v1/**` rewrite routes API calls to the function and the
+  catch-all still serves the SPA for everything else. Agents/CLI keep using the
+  direct `*.run.app` URL, server-to-server, unaffected.)
+- **Base-URL handling:** the client uses `(import.meta.env.VITE_API_URL ?? "")` with
+  any trailing slash trimmed, so `${base}/v1/keys` is correct for both the default
+  (`"" → /v1/keys`) and an explicit absolute override (e.g. an emulator/preview URL).
 - **Auth:** each request sends `Authorization: Bearer <idToken>` where the token is
-  `await auth.currentUser.getIdToken()`. The API's `requireUser` verifies it +
-  checks `isAllowed` (always true for a user already in the app).
+  resolved **per request** via `await auth.currentUser.getIdToken()` (the SDK caches
+  and auto-refreshes near expiry — fine for a long-open page). The API's
+  `requireUser` verifies it + checks `isAllowed`.
 - **Mint reveals once:** `POST /v1/keys` returns `{ id, key, label, prefix, createdAt }`.
   The UI shows the plaintext `key` in a one-time reveal panel with a copy button and
-  a "store it now — it won't be shown again" warning; it is never persisted.
-- **List is fetch-based** (not a Firestore listener): load on mount; refresh after a
-  successful mint or revoke. (`apiKeys` is locked to clients in the rules, so it
-  MUST go through the API, not Firestore.)
+  a "store it now — it won't be shown again" warning; never persisted (cleared on
+  dismiss/unmount).
+- **List is fetch-based** (not a Firestore listener): `GET /v1/keys` returns
+  **`{ keys: [...] }`** — the client returns `body.keys`. Load on mount; refresh
+  after a successful mint or revoke. (`apiKeys` is locked to clients in the rules,
+  so it MUST go through the API, not Firestore.)
 
 ## Architecture (UI-A/B/C pattern)
 
 - **Presentational components (props-only, tested):**
-  - `KeyMintForm({ onMint })` — label input + "Create key".
+  - `KeyMintForm({ onMint, pending })` — label input + "Create key"; the button is
+    disabled while `pending` (prevents a double-submit minting two keys).
   - `NewKeyReveal({ keyValue, onDismiss })` — shows the plaintext once, a copy
     button (`navigator.clipboard.writeText`), the warning, and a Dismiss.
   - `KeyRow({ keyMeta, onRevoke })` — `prefix…`, label, createdAt; Revoke.
   - `KeyList({ keys, onRevoke })` — rows or an empty state.
-- **API client (glue — `web/src/keys/client.ts`, build-only):** `mintKey(label)`,
-  `listKeys()`, `revokeKey(id)` — each resolves the ID token, builds the request,
-  parses the `{ error: { code, message } }` envelope on failure into a thrown
-  `Error(message)`. Imports `auth` from `firebase.ts`.
+- **API client (glue — `web/src/keys/client.ts`, build-only):** `mintKey(label)` →
+  the `{id,key,label,prefix,createdAt}` object; `listKeys()` → **`body.keys`** (the
+  array, unwrapped); `revokeKey(id)`. Each resolves the ID token, builds the
+  request against the trimmed base, and on a non-2xx parses the
+  `{ error: { code, message } }` envelope into a thrown `Error(message)`. Imports
+  `auth` from `firebase.ts`.
 - **Page (thin glue — `KeysPage`):** holds `{ keys, loading, error, revealed }`
   state; loads via `listKeys()` on mount; `onMint` → `mintKey(label)` then set
   `revealed` to the returned `{key}` and refresh the list; `onRevoke` →
@@ -58,11 +76,6 @@ mint/revoke), not real-time.
 - **Revoke** removes the key (refresh); revoking a key already gone → the API's 404,
   surfaced inline (harmless).
 
-## Routing
-
-`/keys` (replacing the `ComingSoon` placeholder) → `KeysPage`. The AppShell "API
-Keys" nav link already points there.
-
 ## Testing
 
 Vitest + jsdom + RTL. Unit-test the presentational components with fixtures +
@@ -74,9 +87,23 @@ The `client.ts` (fetch + ID token) and `KeysPage` (state/glue) are not unit-test
 
 **App.test firebase-free:** `App.tsx` statically imports `KeysPage`, whose chain
 reaches `keys/client.ts` → `firebase.ts` (top-level `getAuth` throws on the blank
-test env). So `App.test.tsx` must add a hoisted `vi.mock("./keys/client", …)`
-(alongside the existing `./dashboard/hooks`, `./teams/hooks`, `./teams/actions`
-mocks). `KeysPage` uses no hooks module to mock — only the client.
+test env). So `App.test.tsx` must add a hoisted `vi.mock("./keys/client", () => ({
+mintKey: vi.fn(), listKeys: () => Promise.resolve([]), revokeKey: vi.fn() }))`
+(exporting all three names `KeysPage` imports), alongside the existing
+`./dashboard/hooks`, `./teams/hooks`, `./teams/actions` mocks. `KeysPage` uses no
+hooks module — only the client.
+
+## Routing + Hosting rewrite
+
+`/keys` (replacing the `ComingSoon` placeholder) → `KeysPage`. AND update
+`firebase.json` hosting `rewrites` so `/v1/**` routes to the function **before** the
+SPA catch-all (gen2 function → use the Cloud Run form):
+```json
+"rewrites": [
+  { "source": "/v1/**", "run": { "serviceId": "api", "region": "us-central1" } },
+  { "source": "**", "destination": "/index.html" }
+]
+```
 
 ## Out of scope
 
