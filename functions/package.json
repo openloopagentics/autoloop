@@ -1,0 +1,30 @@
+{
+  "name": "daloop-functions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "22" },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "firebase emulators:exec --only firestore --config ../firebase.json \"vitest run\"",
+    "test:run": "vitest run",
+    "test:watch": "vitest",
+    "test:rules": "firebase emulators:exec --only firestore --config ../firebase.json \"vitest run --config vitest.rules.config.ts\"",
+    "emulators": "firebase emulators:start --only firestore"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "@types/express": "^4.17.21",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
