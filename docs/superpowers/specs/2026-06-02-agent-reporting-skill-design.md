@@ -56,6 +56,9 @@ daloop phase set <phaseId> --status <s>
     .daloop.json, recorded by `phase start`) plus the new status, so the write is a
     valid create-or-update regardless of ordering. Errors locally if the phaseId
     was never started (not in .daloop.json) — see Error handling.
+    Note: the API PUT is a full upsert, so this re-asserts the LOCALLY-recorded
+    name/order and would overwrite a concurrent server-side rename of the phase —
+    an accepted consequence of the offline-resilient, best-effort design.
 
 daloop commit
     Reads git HEAD via `git log -1 --format=%H%n%cI%n%an%n%s`:
