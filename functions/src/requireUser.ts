@@ -23,7 +23,10 @@ export function makeRequireUser(verify: TokenVerifier = defaultVerifier): Reques
       let uid: string;
       try {
         ({ uid } = await verify(token));
-      } catch {
+      } catch (e) {
+        // Log the real reason server-side (audience mismatch, expired, no app, …);
+        // the client only ever sees the generic message.
+        console.warn("ID token verification failed (requireUser):", (e as Error)?.message);
         throw new AppError(401, "unauthorized", "invalid ID token");
       }
 

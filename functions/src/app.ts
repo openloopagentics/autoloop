@@ -1,4 +1,5 @@
 import express, { Router } from "express";
+import { ensureApp } from "./firestore.js";
 import { makeRequireUser } from "./requireUser.js";
 import { makeRequireAdmin } from "./requireAdmin.js";
 import { requireApiKeyMember } from "./requireApiKeyMember.js";
@@ -10,6 +11,11 @@ import { phasesRouter } from "./routes/phases.js";
 import { commitsRouter } from "./routes/commits.js";
 
 export function makeApp() {
+  // Initialize the Admin SDK before any handler runs, so the ID-token auth
+  // middleware (getAuth().verifyIdToken) has a default app on a cold instance
+  // whose first request is ID-token-gated (e.g. GET /v1/keys).
+  ensureApp();
+
   const app = express();
   app.use(express.json({ limit: "256kb" }));
 
