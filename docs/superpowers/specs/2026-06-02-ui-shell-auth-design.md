@@ -37,7 +37,8 @@ web/
   src/
     firebase.ts            # initializeApp(webConfig) -> exports auth, db (Firestore)
     auth/AuthProvider.tsx  # THE seam: subscribes to onAuthStateChanged + users/{uid};
-                           # provides useAuth() -> { user, isAllowed, loading, signIn, signOut }
+                           # provides useAuth() -> { state, user, isAllowed, signIn, signOut }
+                           # (state = deriveAccess(...): loading|signed-out|pending|allowed)
     auth/gate.ts           # pure deriveAccess(...) -> "loading"|"signed-out"|"pending"|"allowed"
     routes/
       AppShell.tsx         # authenticated layout: top bar + nav + <Outlet/>
