@@ -203,3 +203,46 @@ describe("rules: invites", () => {
       .set({ uid: "newbie", role: "member", email: "new@x.com", inviteId: "nope" }));
   });
 });
+
+describe("rules: projects + isolation", () => {
+  async function seedProjectTree(teamId: string) {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const fs = ctx.firestore();
+      await fs.doc(`teams/${teamId}/projects/web`).set({ title: "Web", status: "running" });
+      await fs.doc(`teams/${teamId}/projects/web/phases/p1`).set({ name: "A", order: 1, status: "running" });
+      await fs.doc(`teams/${teamId}/projects/web/phases/p1/commits/abc`).set({ message: "m", author: "a" });
+    });
+  }
+
+  it("members can read project, phase, and commit docs", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "member");
+    await seedProjectTree("t1");
+    const db = authed("alice");
+    await assertSucceeds(db.doc("teams/t1/projects/web").get());
+    await assertSucceeds(db.doc("teams/t1/projects/web/phases/p1").get());
+    await assertSucceeds(db.doc("teams/t1/projects/web/phases/p1/commits/abc").get());
+  });
+
+  it("no client can write project data, even an owner", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedProjectTree("t1");
+    const db = authed("alice");
+    await assertFails(db.doc("teams/t1/projects/web").set({ title: "x" }));
+    await assertFails(db.doc("teams/t1/projects/web/phases/p1").set({ name: "x" }));
+  });
+
+  it("cross-team isolation: a member of t1 cannot read t2's projects/members/invites", async () => {
+    await seedTeam("t1", "alice"); await seedMember("t1", "alice", "owner");
+    await seedTeam("t2", "bob"); await seedMember("t2", "bob", "owner");
+    await seedProjectTree("t2");
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("teams/t2/invites/i9").set({ email: "x@x.com", role: "member", invitedBy: "bob", status: "pending" });
+    });
+    const alice = authed("alice");
+    await assertFails(alice.doc("teams/t2/projects/web").get());
+    await assertFails(alice.doc("teams/t2/members/bob").get());
+    await assertFails(alice.doc("teams/t2/invites/i9").get());
+  });
+});

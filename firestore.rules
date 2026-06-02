@@ -95,7 +95,14 @@ service cloud.firestore {
           && request.resource.data.invitedBy == resource.data.invitedBy;
       }
 
-      // projects/{slug} added in Task 6
+      match /projects/{slug} {
+        allow read: if isMember(teamId);
+        allow write: if false;
+        match /{document=**} {
+          allow read: if isMember(teamId);
+          allow write: if false;
+        }
+      }
     }
   }
 }
