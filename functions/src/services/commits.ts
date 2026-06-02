@@ -14,6 +14,8 @@ export async function upsertCommit(
   const commitRef = phaseRef.collection("commits").doc(sha);
 
   await db().runTransaction(async (tx) => {
+    // Team/project existence is covered transitively: a phase can only exist under a
+    // project under a team that existed at creation, so the phase check implies both.
     const phaseSnap = await tx.get(phaseRef);
     if (!phaseSnap.exists) throw new AppError(404, "not_found", "project or phase does not exist");
 

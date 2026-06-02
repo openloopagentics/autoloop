@@ -10,6 +10,8 @@ export async function upsertPhase(teamId: string, slug: string, phaseId: string,
 
   await db().runTransaction(async (tx) => {
     // --- all reads first ---
+    // Team existence is covered transitively: a project can only exist under a team
+    // that existed when upsertProject created it, so the project check implies the team.
     const projectSnap = await tx.get(projectRef);
     if (!projectSnap.exists) throw new AppError(404, "not_found", "project does not exist");
 

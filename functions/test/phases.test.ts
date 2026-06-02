@@ -24,6 +24,12 @@ describe("PUT /v1/teams/:teamId/projects/:slug/phases/:phaseId", () => {
     expect(res.status).toBe(404);
   });
 
+  it("404s when the team does not exist (transitively, via missing project)", async () => {
+    const res = await request(app).put("/v1/teams/ghostteam/projects/acme/phases/p1").set(authHeader())
+      .send({ name: "Design", order: 1, status: "running" });
+    expect(res.status).toBe(404);
+  });
+
   it("creates a phase, stamps startedAt, and sets it as current", async () => {
     await createProject();
     const res = await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader())
