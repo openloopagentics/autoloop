@@ -16,6 +16,11 @@ vi.mock("./teams/actions", () => ({
   createTeam: vi.fn(), inviteMember: vi.fn(), revokeInvite: vi.fn(), acceptInvite: vi.fn(),
   declineInvite: vi.fn(), changeRole: vi.fn(), removeMember: vi.fn(),
 }));
+vi.mock("./keys/client", () => ({
+  mintKey: vi.fn(),
+  listKeys: () => Promise.resolve([]),
+  revokeKey: vi.fn(),
+}));
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
