@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { execFileSync } from "node:child_process";
 
 export const STATUSES = ["queued", "running", "blocked", "paused", "completed", "failed", "cancelled"];
 const ID_RE = /^[a-z0-9._-]+$/;
@@ -42,6 +43,15 @@ export function loadConfig(cwd) {
 }
 export function saveConfig(cwd, cfg) {
   writeFileSync(join(cwd, CONFIG_FILE), JSON.stringify(cfg, null, 2) + "\n");
+}
+
+export function parseGitHead(out) {
+  const [sha = "", committedAt = "", author = "", ...rest] = out.split("\n");
+  return { sha, committedAt, author, message: rest.join("\n") };
+}
+
+function defaultGitRun(cwd) {
+  return execFileSync("git", ["log", "-1", "--format=%H%n%cI%n%an%n%s"], { cwd, encoding: "utf8" }).trim();
 }
 
 export function resolveApiUrl(cfg, env, flagUrl) {
@@ -156,6 +166,20 @@ export async function run(argv, deps = {}) {
         if (!rec) throw new UsageError(`phase ${phaseId} not started — run \`daloop phase start\` first`);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/phases/${phaseId}`;
         return report({ method: "PUT", url, body: { name: rec.name, order: rec.order, status: flags.status } },
+          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "commit": {
+        const cfg = loadConfig(cwd);
+        if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `daloop phase start` first");
+        let raw;
+        try { raw = (gitRun ? gitRun(cwd) : defaultGitRun(cwd)).trim(); }
+        catch (e) { throw new UsageError(`could not read git HEAD (is this a git repo with commits?): ${e.message}`); }
+        const c = parseGitHead(raw);
+        validateId("sha", c.sha);
+        if (!c.author) throw new UsageError("git author empty — set `git config user.name`");
+        if (!c.message) throw new UsageError("git commit message empty");
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/phases/${cfg.currentPhaseId}/commits/${c.sha}`;
+        return report({ method: "PUT", url, body: { message: c.message, author: c.author, committedAt: c.committedAt } },
           { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
       }
       // commands added in later tasks

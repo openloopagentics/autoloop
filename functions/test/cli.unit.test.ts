@@ -169,3 +169,49 @@ describe("project set", () => {
     expect(errs.join(" ")).toMatch(/invalid status/);
   });
 });
+
+// @ts-ignore
+import { parseGitHead } from "../../cli/daloop.mjs";
+
+describe("parseGitHead", () => {
+  it("parses sha / ISO committedAt / author / message", () => {
+    const out = "deadbeef\n2026-06-02T01:25:49-07:00\nAlice\nfix: thing";
+    expect(parseGitHead(out)).toEqual({ sha: "deadbeef", committedAt: "2026-06-02T01:25:49-07:00", author: "Alice", message: "fix: thing" });
+  });
+});
+
+describe("commit", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "build", phases: { build: { name: "Build", order: 1 } } });
+    return dir;
+  }
+  const gitRun = () => "deadbeef\n2026-06-02T01:25:49-07:00\nAlice\nfix: thing";
+
+  it("PUTs the commit under currentPhaseId with git fields", async () => {
+    const dir = initDir();
+    let captured: any;
+    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
+      fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
+    expect(code).toBe(0);
+    expect(captured.url).toBe("http://api/v1/teams/acme/projects/web/phases/build/commits/deadbeef");
+    expect(JSON.parse(captured.init.body)).toMatchObject({ message: "fix: thing", author: "Alice", committedAt: "2026-06-02T01:25:49-07:00" });
+  });
+
+  it("exits 1 when no currentPhaseId", async () => {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, phases: {} });
+    const errs: string[] = [];
+    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), gitRun, fetchImpl: async () => { throw new Error("no"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/no current phase/i);
+  });
+
+  it("exits 1 when git author is empty", async () => {
+    const errs: string[] = [];
+    const code = await run(["commit"], { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+      gitRun: () => "deadbeef\n2026-06-02T01:25:49-07:00\n\nfix: thing", fetchImpl: async () => { throw new Error("no"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/author/);
+  });
+});
