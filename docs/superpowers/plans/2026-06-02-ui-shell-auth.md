@@ -114,12 +114,16 @@ export default defineConfig({
     "composite": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "skipLibCheck": true,
-    "noEmit": true
+    "skipLibCheck": true
   },
   "include": ["vite.config.ts"]
 }
 ```
+
+> NOTE: do NOT add `"noEmit": true` here. A `composite` referenced project must emit
+> (it produces `.tsbuildinfo`/declarations for `tsc -b`); `composite` + `noEmit`
+> fails with TS6310 and breaks `npm run build`. The root `tsconfig.json` keeps
+> `noEmit: true`, so no JS is emitted from `src/`.
 
 - [ ] **Step 4: `web/index.html`, `web/src/setupTests.ts`, `web/.env.example`, `web/.gitignore`**
 
