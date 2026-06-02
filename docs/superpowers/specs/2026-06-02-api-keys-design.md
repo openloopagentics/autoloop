@@ -151,7 +151,7 @@ client reads. (The Admin SDK bypasses rules, so the API still reads/writes it.)
 
 ## Validation & errors
 
-- `label` validated with Zod (non-empty string, max length).
+- `label` validated with Zod (trimmed, non-empty string, max 100 chars).
 - Envelope unchanged; **new code `forbidden` (403)** for the not-a-member case.
 - `401` for missing/invalid API key (write path) and missing/invalid ID token
   (key endpoints); `404` for revoking a nonexistent/not-owned key.
