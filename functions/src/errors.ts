@@ -23,6 +23,8 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     res.status(400).json({ error: { code: "validation", message: "request body too large or malformed" } });
     return;
   }
-  // Avoid leaking internals.
+  // Log the real error server-side (Cloud Run logs) for diagnosis; return a
+  // generic envelope to the client so internals aren't leaked.
+  console.error("Unhandled error:", err);
   res.status(500).json({ error: { code: "internal", message: "internal error" } });
 };
