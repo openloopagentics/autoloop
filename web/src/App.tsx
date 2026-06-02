@@ -5,6 +5,7 @@ import { RequestAccess } from "./routes/RequestAccess";
 import { AppShell } from "./routes/AppShell";
 import { DashboardHome } from "./dashboard/DashboardHome";
 import { ProjectDetail } from "./dashboard/ProjectDetail";
+import { TeamsPage } from "./teams/TeamsPage";
 
 function ComingSoon() {
   return <p>Coming soon.</p>;
@@ -22,7 +23,7 @@ export function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardHome />} />
           <Route path="dashboard/:teamId/:slug" element={<ProjectDetail />} />
-          <Route path="teams" element={<ComingSoon />} />
+          <Route path="teams" element={<TeamsPage />} />
           <Route path="keys" element={<ComingSoon />} />
         </Route>
       </Routes>
