@@ -109,9 +109,41 @@ projects/{slug}                       (existing doc; server keeps currentPhaseId
   documents/{id}                      { kind, title, format, content, createdAt }
 ```
 
-Event ids are server-generated (e.g. a sortable ULID/auto id); `createdAt` is
-server-stamped. The server continues to own derived `currentPhaseId` and now
-`currentTaskId` (lowest-order non-terminal task of the current phase).
+### Event ordering & ids
+
+Event ids (`scores`, `testRuns`, `revisions`) are **server-generated, sortable
+ULID-style strings** built in the service layer as `<48-bit ms timestamp,
+base32>` + `<random suffix from node:crypto.randomBytes>` (the same crypto helper
+`apiKeys.ts` already uses; no new dependency, and `Date.now()` is fine in
+`functions/src` — the no-`Date.now()` convention applies only to the throwaway
+`prototype/`). This gives a **total order even for events committed in the same
+millisecond**. `createdAt` is also stored (`FieldValue.serverTimestamp()`) for
+display, but **replay/ordering uses the id** (`orderBy(documentId ASC)`), never the
+timestamp. Firestore auto-ids are *not* used for events (not time-sortable).
+
+### Derived `scenario.state`
+
+Computed by readers (website), never stored. For a scenario, fetch its `scores` and
+`testRuns` (filtered by `scenarioId`) and take the **latest by id** (the ULID order
+above). `state = met` iff `latestScore.composite ≥ threshold` AND
+`latestTestRun.failed == 0`; else `unmet`. At current scale readers fetch the
+(small) event set and pick the max id in memory — **no composite index required**.
+If event volume grows, the fallback is composite indexes
+(`scenarioId ASC, __name__ DESC`) on `scores` and `testRuns`; this is a tuning step,
+not part of this spec.
+
+### Derived `currentPhaseId` / `currentTaskId`
+
+The server owns both, recomputed on writes:
+- `currentPhaseId` (existing): lowest-`order` non-terminal phase; tiebreak by
+  `phaseId`. Null if all phases are terminal.
+- `currentTaskId` (new): among tasks where `phaseId == currentPhaseId`, the
+  lowest-`order` non-terminal task; tiebreak by `taskId`. **Null** if
+  `currentPhaseId` is null or that phase has no non-terminal task.
+- Recompute triggers: a **task** upsert recomputes `currentTaskId`; a **phase**
+  upsert recomputes `currentPhaseId` **and** `currentTaskId` (because the current
+  phase may have moved). Both mirror the existing `upsertPhase` derivation in
+  `services/phases.ts`.
 
 ## API
 
@@ -124,7 +156,14 @@ existing `requireApiKeyMember` middleware (per-user API key → team membership)
 - `PUT …/tasks/:taskId`
 - `PUT …/tasks/:taskId/commits/:sha`   (commit, now task-scoped)
 - `PUT …/documents/:docId`
-- (existing `PUT …` project, `…/phases/:phaseId` retained unchanged)
+- (existing `PUT …` project and `…/phases/:phaseId` retained unchanged; the legacy
+  `PUT …/phases/:phaseId/commits/:sha` is **retained, deprecated** for back-compat)
+
+**Required-on-create** (idempotent `PUT` creates if absent, patches if present —
+mirroring `services/projects.ts` / `phases.ts`): goal → `title`; scenario →
+`goalId` + `title` + `rubric`; task → `phaseId` + `title` + `order` + `status`;
+document → `kind` + `title` + `format` + `content`. On update these are optional;
+server-owned/derived fields are never client-settable.
 
 **Events — append `POST` (server stamps id + `createdAt`):**
 - `POST …/scores`
@@ -151,18 +190,48 @@ daloop revise --scenario <s> --reason "…" --change add:<taskId> --change drop:
 daloop doc add --kind vision --title "…" (--file path | --url https://…)
 ```
 
-**Back-compat:** commits nest under a task, but today's `daloop commit` reports
-phase-level commits. When `--task` is omitted, the CLI auto-attaches to an implicit
-default task (e.g. `main`) for the current phase, creating it if needed — so simple
-loops keep working while the model stays clean. The existing `project set` and
-`phase start/set` commands are unchanged.
+**Back-compat (commit relocation):** in the new model commits nest under
+`tasks/{taskId}/commits/{sha}`, but today commits live at
+`phases/{phaseId}/commits/{sha}` and the deployed CLI/skill report there. To avoid
+breaking anything:
+
+- **The legacy phase-scoped commit route and storage are retained, unchanged but
+  deprecated** (`PUT …/phases/:phaseId/commits/:sha`, mounted as today in `app.ts`).
+  Already-written `phases/*/commits/*` docs stay valid and readable; the existing
+  `commits.test.ts` and the `phases/p1/commits/abc` seed in `rules.test.ts` keep
+  passing. No migration of old data.
+- **The forward path is task-scoped** (`PUT …/tasks/:taskId/commits/:sha`). The
+  updated `daloop commit` targets a task: with `--task <id>` it uses that task; with
+  no `--task` it uses `cfg.currentTaskId` if set, else **auto-creates an implicit
+  default task** and uses it.
+- **Implicit default task shape** (when auto-created): id `main`, `phaseId =
+  cfg.currentPhaseId` (error if there is no current phase — same as today's commit
+  requiring a current phase), `title "Main"`, `order 0`, `status "running"`,
+  `scenarioIds []`. It is a normal task doc, so it satisfies task validation.
+- The website reads commits under tasks for loop-mode projects; legacy phase-mode
+  projects (commits under phases) still render via the retained path.
+
+The existing `project set` and `phase start/set` commands are unchanged.
 
 ## Security rules
 
-Extend the existing `isMember(teamId)` read pattern to the new subcollections
-(`goals`, `scenarios`, `tasks` and their `commits`, `scores`, `testRuns`,
-`revisions`, `documents`). All writes stay `false` for clients (Admin-SDK API only),
-consistent with today. No change to the `members`/`invites`/`users`/`apiKeys` rules.
+**No rules change is required.** The existing `match /projects/{slug}` block already
+contains a recursive wildcard that grants member read to every nested doc and
+forbids all client writes:
+
+```
+match /projects/{slug} {
+  allow read: if isMember(teamId);
+  allow write: if false;
+  match /{document=**} { allow read: if isMember(teamId); allow write: if false; }
+}
+```
+
+This already covers `goals`, `scenarios`, `tasks` (and their `commits`), `scores`,
+`testRuns`, `revisions`, and `documents` — they are member-readable and
+client-write-forbidden today. We only **add rules tests** asserting member-read /
+non-member-deny / client-write-deny on the new paths (no new `match` blocks — adding
+sibling blocks could shadow or duplicate the recursive rule).
 
 ## Validation
 
@@ -171,10 +240,16 @@ zod schemas (mirroring today's style):
 - ids (`goalId`, `scenarioId`, `taskId`, `phaseId`, `docId`) match `^[a-z0-9._-]+$`;
   commit `sha` matches the existing sha pattern.
 - rubric: `criteria[]` each `{ id matches id-pattern, name non-empty, weight > 0,
-  max ≥ 1 }`; `score.criteria` values are integers `0..max`; `composite` is `0..100`.
+  max ≥ 1 }`; `composite` is `0..100`.
+- `score.criteria`: zod enforces integer `≥ 0`. The per-criterion **`≤ max`** bound
+  and the check that **criterion keys match the scenario's rubric ids** are enforced
+  in the **service layer** (after loading the scenario), since `max`/ids live in a
+  different document and a static body schema can't see them. A violation → 400.
 - `threshold` (if present) `0..100`.
 - `testRun.passed/failed` ≥ 0; `issues[]` are strings.
-- `document.format` ∈ `markdown|url`; oversize bodies → 400 (existing 256kb limit).
+- `document.format` ∈ `markdown|url`; `document.content` field-level cap **100KB**
+  (matching the existing `design.content` zod cap). The 256KB `express.json` limit is
+  the whole-request body-parser cap, not the field cap; oversize → 400.
 
 ## Error handling
 
