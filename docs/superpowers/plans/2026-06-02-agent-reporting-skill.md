@@ -479,7 +479,7 @@ describe("phase start/set", () => {
       case "phase start": {
         const phaseId = positionals[2];
         validateId("phaseId", phaseId);
-        if (!flags.name || flags.order === undefined) throw new UsageError("phase start requires --name <n> --order <number>");
+        if (!flags.name || typeof flags.order !== "string") throw new UsageError("phase start requires --name <n> --order <number>");
         const order = Number(flags.order);
         if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
         const status = flags.status || "running";
@@ -696,7 +696,9 @@ describe("CLI end-to-end against the real API", () => {
   });
 
   it("a non-member key -> 403 warning, returns 0", async () => {
-    // key exists (seeded above for a different team), but no membership in 'lonelyteam'
+    // The global beforeEach (helpers.ts) wipes Firestore before each test, so re-seed
+    // the key here — but with NO membership in 'lonelyteam' so it reaches 403 (not 401).
+    await db().doc(`apiKeys/${KEY_HASH}`).set({ uid: "agentX", label: "it", prefix: "dl_integ" });
     await db().doc("teams/lonelyteam").set({ name: "L", createdBy: "someoneelse" });
     const cwd = dir();
     const opts = { cwd, env, log: () => {}, err: () => {} };
