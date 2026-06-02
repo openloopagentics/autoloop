@@ -40,6 +40,16 @@ describe("PUT .../commits/:sha", () => {
     expect(res.status).toBe(400);
   });
 
+  it("requires message and author even on update (always required, not just create)", async () => {
+    await setup();
+    await request(app).put("/v1/projects/acme/phases/p1/commits/abc")
+      .set(authHeader()).send({ message: "m", author: "a" }).expect(200);
+    // re-PUT the same sha without author -> 400 (commit is never a partial update)
+    const res = await request(app).put("/v1/projects/acme/phases/p1/commits/abc")
+      .set(authHeader()).send({ message: "m" });
+    expect(res.status).toBe(400);
+  });
+
   it("is idempotent on the same sha", async () => {
     await setup();
     const send = () => request(app).put("/v1/projects/acme/phases/p1/commits/abc")

@@ -18,14 +18,16 @@ export async function upsertCommit(
 
     const commitSnap = await tx.get(commitRef);
     const creating = !commitSnap.exists;
-    if (creating && (body.message === undefined || body.author === undefined)) {
+    // message and author are ALWAYS required on a commit write (spec: a commit is
+    // not a partial update — every write carries its content). sha is the doc ID.
+    if (body.message === undefined || body.author === undefined) {
       throw new AppError(400, "validation", "message and author are required");
     }
 
-    const data: Record<string, unknown> = { sha, updatedAt: FieldValue.serverTimestamp() };
+    const data: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
     if (creating) data.createdAt = FieldValue.serverTimestamp();
-    if (body.message !== undefined) data.message = body.message;
-    if (body.author !== undefined) data.author = body.author;
+    data.message = body.message;
+    data.author = body.author;
     if (body.url !== undefined) data.url = body.url;
     if (body.committedAt !== undefined && body.committedAt !== null) {
       data.committedAt = Timestamp.fromDate(new Date(body.committedAt));
