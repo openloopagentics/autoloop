@@ -26,18 +26,35 @@ Recap of the relevant rules (already deployed):
 ## Key decisions
 
 - **Team id must match `^[a-z0-9._-]+$`** (so agents can later report to it via the
-  API, which validates `teamId` against that pattern). A pure
-  `teamIdFromName(name)` slugifies to lowercase + a short lowercase-random suffix
-  (e.g. `acme-web` → `acme-web-k3f9`). Unit-tested. (Do NOT use Firestore auto-ids —
-  they contain uppercase and would 400 at the agent write path.)
+  API, which validates `teamId`). Pure `teamIdFromName(name)` contract: lowercase;
+  replace each run of `[^a-z0-9._-]` with `-`; trim leading/trailing `-`/`.`; if the
+  result is empty (blank or all-non-ASCII name), fall back to base `"team"`; then
+  append `-<suffix>` where `suffix ∈ [a-z0-9]{4}` (lowercase only — NOT a base36/
+  uppercase id). So the id is always non-empty and matches the pattern. Unit-tested,
+  including empty and pure-non-ASCII names. (Do NOT use Firestore auto-ids — they
+  contain uppercase and would 400 at the agent write path.)
 - **Invitee discovery:** a signed-in user finds invites addressed to them via a
   **`collectionGroup("invites").where("email","==", myEmail.toLowerCase())`** live
-  query — the rules permit the invitee to read those. This needs a new
-  `collectionGroup` index on `invites.email` (add to `firestore.indexes.json` and
-  deploy). The teamId is `snap.ref.parent.parent.id`.
+  query, with `teamId = snap.ref.parent.parent?.id`. This needs a new
+  **collectionGroup-scoped** single-field index on `invites.email`. Rule note: the
+  invite read rule is `isManager(teamId) || (email_verified && resource.data.email
+  == request.auth.token.email.lower())`; for this collection-group query the query
+  succeeds via the **invitee branch** (the `isManager` branch simply evaluates false
+  for foreign invites and does not block the query), and it **requires the token's
+  `email_verified` claim** — Google sign-in guarantees it. (Do a manual
+  emulator/console check that it returns only the invitee's own invites before
+  merge.)
 - **Accept** uses a Firestore `writeBatch`: set `members/{uid}` with
-  `{uid, role: invite.role, email, inviteId}` + delete the invite (both evaluate
-  against pre-batch state, matching the rules).
+  `{ uid, role: invite.role, email: invite.email /* already lowercased */,
+  inviteId: invite.id, joinedAt: serverTimestamp() }` + delete the invite (both
+  evaluate against pre-batch state). The member `email` is pinned to the
+  lowercased invite email (not `auth.currentUser.email`) to avoid a casing
+  mismatch. Precondition: a verified email (Google) — an unverified provider would
+  get permission-denied.
+- **`joinedAt` on member create:** both the bootstrap owner-member write
+  (`createTeam`) and the accept-create set `joinedAt: serverTimestamp()` for a
+  consistent member shape (the rules treat `joinedAt` as immutable on later
+  updates).
 
 ## Architecture (UI-A/B pattern)
 
@@ -65,9 +82,17 @@ Recap of the relevant rules (already deployed):
 - **Create team:** form → `teamIdFromName(name)` → `createTeam(id, name, uid)` does
   the two sequential writes (team doc, then own owner member). Surface a clear error
   if the write is denied (e.g. not `isAllowed`).
-- **Roles:** `MemberRow` shows a role `<select>` + Remove only when the viewer is a
-  manager and the row isn't the viewer; an admin's select offers only `member` (per
-  the rules), an owner's offers all three. "Leave" appears on the viewer's own row.
+- **Roles (rank-aware gating, matching the rules):** the role `<select>` and Remove
+  appear only when the viewer **outranks** the target, not merely "is a manager":
+  - `viewerRole === "owner"` → full select (owner/admin/member) + Remove on any
+    non-self row.
+  - `viewerRole === "admin"` → controls ONLY on rows whose current role is
+    `member` (a `member`-only select + Remove); an admin sees **no** controls on
+    `owner`/`admin` rows (the rules forbid an admin touching a manager).
+  - `member` viewer → no controls.
+  - "Leave" appears on the viewer's own row regardless of role.
+  This keeps the UI aligned with the rules so users don't hit permission-denied for
+  actions the UI appeared to offer.
 - **Invites:** manager-only `InviteForm` (email + role) → `inviteMember` (stores
   lowercased email, `status:"pending"`, `invitedBy`). `InviteRow` revoke → delete.
 - **Pending invites for me:** `PendingInviteRow` accept → `acceptInvite` (batch);
@@ -75,6 +100,22 @@ Recap of the relevant rules (already deployed):
   `useMyTeams` listener updates live).
 - All write failures (permission-denied, etc.) are caught and shown inline; never a
   crash.
+
+## States (each live panel)
+
+Each hook exposes `{ data, loading, error }`; panels render:
+- **loading** → `Spinner` (reuse the dashboard component) while listeners attach.
+- **read error** → `ErrorNote` (e.g. a missing index before deploy, or a denied
+  read) — never a blank panel.
+- **empty** → "You're not on a team yet" (my teams), "No pending invites" (pending),
+  "No invites" (team invites). ("No members" shouldn't occur — the owner is always a
+  member.)
+- **Self-leave / last-owner:** clicking Leave deletes the viewer's own member doc;
+  `useMyTeams` then drops the team and its `TeamAdminContainer` unmounts. A **sole
+  owner** leaving is denied by the rules (last-owner deferred) → surface the
+  permission-denied as an inline error, don't fail silently. During unmount the
+  members listener may briefly get a denied/empty read (own member doc gone) — the
+  container must tolerate that transient (treat as empty/none, no crash).
 
 ## Routing
 
@@ -89,15 +130,23 @@ existing `members.uid`). Deploy with `firebase deploy --only firestore:indexes`.
 ## Testing
 
 Vitest + jsdom + RTL. Unit-test the pure `teamIdFromName` (slug, lowercasing,
-pattern compliance, suffix uniqueness) and the presentational components with
-fixtures + injected callbacks: `TeamCreateForm` calls `onCreate` with the typed
-name; `MemberRow` shows/hides role + remove + leave per `viewerRole`/`selfUid` and
-emits `onChangeRole`/`onRemove`; admin select offers only `member`; `InviteForm`
+pattern compliance, **empty-name and pure-non-ASCII name → non-empty valid id**,
+suffix is `[a-z0-9]`) and the presentational components with fixtures + injected
+callbacks: `TeamCreateForm` calls `onCreate` with the typed name; **`MemberRow`
+rank-aware gating** — owner viewer + non-self row → full select + Remove; admin
+viewer + `member` row → member-only select + Remove; **admin viewer + owner row →
+no controls; admin viewer + admin row → no controls**; member viewer → no controls;
+viewer's own row → Leave; and it emits `onChangeRole`/`onRemove`; `InviteForm`
 calls `onInvite` with email+role; `InviteRow`/`PendingInviteRow` emit
-revoke/accept/decline. Hooks, actions, page, and containers are Firebase glue
-(build-only). App.test stays firebase-free (the Teams route is lazy/under the shell;
-if `TeamsPage` is statically imported into `App.tsx`, mock `teams/hooks` +
-`dashboard/hooks` in `App.test.tsx` exactly as UI-B did).
+revoke/accept/decline.
+
+Hooks, actions, page, and containers are Firebase glue (build-only). **App.test
+firebase-free:** `App.tsx` statically imports `TeamsPage`, whose chain reaches
+`teams/hooks.ts` AND `teams/actions.ts`, both of which import `firebase.ts` (whose
+top-level `getAuth` throws on the blank test env). So `App.test.tsx` must hoist
+`vi.mock` for **`./teams/hooks`, `./teams/actions`, AND `./dashboard/hooks`**
+(mocking only the hooks is insufficient — `actions.ts` is the other firebase-
+importing module reachable from `TeamsPage`). Follow the UI-B `vi.mock` pattern.
 
 ## Out of scope
 
