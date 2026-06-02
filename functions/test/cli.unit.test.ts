@@ -64,3 +64,44 @@ describe("init", () => {
     expect(errs.join(" ")).toMatch(/invalid teamId/);
   });
 });
+
+// @ts-ignore
+import { report, resolveApiUrl } from "../../cli/daloop.mjs";
+
+describe("resolveApiUrl precedence", () => {
+  it("flag > env > config", () => {
+    expect(resolveApiUrl({ apiUrl: "c" }, { DALOOP_API_URL: "e" }, "f")).toBe("f");
+    expect(resolveApiUrl({ apiUrl: "c" }, { DALOOP_API_URL: "e" }, undefined)).toBe("e");
+    expect(resolveApiUrl({ apiUrl: "c" }, {}, undefined)).toBe("c");
+  });
+});
+
+describe("report (exit policy)", () => {
+  const okFetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true }), text: async () => "" });
+  function failFetch(status: number, body: any) {
+    return async () => ({ ok: false, status, json: async () => body, text: async () => JSON.stringify(body) });
+  }
+  const base = { cwd: "/", env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {} };
+
+  it("throws UsageError when DALOOP_API_KEY missing (before network)", async () => {
+    await expect(report({ method: "PUT", url: "http://x/v1", body: {} }, { ...base, env: {} })).rejects.toThrow(/DALOOP_API_KEY/);
+  });
+
+  it("returns 0 on success and sends Bearer auth + JSON body", async () => {
+    let captured: any;
+    const code = await report({ method: "PUT", url: "http://x/v1/teams/t/projects/p", body: { title: "x" } },
+      { ...base, fetchImpl: async (url: string, init: any) => { captured = { url, init }; return okFetch(); } });
+    expect(code).toBe(0);
+    expect(captured.init.method).toBe("PUT");
+    expect(captured.init.headers.Authorization).toBe("Bearer dl_k");
+    expect(JSON.parse(captured.init.body).title).toBe("x");
+  });
+
+  it("warns + returns 0 on a 403 by default; returns 1 with strict", async () => {
+    const errs: string[] = [];
+    const d = { ...base, err: (m: string) => errs.push(m), fetchImpl: failFetch(403, { error: { code: "forbidden", message: "no" } }) };
+    expect(await report({ method: "PUT", url: "http://x", body: {} }, d)).toBe(0);
+    expect(errs.join(" ")).toMatch(/not a member/i);
+    expect(await report({ method: "PUT", url: "http://x", body: {} }, { ...d, strict: true })).toBe(1);
+  });
+});

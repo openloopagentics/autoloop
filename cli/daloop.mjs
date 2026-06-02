@@ -44,6 +44,50 @@ export function saveConfig(cwd, cfg) {
   writeFileSync(join(cwd, CONFIG_FILE), JSON.stringify(cfg, null, 2) + "\n");
 }
 
+export function resolveApiUrl(cfg, env, flagUrl) {
+  return (typeof flagUrl === "string" && flagUrl) || env.DALOOP_API_URL || cfg.apiUrl;
+}
+
+const REPORT_MESSAGES = {
+  401: () => "invalid or expired DALOOP_API_KEY",
+  403: (teamId) => `your API key's user is not a member of team ${teamId ?? "(unknown)"}`,
+  404: () => "team/project/phase not found — run `daloop project set` first",
+};
+
+/**
+ * Send one report request. deps: { env, fetchImpl, err, strict, teamId }.
+ * Returns 0 on success; on failure prints a one-line warning and returns 0,
+ * or 1 when strict. Throws UsageError (caught by run -> exit 1) for a missing key.
+ */
+export async function report(req, deps) {
+  const { env = process.env, fetchImpl = fetch, err = (m) => console.error(m), strict = false, teamId } = deps;
+  const key = env.DALOOP_API_KEY;
+  if (!key) throw new UsageError("set DALOOP_API_KEY (a key minted via POST /v1/keys)");
+
+  let res;
+  try {
+    res = await fetchImpl(req.url, {
+      method: req.method,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify(req.body),
+    });
+  } catch (e) {
+    err(`daloop: report failed (network): ${e.message}`);
+    return strict ? 1 : 0;
+  }
+
+  if (res.ok) return 0;
+
+  let detail = "";
+  if (res.status === 400) {
+    try { detail = (await res.json())?.error?.message ?? ""; } catch { /* ignore */ }
+  }
+  const m = REPORT_MESSAGES[res.status];
+  const msg = m ? m(teamId) : `HTTP ${res.status}`;
+  err(`daloop: report not applied (${res.status}): ${msg}${detail ? ` — ${detail}` : ""}`);
+  return strict ? 1 : 0;
+}
+
 /**
  * Run a daloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.
