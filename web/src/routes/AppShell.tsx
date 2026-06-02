@@ -2,7 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/context";
 
 export function AppShell() {
-  const { user, signOut } = useAuth();
+  const { user, isAdmin, signOut } = useAuth();
   return (
     <div>
       <header>
@@ -12,6 +12,7 @@ export function AppShell() {
           <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/teams">Teams</NavLink>
           <NavLink to="/keys">API Keys</NavLink>
+          {isAdmin && <NavLink to="/admin">Admin</NavLink>}
         </nav>
         <span>{user?.email}</span>
         <button onClick={() => void signOut()}>Sign out</button>

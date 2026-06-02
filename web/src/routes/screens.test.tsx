@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { AuthContext, type AuthValue } from "../auth/context";
@@ -41,5 +41,14 @@ describe("AppShell", () => {
     expect(screen.getByText("u@x.com")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
     expect(signOut).toHaveBeenCalled();
+  });
+
+  it("AppShell shows the Admin link only when isAdmin", async () => {
+    withAuth({ isAdmin: false }, <AppShell />);
+    expect(screen.queryByRole("link", { name: /admin/i })).toBeNull();
+    // re-render as admin
+    cleanup();
+    withAuth({ isAdmin: true }, <AppShell />);
+    expect(screen.getByRole("link", { name: /admin/i })).toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ export interface AuthValue {
   state: AccessState;
   user: AuthUser | null;
   isAllowed: boolean;
+  isAdmin?: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   signInError: string | null;

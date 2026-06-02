@@ -1,8 +1,10 @@
 import express, { Router } from "express";
 import { makeRequireUser } from "./requireUser.js";
+import { makeRequireAdmin } from "./requireAdmin.js";
 import { requireApiKeyMember } from "./requireApiKeyMember.js";
 import { AppError, errorHandler } from "./errors.js";
 import { keysRouter } from "./routes/keys.js";
+import { adminRouter } from "./routes/admin.js";
 import { projectsRouter } from "./routes/projects.js";
 import { phasesRouter } from "./routes/phases.js";
 import { commitsRouter } from "./routes/commits.js";
@@ -13,6 +15,9 @@ export function makeApp() {
 
   // Human-facing key management (Firebase ID token).
   app.use("/v1/keys", makeRequireUser(), keysRouter);
+
+  // Admin allowlist management (Firebase ID token + isAdmin).
+  app.use("/v1/admin", makeRequireAdmin(), adminRouter);
 
   // Agent writes (API key -> user -> team membership). One auth point on the subtree.
   const teamRouter = Router({ mergeParams: true });

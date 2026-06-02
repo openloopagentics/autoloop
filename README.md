@@ -174,6 +174,31 @@ npm run build      # type-check + bundle to web/dist
 > UI sub-projects B–E (dashboard, team/invite management, API-key minting, admin
 > allowlist) mount inside this shell and are tracked separately.
 
+## Admin allowlist
+
+Admins manage the `users/{uid}.isAllowed` gate from the **`/admin`** page (the
+**Admin** nav link appears only for admins). It calls a dedicated admin API
+(`/v1/admin/*`) that is authenticated by a **Firebase ID token** and gated on the
+caller being both `isAllowed` and `isAdmin`. The API uses the Admin SDK (bypassing
+rules), so the `users/` Firestore rules stay locked (client-write-denied,
+self-read-only) — no rules change.
+
+| Method & path | Purpose |
+|---|---|
+| `GET /v1/admin/users` | List all users with their `email`, `isAllowed`, `isAdmin`. |
+| `PUT /v1/admin/users/{uid}` | Body `{ isAllowed, email? }` — merge-set `isAllowed` (and `email` if given). Creates the doc if absent. **Never touches `isAdmin`.** |
+
+The admin API only ever toggles `isAllowed` — minting or stripping admins
+(`isAdmin`) is deliberately **not** something the API can do.
+
+- **First-admin bootstrap (manual):** there's a chicken-and-egg — the first admin
+  can't be granted through an admin-only API. Set one user's
+  `users/{uid}.isAdmin = true` once in the Firebase console (or via the Admin SDK).
+- **Granting a never-seen user:** a brand-new signed-in user has no `users/{uid}`
+  doc yet, so they don't appear in the list. Grant them via the **"grant by UID"**
+  input on `/admin` (uid + email), using the uid shown on their request-access
+  screen — this merge-creates the doc with `isAllowed: true`.
+
 ## Deploy
 
 ```bash
