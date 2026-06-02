@@ -64,7 +64,11 @@ service cloud.firestore {
           && request.resource.data.get('joinedAt', null) == resource.data.get('joinedAt', null)
           && request.resource.data.get('email', null) == resource.data.get('email', null)
           && request.resource.data.get('inviteId', null) == resource.data.get('inviteId', null)
-          && (isOwner(teamId) || request.resource.data.role == 'member');
+          // Owners may set any role on anyone. Admins may only act on a target who is
+          // currently a plain member, and only keep them a member — admins cannot touch
+          // (demote/promote) owners or other admins.
+          && (isOwner(teamId)
+              || (request.resource.data.role == 'member' && resource.data.role == 'member'));
 
         allow delete: if isManager(teamId) || request.auth.uid == uid;
       }

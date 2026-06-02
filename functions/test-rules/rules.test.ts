@@ -112,6 +112,19 @@ describe("rules: members", () => {
     await assertSucceeds(authed("alice").doc("teams/t1/members/carol").update({ role: "admin" }));
   });
 
+  it("an admin cannot demote an owner or another admin (only owners touch managers)", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedMember("t1", "adam", "admin");
+    await seedMember("t1", "ben", "admin");
+    // admin tries to demote the owner -> fail
+    await assertFails(authed("adam").doc("teams/t1/members/alice").update({ role: "member" }));
+    // admin tries to demote a fellow admin -> fail
+    await assertFails(authed("adam").doc("teams/t1/members/ben").update({ role: "member" }));
+    // owner CAN demote an admin -> ok
+    await assertSucceeds(authed("alice").doc("teams/t1/members/adam").update({ role: "member" }));
+  });
+
   it("a manager cannot edit their own member doc (no self-escalation)", async () => {
     await seedTeam("t1", "alice");
     await seedMember("t1", "adam", "admin");
