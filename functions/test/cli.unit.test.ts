@@ -106,6 +106,42 @@ describe("report (exit policy)", () => {
   });
 });
 
+describe("phase start/set", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, phases: {} });
+    return dir;
+  }
+  const okFetch = async (url: string, init: any) => { (okFetch as any).last = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; };
+
+  it("phase start records name/order + currentPhaseId and PUTs running", async () => {
+    const dir = initDir();
+    const code = await run(["phase", "start", "build", "--name", "Build", "--order", "1"],
+      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+    expect(code).toBe(0);
+    expect((okFetch as any).last.url).toBe("http://api/v1/teams/acme/projects/web/phases/build");
+    expect(JSON.parse((okFetch as any).last.init.body)).toMatchObject({ name: "Build", order: 1, status: "running" });
+    const cfg = loadConfig(dir);
+    expect(cfg.currentPhaseId).toBe("build");
+    expect(cfg.phases.build).toEqual({ name: "Build", order: 1 });
+  });
+
+  it("phase set re-sends recorded name/order + new status", async () => {
+    const dir = initDir();
+    await run(["phase", "start", "build", "--name", "Build", "--order", "1"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+    await run(["phase", "set", "build", "--status", "completed"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+    expect(JSON.parse((okFetch as any).last.init.body)).toMatchObject({ name: "Build", order: 1, status: "completed" });
+  });
+
+  it("phase set on an unstarted id -> exit 1, no network", async () => {
+    const errs: string[] = [];
+    const code = await run(["phase", "set", "ghost", "--status", "completed"],
+      { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("no"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/not started/);
+  });
+});
+
 describe("project set", () => {
   function initDir() {
     const dir = tmp();

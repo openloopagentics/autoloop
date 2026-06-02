@@ -129,6 +129,35 @@ export async function run(argv, deps = {}) {
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
         return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
       }
+      case "phase start": {
+        const phaseId = positionals[2];
+        validateId("phaseId", phaseId);
+        if (!flags.name || typeof flags.order !== "string") throw new UsageError("phase start requires --name <n> --order <number>");
+        const order = Number(flags.order);
+        if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
+        const status = flags.status || "running";
+        validateStatus(status);
+        const cfg = loadConfig(cwd);
+        cfg.phases = cfg.phases || {};
+        cfg.phases[phaseId] = { name: flags.name, order };
+        cfg.currentPhaseId = phaseId;
+        saveConfig(cwd, cfg);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/phases/${phaseId}`;
+        return report({ method: "PUT", url, body: { name: flags.name, order, status } },
+          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "phase set": {
+        const phaseId = positionals[2];
+        validateId("phaseId", phaseId);
+        if (!flags.status) throw new UsageError("phase set requires --status <s>");
+        validateStatus(flags.status);
+        const cfg = loadConfig(cwd);
+        const rec = cfg.phases?.[phaseId];
+        if (!rec) throw new UsageError(`phase ${phaseId} not started — run \`daloop phase start\` first`);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/phases/${phaseId}`;
+        return report({ method: "PUT", url, body: { name: rec.name, order: rec.order, status: flags.status } },
+          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
       // commands added in later tasks
       default:
         throw new UsageError(`unknown command: ${argv.join(" ")}`);
