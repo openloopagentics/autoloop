@@ -58,4 +58,16 @@ describe("PUT /v1/projects/:slug", () => {
     const res = await request(app).put("/v1/projects/Bad%20Slug").set(authHeader()).send({ title: "x", status: "queued" });
     expect(res.status).toBe(400);
   });
+
+  it("stores a design and server-stamps its updatedAt", async () => {
+    const res = await request(app)
+      .put("/v1/projects/acme")
+      .set(authHeader())
+      .send({ title: "Acme", status: "queued", design: { format: "markdown", content: "# Plan" } });
+    expect(res.status).toBe(200);
+    const doc = (await db().doc("projects/acme").get()).data()!;
+    expect(doc.design.format).toBe("markdown");
+    expect(doc.design.content).toBe("# Plan");
+    expect(doc.design.updatedAt).toBeDefined();
+  });
 });
