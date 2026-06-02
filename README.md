@@ -62,13 +62,24 @@ npm run test:watch                # terminal 2 (or: npm run test:run -- <filter>
 
 ## API surface
 
-All endpoints are under `/v1`, require the write API key, and are idempotent
-merge-upserts.
+All endpoints are under `/v1`. There are two groups with different auth (see
+**Authentication**): **key management** (a logged-in human, Firebase ID token)
+and **agent writes** (a per-user API key).
+
+**Key management** — `Authorization: Bearer <Firebase ID token>`:
 
 | Method & path | Purpose |
 |---|---|
-| `PUT /v1/teams/{teamId}/projects/{slug}` | Upsert a project (`title`, `status`, `design`). `title` and `status` required on create. 404 if the team doesn't exist. |
-| `PUT /v1/teams/{teamId}/projects/{slug}/phases/{phaseId}` | Upsert a phase (`name`, `order`, `status`). All required on create. |
+| `POST /v1/keys` | Mint a key. Body `{ label }`. Returns `{ id, key, label, prefix, createdAt }` — the plaintext `key` is shown **once**. |
+| `GET /v1/keys` | List the caller's keys (`id`, `label`, `prefix`, `createdAt` — never the plaintext). |
+| `DELETE /v1/keys/{id}` | Revoke one of the caller's keys (`id` is the keyHash). |
+
+**Agent writes** — `Authorization: Bearer <API key>`; idempotent merge-upserts:
+
+| Method & path | Purpose |
+|---|---|
+| `PUT /v1/teams/{teamId}/projects/{slug}` | Upsert a project (`title`, `status`, `design`; `title`+`status` required on create). |
+| `PUT /v1/teams/{teamId}/projects/{slug}/phases/{phaseId}` | Upsert a phase (`name`, `order`, `status`; all required on create). |
 | `PUT /v1/teams/{teamId}/projects/{slug}/phases/{phaseId}/commits/{sha}` | Record a commit (`message`, `author` always required; `url`, `committedAt` optional). |
 
 `status` is one of: `queued | running | blocked | paused | completed | failed | cancelled`.
@@ -76,22 +87,24 @@ IDs (`slug`, `phaseId`, `sha`) must match `^[a-z0-9._-]+$` (single path segment,
 no slashes).
 
 The server stamps `createdAt`/`startedAt` once, `updatedAt` on every write, and
-`endedAt` on the first terminal transition. Writing to a missing parent returns
-`404`.
+`endedAt` on the first terminal transition. An unknown/revoked key → `401`; a
+valid key whose user isn't a member of the target team → `403`; a missing
+project/phase parent (for a member) → `404`.
 
 ## Authentication
 
-Writes require an API key in the request header (`Authorization: Bearer <key>`
-is canonical; `x-api-key` is a fallback). Multiple keys are supported for
-zero-downtime rotation.
+- **Key management (`/v1/keys`)** is authenticated by a **Firebase ID token**
+  (the website obtains it after Google sign-in) and requires the user to be
+  `isAllowed`. Minting returns the plaintext key once; only its SHA-256 hash is
+  stored (`apiKeys/{hash}`).
+- **Agent writes** are authenticated by a **per-user API key** in
+  `Authorization: Bearer dl_…` (or the `x-api-key` header). The server hashes the
+  key, resolves it to its owner, and authorizes the write against the target
+  team's membership.
 
-- **Local:** set `DALOOP_WRITE_KEYS` (comma-separated) in `functions/.env`
-  (see `functions/.env.example`).
-- **Production:** store it as a Functions secret:
-
-  ```bash
-  firebase functions:secrets:set DALOOP_WRITE_KEYS
-  ```
+No shared/server-wide write key exists; there is nothing to configure in
+`functions/.env` to run the API (see `functions/.env.example`). Agents get a key
+by having an allowlisted user mint one via `POST /v1/keys`.
 
 ## Teams & access
 
@@ -111,13 +124,18 @@ by the UI writing Firestore directly, governed by `firestore.rules`:
 checked at the entry points (creating a team, accepting an invite). Provisioning
 user docs / the allowlist is handled by the admin UI (out of scope for this repo).
 
-> **Coming next (Sub-project B):** per-user API keys and membership-based write
-> authorization. Today, agent writes are still gated by the shared
-> `DALOOP_WRITE_KEYS` (any valid key may write to any team); the keys above are
-> that stopgap until per-user keys land.
+Agent writes are authorized per-user: a key resolves to its owner, who must be a
+member of the team being written to (see **Authentication**).
 
 ## Deploy
 
 ```bash
 firebase deploy --only functions,firestore:rules
+```
+
+The API no longer uses a shared write key. After deploying the per-user-key
+change, decommission the old Functions secret:
+
+```bash
+firebase functions:secrets:destroy DALOOP_WRITE_KEYS
 ```
