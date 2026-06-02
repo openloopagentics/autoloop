@@ -54,6 +54,8 @@ teams/{teamId}
   │    ├─ role:     "owner" | "admin" | "member"
   │    ├─ email:    string   (denormalized for display)
   │    ├─ joinedAt: Timestamp
+  │    ├─ inviteId: string | null   (provenance; set when joined via invite-accept,
+  │    │                             null for the bootstrap owner)
   │
   ├─ invites/{inviteId}
   │    ├─ email:     string  (lowercased)
@@ -77,6 +79,9 @@ users/{uid}
 Notes:
 
 - **Project slugs are unique per team** (the team is in the path), not globally.
+  "Uniqueness" simply means the slug is the document id within the team's
+  `projects` collection — an idempotent PUT to an existing slug upserts it rather
+  than colliding. No separate uniqueness check is needed.
 - A **`collectionGroup('members')` index on `uid`** powers the "which teams am I
   in?" reverse lookup.
 - Project / phase / commit document shapes are unchanged from the single-tenant
@@ -93,8 +98,8 @@ client-write-denied (only the Admin SDK, used by the API, writes it).
 | Path | read | create | update | delete |
 |---|---|---|---|---|
 | `teams/{teamId}` | team members | any `isAllowed` signed-in user (becomes owner) | owner/admin | owner |
-| `teams/{teamId}/members/{uid}` | own member doc (any team) **or** team members | bootstrap-owner **or** invite-accept (self) | owner/admin | owner/admin, or self (leave) |
-| `teams/{teamId}/invites/{id}` | owner/admin **or** the invitee (by verified email) | owner/admin | invitee (accept) | owner/admin or invitee |
+| `teams/{teamId}/members/{uid}` | own member doc (any team) **or** team members | bootstrap-owner **or** invite-accept (self) | owner/admin, bounded by grant authority, not own doc (see Member-update constraints) | owner/admin, or self (leave) |
+| `teams/{teamId}/invites/{id}` | owner/admin **or** the invitee (`token.email.lower() == invite.email`, verified) | owner/admin | invitee (accept) | owner/admin or invitee |
 | `teams/{teamId}/projects/**` | team members | ❌ (API/Admin SDK only) | ❌ | ❌ |
 | `users/{uid}` | own doc | ❌ | ❌ | ❌ |
 
@@ -109,22 +114,67 @@ client-write-denied (only the Admin SDK, used by the API, writes it).
 
 ### Three rules that need care
 
-1. **Team bootstrap.** Creating a team and the creator's own `owner` member doc
-   are two writes issued as a client batch. The `members/{uid}` create rule
-   allows it when `uid == request.auth.uid`, `role == "owner"`, and
-   `request.auth.uid == get(teams/{teamId}).data.createdBy`. The team-create
-   rule requires `isAllowedUser()` and `request.resource.data.createdBy ==
-   request.auth.uid`.
-2. **Invite accept.** The invitee is matched by `request.auth.token.email ==
-   resource/invite email` with `request.auth.token.email_verified == true` and
-   `isAllowedUser()`. Accept is a client batch: create `members/{uid}` (rule
-   verifies a matching pending invite exists and the new member's `role` equals
-   the invite's `role`) and delete/mark the invite (rule allows the invitee to
-   delete/update an invite whose email matches their verified email). The two
-   writes are evaluated independently; a brief non-atomic window is acceptable.
-3. **Membership reverse-read.** A user may read their own `members/{uid}` doc in
-   any team (`request.auth.uid == uid`) — required by the `collectionGroup`
-   "my teams" query. Reading *other* members of a team requires `isMember`.
+Firestore rules cannot query a collection, and inside a batched write `get()`/
+`exists()` see only the **pre-batch committed** state (writes in the same batch
+are invisible to each other's rule evaluation). The bootstrap and invite-accept
+flows are designed around those two constraints.
+
+1. **Team bootstrap — two SEQUENTIAL writes, not a batch.** The UI first creates
+   `teams/{teamId}` (rule: `isAllowedUser()` and `request.resource.data.createdBy
+   == request.auth.uid`), then, as a **separate, subsequent write**, creates
+   `teams/{teamId}/members/{uid}` for itself. Because the team is already
+   committed, the member-create rule can safely read it:
+   `uid == request.auth.uid` AND `request.resource.data.role == "owner"` AND
+   `request.auth.uid == get(teams/{teamId}).data.createdBy`. Tying the bootstrap
+   owner-create to `createdBy` is what stops any other `isAllowed` user from
+   self-adding as `owner` to an existing team. (A batched bootstrap would fail:
+   the member rule's `get(team)` would not see the same-batch team create.) If
+   the second write is lost, the creator simply retries it (idempotent).
+
+2. **Invite accept — a single ATOMIC batch, with the inviteId carried in the
+   request.** Rules cannot search invites by email, so the client supplies the
+   id: the accept batch (a) creates `teams/{teamId}/members/{uid}` with
+   `request.resource.data.inviteId` set, and (b) deletes (or sets
+   `status: "accepted"` on) `teams/{teamId}/invites/{inviteId}`. The
+   member-create rule reads the invite deterministically by that id —
+   `get(teams/{teamId}/invites/$(request.resource.data.inviteId))` — and
+   requires: invite `status == "pending"`,
+   `request.auth.token.email.lower() == invite.email` (the invite stores a
+   lowercased email; `token.email` is not guaranteed lowercased, so normalize
+   with `.lower()`), `request.auth.token.email_verified == true`,
+   `isAllowedUser()`, `uid == request.auth.uid`, and
+   `request.resource.data.role == invite.role`. The invite-consume write is
+   allowed when `request.auth.token.email.lower() == resource.data.email`. Both
+   evaluate against pre-batch state (invite still `pending`), so the batch is
+   atomic — no partial-accept window. (`inviteId` on the member doc is retained
+   as provenance.)
+
+3. **Membership reverse-read — a collection-group match.** In addition to the
+   path-scoped `teams/{teamId}/members/{uid}` rule, add a **collection-group**
+   match `match /{path=**}/members/{memberId}` with
+   `allow read: if request.auth.uid == resource.data.uid`. The "my teams" query
+   is `collectionGroup('members').where('uid', '==', myUid)`, whose results all
+   satisfy that field-based condition, and it needs a single-field
+   `collectionGroup` index on `members.uid`. (Reading *other* members within a
+   team is governed by the path-scoped rule and requires `isMember`.)
+
+### Member-update constraints (no self-escalation)
+
+`members/{uid}` update is the privilege-mutation surface and must be tightly
+bounded:
+
+- The actor must be a manager (`isManager(teamId)`) and **cannot edit their own
+  member doc** (`request.auth.uid != uid`) — this blocks self-promotion.
+- **Grant authority by role:** only an `owner` may set a target's `role` to
+  `owner` or `admin`. An `admin` may only set/keep `role == "member"` (admins
+  cannot mint owners or admins). Expressed in the rule by branching on
+  `memberRole(teamId)`.
+- **Immutable fields pinned:** `request.resource.data.uid == resource.data.uid`,
+  and likewise `joinedAt` and `email` are unchanged on update.
+
+Member removal (`delete`) is allowed for a manager, or for the user removing
+their own membership (leave). Preventing removal of the last `owner` is
+explicitly deferred (out of scope).
 
 ### `isAllowed` placement
 
@@ -156,8 +206,9 @@ PUT /v1/teams/{teamId}/projects/{slug}/phases/{phaseId}/commits/{sha}
   state (`currentPhaseId` recompute, `createdAt`/`startedAt`/`updatedAt`/
   `endedAt` stamping) carries over verbatim.
 - New parent check: **`404` if the team does not exist**, in addition to the
-  existing project/phase parent checks. `teamId` is validated against the
-  existing `idPattern` (`^[a-z0-9._-]+$`).
+  existing project/phase parent checks. A malformed `teamId` (fails `idPattern`,
+  `^[a-z0-9._-]+$`) returns `400`; a well-formed but absent `teamId` returns
+  `404`.
 - **Auth is a deliberate stopgap in A:** the endpoints keep the existing
   shared-key `requireWriteKey` middleware. During A, any valid shared key can
   write to any team — there is no per-team authorization yet. Sub-project B
@@ -179,12 +230,24 @@ writing to an orphaned top-level `projects/` collection.
 ### Rules tests (`@firebase/rules-unit-testing`)
 
 - Team create requires `isAllowed`; non-`isAllowed` user denied.
-- Bootstrap: creator can create their own `owner` member doc; cannot fabricate
-  another user's member doc or self-assign owner without being `createdBy`.
+- Bootstrap (sequential): after creating a team, the creator can create their own
+  `owner` member doc; a different user cannot create an `owner` member doc in
+  that team (not `createdBy`); a creator cannot fabricate another user's member
+  doc.
 - Invites: only owner/admin create; the invitee (matching verified email +
   `isAllowed`) can read and accept; a non-invitee cannot read or accept.
-- Membership reverse-read: a user reads their own member docs across teams;
-  cannot read others' member docs in a team they don't belong to.
+- **Invite accept (atomic batch):** a valid accept (member-create carrying the
+  correct `inviteId` + invite consume) succeeds; an accept with a wrong/missing
+  `inviteId`, a non-`pending` invite, a `role` not matching the invite, or an
+  unverified email is denied.
+- **Invite email case-insensitivity:** an invite stored lowercased is accepted by
+  an invitee whose `token.email` is mixed-case.
+- **Role-escalation denial:** an admin cannot promote anyone (or themselves) to
+  `owner`/`admin`; no manager can edit their own member doc; immutable fields
+  (`uid`, `joinedAt`, `email`) cannot be changed on update.
+- Membership reverse-read: a user reads their own member docs across teams (the
+  `collectionGroup` query); cannot read others' member docs in a team they don't
+  belong to.
 - Cross-team isolation: a member of team A cannot read team B's projects,
   members, or invites.
 - `projects/**`: members can read; all client writes are denied.
