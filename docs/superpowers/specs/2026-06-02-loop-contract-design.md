@@ -19,7 +19,8 @@ and drives the loop locally (in Claude Code); the website tracks it and hosts th
 readable vision/documents.
 
 This spec covers **only the contract**: the domain model, the API surface, the CLI
-surface, the security-rules read-extension, validation, and tests. It does **not**
+surface, the security-rules tests (no rules change — see that section), validation,
+and tests. It does **not**
 cover the skill or the website (separate specs that consume this contract).
 
 ## Architecture
@@ -113,8 +114,9 @@ projects/{slug}                       (existing doc; server keeps currentPhaseId
 
 Event ids (`scores`, `testRuns`, `revisions`) are **server-generated, sortable
 ULID-style strings** built in the service layer as `<48-bit ms timestamp,
-base32>` + `<random suffix from node:crypto.randomBytes>` (the same crypto helper
-`apiKeys.ts` already uses; no new dependency, and `Date.now()` is fine in
+base32>` + `<random suffix from node:crypto.randomBytes>` — a small new server-side
+generator (no new dependency; `apiKeys.ts` already imports `randomBytes` from
+`node:crypto` for keys, but has no ULID helper to reuse). `Date.now()` is fine in
 `functions/src` — the no-`Date.now()` convention applies only to the throwaway
 `prototype/`). This gives a **total order even for events committed in the same
 millisecond**. `createdAt` is also stored (`FieldValue.serverTimestamp()`) for
@@ -238,7 +240,7 @@ sibling blocks could shadow or duplicate the recursive rule).
 zod schemas (mirroring today's style):
 - `status` ∈ `queued|running|blocked|paused|completed|failed|cancelled`.
 - ids (`goalId`, `scenarioId`, `taskId`, `phaseId`, `docId`) match `^[a-z0-9._-]+$`;
-  commit `sha` matches the existing sha pattern.
+  commit `sha` validates with the shared id pattern (as commits do today).
 - rubric: `criteria[]` each `{ id matches id-pattern, name non-empty, weight > 0,
   max ≥ 1 }`; `composite` is `0..100`.
 - `score.criteria`: zod enforces integer `≥ 0`. The per-criterion **`≤ max`** bound
