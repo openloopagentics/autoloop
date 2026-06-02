@@ -147,6 +147,33 @@ Config (non-secret) lives in `.daloop.json`; the key stays in the env. Reporting
 **best-effort** — failures warn and exit 0 (use `--strict` to make them fatal). The
 Claude Code skill and Codex usage note live in `skills/daloop-reporting/`.
 
+## Web UI
+
+The dashboard is a Vite + React + TypeScript SPA in `web/`, deployed to Firebase
+Hosting. Everything is behind Google sign-in; access is gated by
+`users/{uid}.isAllowed` (provisioned manually for now — a not-yet-allowed user
+sees a request-access screen with their uid to send an admin).
+
+```bash
+cd web
+npm install
+npm run dev        # local dev server
+npm test           # Vitest + React Testing Library
+npm run build      # type-check + bundle to web/dist
+```
+
+- **Config:** `web/.env` holds the `VITE_FIREBASE_*` web config (see
+  `web/.env.example`). These are public client config (a project identifier, not a
+  secret) — access is enforced by Firestore rules.
+- **Deploy:** `firebase deploy --only hosting` (a `predeploy` hook rebuilds
+  `web/dist` first).
+- **One-time console setup:** enable the **Google** sign-in provider in Firebase
+  Auth, and add the Hosting domain(s) **and `localhost`** to Auth → Settings →
+  Authorized domains (the latter for `npm run dev` sign-in).
+
+> UI sub-projects B–E (dashboard, team/invite management, API-key minting, admin
+> allowlist) mount inside this shell and are tracked separately.
+
 ## Deploy
 
 ```bash
