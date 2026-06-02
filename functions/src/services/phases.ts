@@ -34,7 +34,9 @@ export async function upsertPhase(slug: string, phaseId: string, body: PhaseBody
     if (body.name !== undefined) phaseData.name = body.name;
     if (body.order !== undefined) phaseData.order = body.order;
     if (body.status !== undefined) phaseData.status = body.status;
-    // Stamp endedAt only when going terminal and not already set.
+    // endedAt = the FIRST terminal transition; once set it is never updated,
+    // even if the phase is re-activated and re-completed (the server does not
+    // police transitions). So retries are no-ops and endedAt is stable.
     if (isTerminal(newStatus) && !(existing.endedAt)) {
       phaseData.endedAt = FieldValue.serverTimestamp();
     }
