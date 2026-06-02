@@ -1,14 +1,18 @@
 import { beforeEach } from "vitest";
+import { createHash } from "node:crypto";
+import { FieldValue } from "firebase-admin/firestore";
+import { db } from "../src/firestore.js";
 
-// Point the Admin SDK at the local emulator BEFORE any admin import initializes.
 process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
 process.env.GCLOUD_PROJECT ??= "daloop-test";
-process.env.DALOOP_WRITE_KEYS ??= "test-key";
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT;
 
+export const TEST_UID = "agent1";
+export const TEST_KEY = "dl_testkey";
+const TEST_KEY_HASH = createHash("sha256").update(TEST_KEY).digest("hex");
+
 export async function clearFirestore(): Promise<void> {
-  // REST endpoint exposed by the Firestore emulator to wipe all data.
   await fetch(
     `http://${process.env.FIRESTORE_EMULATOR_HOST}/emulator/v1/projects/${PROJECT_ID}/databases/(default)/documents`,
     { method: "DELETE" },
@@ -16,9 +20,18 @@ export async function clearFirestore(): Promise<void> {
 }
 
 export function authHeader() {
-  return { Authorization: "Bearer test-key" };
+  return { Authorization: `Bearer ${TEST_KEY}` };
+}
+
+export async function seedApiKey(uid = TEST_UID): Promise<void> {
+  await db().doc(`apiKeys/${TEST_KEY_HASH}`).set({ uid, label: "test", prefix: "dl_testk", createdAt: FieldValue.serverTimestamp() });
+}
+
+export async function seedMember(teamId: string, uid = TEST_UID, role = "member"): Promise<void> {
+  await db().doc(`teams/${teamId}/members/${uid}`).set({ uid, role, email: `${uid}@x.com`, inviteId: null });
 }
 
 beforeEach(async () => {
   await clearFirestore();
+  await seedApiKey(); // the test key always resolves to TEST_UID
 });

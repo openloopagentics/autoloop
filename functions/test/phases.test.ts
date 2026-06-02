@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import "./helpers.js";
-import { authHeader } from "./helpers.js";
+import { authHeader, seedMember } from "./helpers.js";
 import { makeApp } from "../src/app.js";
 import { db } from "../src/firestore.js";
 
@@ -9,6 +9,7 @@ const app = makeApp();
 
 async function seedTeam(teamId = "team1") {
   await db().doc(`teams/${teamId}`).set({ name: "Team", createdBy: "u1" });
+  await seedMember(teamId); // TEST_UID becomes a member so the test key can write
 }
 
 async function createProject(slug = "acme") {
@@ -24,10 +25,10 @@ describe("PUT /v1/teams/:teamId/projects/:slug/phases/:phaseId", () => {
     expect(res.status).toBe(404);
   });
 
-  it("404s when the team does not exist (transitively, via missing project)", async () => {
+  it("403s when not a member of the team (transitively, via missing project)", async () => {
     const res = await request(app).put("/v1/teams/ghostteam/projects/acme/phases/p1").set(authHeader())
       .send({ name: "Design", order: 1, status: "running" });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
   it("creates a phase, stamps startedAt, and sets it as current", async () => {

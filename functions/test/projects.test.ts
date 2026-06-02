@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import "./helpers.js";
-import { authHeader } from "./helpers.js";
+import { authHeader, seedMember, TEST_KEY } from "./helpers.js";
 import { makeApp } from "../src/app.js";
 import { db } from "../src/firestore.js";
 
@@ -9,6 +9,7 @@ const app = makeApp();
 
 async function seedTeam(teamId = "team1") {
   await db().doc(`teams/${teamId}`).set({ name: "Team", createdBy: "u1" });
+  await seedMember(teamId); // TEST_UID becomes a member so the test key can write
 }
 
 describe("PUT /v1/teams/:teamId/projects/:slug", () => {
@@ -21,7 +22,7 @@ describe("PUT /v1/teams/:teamId/projects/:slug", () => {
     await seedTeam();
     const res = await request(app)
       .put("/v1/teams/team1/projects/acme")
-      .set("x-api-key", "test-key")
+      .set("x-api-key", TEST_KEY)
       .send({ title: "Acme", status: "queued" });
     expect(res.status).toBe(200);
   });
@@ -78,6 +79,7 @@ describe("PUT /v1/teams/:teamId/projects/:slug", () => {
   });
 
   it("rejects an invalid slug", async () => {
+    await seedTeam();
     const res = await request(app).put("/v1/teams/team1/projects/Bad%20Slug").set(authHeader()).send({ title: "x", status: "queued" });
     expect(res.status).toBe(400);
   });
@@ -95,15 +97,29 @@ describe("PUT /v1/teams/:teamId/projects/:slug", () => {
     expect(doc.design.updatedAt).toBeDefined();
   });
 
-  it("404s when the team does not exist", async () => {
+  it("403s when not a member of the team", async () => {
     const res = await request(app).put("/v1/teams/ghostteam/projects/acme")
       .set(authHeader()).send({ title: "Acme", status: "queued" });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
-  it("rejects an invalid teamId", async () => {
+  it("403 for a team the caller is not a member of (incl. malformed teamId)", async () => {
     const res = await request(app).put("/v1/teams/Bad%20Team/projects/acme")
       .set(authHeader()).send({ title: "x", status: "queued" });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
+  });
+
+  it("401 for an unknown/revoked key", async () => {
+    await seedTeam();
+    const res = await request(app).put("/v1/teams/team1/projects/acme")
+      .set("Authorization", "Bearer dl_unknown").send({ title: "x", status: "queued" });
+    expect(res.status).toBe(401);
+  });
+
+  it("403 when the key's user is not a member of the team", async () => {
+    await db().doc("teams/other").set({ name: "Other", createdBy: "u9" }); // team exists, no membership for TEST_UID
+    const res = await request(app).put("/v1/teams/other/projects/acme")
+      .set(authHeader()).send({ title: "x", status: "queued" });
+    expect(res.status).toBe(403);
   });
 });

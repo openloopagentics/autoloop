@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import "./helpers.js";
-import { authHeader } from "./helpers.js";
+import { authHeader, seedMember } from "./helpers.js";
 import { makeApp } from "../src/app.js";
 import { db } from "../src/firestore.js";
 
@@ -9,6 +9,7 @@ const app = makeApp();
 
 async function seedTeam(teamId = "team1") {
   await db().doc(`teams/${teamId}`).set({ name: "Team", createdBy: "u1" });
+  await seedMember(teamId); // TEST_UID becomes a member so the test key can write
 }
 
 async function setup() {
