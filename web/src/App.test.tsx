@@ -1,3 +1,13 @@
+import { vi } from "vitest";
+vi.mock("./dashboard/hooks", () => ({
+  useMyTeams: () => ({ data: [], loading: false, error: null }),
+  useTeam: () => ({ data: null, loading: false, error: null }),
+  useTeamProjects: () => ({ data: [], loading: false, error: null }),
+  useProject: () => ({ data: null, loading: false, error: null }),
+  usePhases: () => ({ data: [], loading: false, error: null }),
+  useCommits: () => ({ data: [], loading: false, error: null }),
+}));
+
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AuthContext, type AuthValue } from "./auth/context";
@@ -25,9 +35,8 @@ describe("App gate", () => {
     expect(screen.getByText(/p@x.com/)).toBeInTheDocument();
     expect(screen.getByText(/abc123/)).toBeInTheDocument();
   });
-  it("allowed -> AppShell + Home", () => {
+  it("allowed -> AppShell with Dashboard nav link", () => {
     renderState({ state: "allowed", user: { uid: "u1", email: "u@x.com" }, isAllowed: true });
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
-    expect(screen.getByText(/pick a section/i)).toBeInTheDocument();
   });
 });
