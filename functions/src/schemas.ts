@@ -37,3 +37,8 @@ export const commitBody = z.object({
 export type ProjectBody = z.infer<typeof projectBody>;
 export type PhaseBody = z.infer<typeof phaseBody>;
 export type CommitBody = z.infer<typeof commitBody>;
+
+export const keyMintBody = z.object({
+  label: z.string().trim().min(1).max(100),
+});
+export type KeyMintBody = z.infer<typeof keyMintBody>;
