@@ -29,13 +29,38 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Reverse lookup: a user reads their own member docs across all teams.
+    match /{path=**}/members/{memberId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.uid;
+    }
+
     match /teams/{teamId} {
       allow read: if isMember(teamId);
       allow create: if isAllowedUser() && request.resource.data.createdBy == request.auth.uid;
       allow update: if isManager(teamId);
       allow delete: if isOwner(teamId);
 
-      // members/{uid}, invites/{inviteId}, projects/** added in Tasks 4-6
+      match /members/{uid} {
+        allow read: if isMember(teamId);
+
+        // bootstrap owner (team already committed); invite-accept branch added in Task 5
+        allow create: if request.auth.uid == uid
+          && request.resource.data.role == 'owner'
+          && isAllowedUser()
+          && request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.createdBy;
+
+        allow update: if isManager(teamId)
+          && request.auth.uid != uid
+          && request.resource.data.get('uid', null) == resource.data.get('uid', null)
+          && request.resource.data.get('joinedAt', null) == resource.data.get('joinedAt', null)
+          && request.resource.data.get('email', null) == resource.data.get('email', null)
+          && request.resource.data.get('inviteId', null) == resource.data.get('inviteId', null)
+          && (isOwner(teamId) || request.resource.data.role == 'member');
+
+        allow delete: if isManager(teamId) || request.auth.uid == uid;
+      }
+
+      // invites/{inviteId}, projects/** added in Tasks 5-6
     }
   }
 }

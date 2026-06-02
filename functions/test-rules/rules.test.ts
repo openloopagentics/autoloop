@@ -77,3 +77,60 @@ describe("rules: teams/{teamId}", () => {
     await assertFails(authed("carol").doc("teams/t1").update({ name: "Nope" }));
   });
 });
+
+describe("rules: members", () => {
+  it("the team creator can add themselves as owner (bootstrap)", async () => {
+    await setAllowed("alice");
+    await seedTeam("t1", "alice"); // team committed first (sequential bootstrap)
+    const db = authed("alice");
+    await assertSucceeds(db.doc("teams/t1/members/alice").set({ uid: "alice", role: "owner", email: "alice@x.com", inviteId: null }));
+  });
+
+  it("a non-creator cannot self-add as owner", async () => {
+    await setAllowed("bob");
+    await seedTeam("t1", "alice");
+    const db = authed("bob");
+    await assertFails(db.doc("teams/t1/members/bob").set({ uid: "bob", role: "owner", email: "bob@x.com", inviteId: null }));
+  });
+
+  it("a user can read their own member docs across teams (collectionGroup), not others'", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedMember("t1", "carol", "member");
+    await assertSucceeds(authed("alice").doc("teams/t1/members/alice").get());
+    await assertSucceeds(authed("alice").doc("teams/t1/members/carol").get());
+    await assertFails(authed("dave").doc("teams/t1/members/carol").get());
+  });
+
+  it("an admin cannot promote a member to owner; an owner can", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedMember("t1", "adam", "admin");
+    await seedMember("t1", "carol", "member");
+    await assertFails(authed("adam").doc("teams/t1/members/carol").update({ role: "owner" }));
+    await assertSucceeds(authed("adam").doc("teams/t1/members/carol").update({ role: "member" }));
+    await assertSucceeds(authed("alice").doc("teams/t1/members/carol").update({ role: "admin" }));
+  });
+
+  it("a manager cannot edit their own member doc (no self-escalation)", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "adam", "admin");
+    await assertFails(authed("adam").doc("teams/t1/members/adam").update({ role: "owner" }));
+  });
+
+  it("immutable fields (uid/joinedAt/email/inviteId) cannot change on update", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedMember("t1", "carol", "member");
+    await assertFails(authed("alice").doc("teams/t1/members/carol").update({ email: "evil@x.com" }));
+  });
+
+  it("a member can remove themselves (leave); a manager can remove others", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedMember("t1", "carol", "member");
+    await assertSucceeds(authed("carol").doc("teams/t1/members/carol").delete());
+    await seedMember("t1", "carol", "member");
+    await assertSucceeds(authed("alice").doc("teams/t1/members/carol").delete());
+  });
+});
