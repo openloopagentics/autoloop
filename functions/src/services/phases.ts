@@ -4,8 +4,8 @@ import { AppError } from "../errors.js";
 import { isTerminal, type Status } from "../status.js";
 import type { PhaseBody } from "../schemas.js";
 
-export async function upsertPhase(slug: string, phaseId: string, body: PhaseBody): Promise<void> {
-  const projectRef = db().doc(`projects/${slug}`);
+export async function upsertPhase(teamId: string, slug: string, phaseId: string, body: PhaseBody): Promise<void> {
+  const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
   const phaseRef = projectRef.collection("phases").doc(phaseId);
 
   await db().runTransaction(async (tx) => {

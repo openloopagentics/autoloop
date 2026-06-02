@@ -4,12 +4,13 @@ import { AppError } from "../errors.js";
 import type { CommitBody } from "../schemas.js";
 
 export async function upsertCommit(
+  teamId: string,
   slug: string,
   phaseId: string,
   sha: string,
   body: CommitBody,
 ): Promise<void> {
-  const phaseRef = db().doc(`projects/${slug}/phases/${phaseId}`);
+  const phaseRef = db().doc(`teams/${teamId}/projects/${slug}/phases/${phaseId}`);
   const commitRef = phaseRef.collection("commits").doc(sha);
 
   await db().runTransaction(async (tx) => {

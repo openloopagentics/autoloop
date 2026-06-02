@@ -10,9 +10,9 @@ export function makeApp() {
   app.use(express.json({ limit: "256kb" }));
   // All write routes require the API key.
   app.use("/v1", requireWriteKey);
-  app.use("/v1/projects", projectsRouter);
-  app.use("/v1/projects/:slug/phases", phasesRouter);
-  app.use("/v1/projects/:slug/phases/:phaseId/commits", commitsRouter);
+  app.use("/v1/teams/:teamId/projects", projectsRouter);
+  app.use("/v1/teams/:teamId/projects/:slug/phases", phasesRouter);
+  app.use("/v1/teams/:teamId/projects/:slug/phases/:phaseId/commits", commitsRouter);
   // Unknown route -> consistent 404 envelope (not Express's bare default 404).
   app.use((_req, _res, next) => next(new AppError(404, "not_found", "unknown route")));
   app.use(errorHandler);

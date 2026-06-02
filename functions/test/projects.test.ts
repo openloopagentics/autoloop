@@ -7,15 +7,20 @@ import { db } from "../src/firestore.js";
 
 const app = makeApp();
 
-describe("PUT /v1/projects/:slug", () => {
+async function seedTeam(teamId = "team1") {
+  await db().doc(`teams/${teamId}`).set({ name: "Team", createdBy: "u1" });
+}
+
+describe("PUT /v1/teams/:teamId/projects/:slug", () => {
   it("rejects unauthenticated writes", async () => {
-    const res = await request(app).put("/v1/projects/acme").send({ title: "X", status: "queued" });
+    const res = await request(app).put("/v1/teams/team1/projects/acme").send({ title: "X", status: "queued" });
     expect(res.status).toBe(401);
   });
 
   it("accepts the x-api-key header as a fallback to Authorization", async () => {
+    await seedTeam();
     const res = await request(app)
-      .put("/v1/projects/acme")
+      .put("/v1/teams/team1/projects/acme")
       .set("x-api-key", "test-key")
       .send({ title: "Acme", status: "queued" });
     expect(res.status).toBe(200);
@@ -28,13 +33,14 @@ describe("PUT /v1/projects/:slug", () => {
   });
 
   it("creates a project and stamps timestamps", async () => {
+    await seedTeam();
     const res = await request(app)
-      .put("/v1/projects/acme")
+      .put("/v1/teams/team1/projects/acme")
       .set(authHeader())
       .send({ title: "Acme", status: "queued" });
     expect(res.status).toBe(200);
 
-    const doc = await db().doc("projects/acme").get();
+    const doc = await db().doc("teams/team1/projects/acme").get();
     expect(doc.exists).toBe(true);
     expect(doc.data()!.title).toBe("Acme");
     expect(doc.data()!.createdAt).toBeDefined();
@@ -43,45 +49,61 @@ describe("PUT /v1/projects/:slug", () => {
   });
 
   it("requires title and status on create", async () => {
-    const res = await request(app).put("/v1/projects/acme").set(authHeader()).send({ title: "Acme" });
+    await seedTeam();
+    const res = await request(app).put("/v1/teams/team1/projects/acme").set(authHeader()).send({ title: "Acme" });
     expect(res.status).toBe(400);
   });
 
   it("merges on update and does not overwrite createdAt", async () => {
-    await request(app).put("/v1/projects/acme").set(authHeader()).send({ title: "Acme", status: "queued" });
-    const first = (await db().doc("projects/acme").get()).data()!.createdAt;
+    await seedTeam();
+    await request(app).put("/v1/teams/team1/projects/acme").set(authHeader()).send({ title: "Acme", status: "queued" });
+    const first = (await db().doc("teams/team1/projects/acme").get()).data()!.createdAt;
 
-    const res = await request(app).put("/v1/projects/acme").set(authHeader()).send({ status: "running" });
+    const res = await request(app).put("/v1/teams/team1/projects/acme").set(authHeader()).send({ status: "running" });
     expect(res.status).toBe(200);
-    const doc = (await db().doc("projects/acme").get()).data()!;
+    const doc = (await db().doc("teams/team1/projects/acme").get()).data()!;
     expect(doc.status).toBe("running");
     expect(doc.title).toBe("Acme"); // unchanged
     expect(doc.createdAt.toMillis()).toBe(first.toMillis()); // not overwritten
   });
 
   it("ignores client-supplied server-owned fields", async () => {
+    await seedTeam();
     await request(app)
-      .put("/v1/projects/acme")
+      .put("/v1/teams/team1/projects/acme")
       .set(authHeader())
       .send({ title: "Acme", status: "queued", currentPhaseId: "hacked" });
-    const doc = (await db().doc("projects/acme").get()).data()!;
+    const doc = (await db().doc("teams/team1/projects/acme").get()).data()!;
     expect(doc.currentPhaseId ?? null).toBeNull();
   });
 
   it("rejects an invalid slug", async () => {
-    const res = await request(app).put("/v1/projects/Bad%20Slug").set(authHeader()).send({ title: "x", status: "queued" });
+    const res = await request(app).put("/v1/teams/team1/projects/Bad%20Slug").set(authHeader()).send({ title: "x", status: "queued" });
     expect(res.status).toBe(400);
   });
 
   it("stores a design and server-stamps its updatedAt", async () => {
+    await seedTeam();
     const res = await request(app)
-      .put("/v1/projects/acme")
+      .put("/v1/teams/team1/projects/acme")
       .set(authHeader())
       .send({ title: "Acme", status: "queued", design: { format: "markdown", content: "# Plan" } });
     expect(res.status).toBe(200);
-    const doc = (await db().doc("projects/acme").get()).data()!;
+    const doc = (await db().doc("teams/team1/projects/acme").get()).data()!;
     expect(doc.design.format).toBe("markdown");
     expect(doc.design.content).toBe("# Plan");
     expect(doc.design.updatedAt).toBeDefined();
+  });
+
+  it("404s when the team does not exist", async () => {
+    const res = await request(app).put("/v1/teams/ghostteam/projects/acme")
+      .set(authHeader()).send({ title: "Acme", status: "queued" });
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an invalid teamId", async () => {
+    const res = await request(app).put("/v1/teams/Bad%20Team/projects/acme")
+      .set(authHeader()).send({ title: "x", status: "queued" });
+    expect(res.status).toBe(400);
   });
 });
