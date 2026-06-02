@@ -12,6 +12,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [userDocResolved, setUserDocResolved] = useState(false);
   const [isAllowed, setIsAllowed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
   const unsubDoc = useRef<null | (() => void)>(null);
 
@@ -21,13 +22,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (unsubDoc.current) { unsubDoc.current(); unsubDoc.current = null; }
       setUserDocResolved(false);
       setIsAllowed(false);
+      setIsAdmin(false);
       setAuthResolved(true);
       if (!u) { setUser(null); return; }
       setUser({ uid: u.uid, email: u.email });
       unsubDoc.current = onSnapshot(
         doc(db, "users", u.uid),
-        (snap) => { setIsAllowed(snap.exists() && snap.data().isAllowed === true); setUserDocResolved(true); },
-        (err) => { console.error("users doc listener:", err); setIsAllowed(false); setUserDocResolved(true); },
+        (snap) => { setIsAllowed(snap.exists() && snap.data().isAllowed === true); setIsAdmin(snap.exists() && snap.data().isAdmin === true); setUserDocResolved(true); },
+        (err) => { console.error("users doc listener:", err); setIsAllowed(false); setIsAdmin(false); setUserDocResolved(true); },
       );
     });
     return () => { unsubAuth(); if (unsubDoc.current) unsubDoc.current(); };
@@ -50,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const state = deriveAccess({ authResolved, user, userDocResolved, isAllowed });
   return (
-    <AuthContext.Provider value={{ state, user, isAllowed, signIn, signOut, signInError }}>
+    <AuthContext.Provider value={{ state, user, isAllowed, isAdmin, signIn, signOut, signInError }}>
       {children}
     </AuthContext.Provider>
   );
