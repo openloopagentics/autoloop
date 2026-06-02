@@ -6,10 +6,7 @@ import { AppShell } from "./routes/AppShell";
 import { DashboardHome } from "./dashboard/DashboardHome";
 import { ProjectDetail } from "./dashboard/ProjectDetail";
 import { TeamsPage } from "./teams/TeamsPage";
-
-function ComingSoon() {
-  return <p>Coming soon.</p>;
-}
+import { KeysPage } from "./keys/KeysPage";
 
 export function App() {
   const { state } = useAuth();
@@ -24,7 +21,7 @@ export function App() {
           <Route path="dashboard" element={<DashboardHome />} />
           <Route path="dashboard/:teamId/:slug" element={<ProjectDetail />} />
           <Route path="teams" element={<TeamsPage />} />
-          <Route path="keys" element={<ComingSoon />} />
+          <Route path="keys" element={<KeysPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
