@@ -8,10 +8,18 @@ import { ProjectDetail } from "./dashboard/ProjectDetail";
 import { TeamsPage } from "./teams/TeamsPage";
 import { KeysPage } from "./keys/KeysPage";
 import { AdminPage } from "./admin/AdminPage";
+import { LoopMark } from "./ui/LoopMark";
 
 export function App() {
   const { state } = useAuth();
-  if (state === "loading") return <p role="status">Loading…</p>;
+  if (state === "loading") return (
+    <div className="auth-stage" role="status">
+      <div className="auth-loading">
+        <LoopMark size={40} />
+        <span className="auth-loading-text">Connecting to the live board…</span>
+      </div>
+    </div>
+  );
   if (state === "signed-out") return <SignIn />;
   if (state === "pending") return <RequestAccess />;
   return (
