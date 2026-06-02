@@ -37,7 +37,8 @@ there and the API key from the environment.
 
 ## CLI command surface
 
-Each command maps to exactly one REST call.
+Each command maps to at most one REST call (`init` is local-only; some commands
+also update `.daloop.json`).
 
 ```
 daloop init --team <teamId> --project <slug> [--url <apiUrl>]
@@ -47,31 +48,50 @@ daloop project set --title <t> --status <s> [--design-file <path> | --design-url
     PUT /v1/teams/{teamId}/projects/{slug}
 
 daloop phase start <phaseId> --name <n> --order <n> [--status running]
-    PUT .../phases/{phaseId}; also records currentPhaseId in .daloop.json.
+    PUT .../phases/{phaseId}; records currentPhaseId AND { name, order } for the
+    phase in .daloop.json.
 
 daloop phase set <phaseId> --status <s>
-    PUT .../phases/{phaseId} (partial; status only).
+    PUT .../phases/{phaseId}. Re-sends the phase's { name, order } (looked up from
+    .daloop.json, recorded by `phase start`) plus the new status, so the write is a
+    valid create-or-update regardless of ordering. Errors locally if the phaseId
+    was never started (not in .daloop.json) — see Error handling.
 
 daloop commit
-    Reads git HEAD (sha, message, author, committedAt) via `git log -1`,
-    attaches to .daloop.json's currentPhaseId:
+    Reads git HEAD via `git log -1 --format=%H%n%cI%n%an%n%s`:
+      sha=%H, committedAt=%cI (strict ISO-8601 with offset), author=%an, message=%s.
+    Attaches to .daloop.json's currentPhaseId:
     PUT .../phases/{currentPhaseId}/commits/{sha}
 ```
 
-- `status` is validated client-side against
-  `queued | running | blocked | paused | completed | failed | cancelled` for fast
-  feedback before any network call.
+- **`committedAt` MUST come from `%cI` (`--date=iso-strict`)** — git's default date
+  format is RFC-2822-ish and would fail the API's `z.string().datetime({offset:true})`
+  validator. Only the offset-ISO form (`2026-06-02T01:25:49-07:00`) is accepted.
+- **`commit` pre-checks locally** that author (`%an`) and message (`%s`) are
+  non-empty before sending (an empty author/message would 400 remotely); if empty,
+  it errors with an actionable message (e.g. "git author empty — set `user.name`").
+- **Client-side validation before any network call:**
+  - `status` against `queued | running | blocked | paused | completed | failed | cancelled`.
+  - `teamId`, `projectSlug`, `phaseId` (and the git `sha`) against the API's id
+    pattern `^[a-z0-9._-]+$` — catches uppercase/spaces/slashes locally instead of a
+    confusing remote 400/404 or a malformed URL. (Lowercase-hex git shas pass.)
 - `--design-file` reads the file as `{ format: "markdown", content }`;
-  `--design-url` sends `{ format: "url", content: <url> }`.
-- `daloop commit` requires a `currentPhaseId` (set by `phase start`) and a git
-  repo with at least one commit; errors clearly otherwise.
+  `--design-url` sends `{ format: "url", content: <url> }`. (Matches the API's
+  `design` object: `{ format: "markdown"|"url", content }`.)
+- `daloop commit` requires a `currentPhaseId` (set by `phase start`) and a git repo
+  with at least one commit; errors clearly otherwise (see Error handling).
 
 ## Config & auth
 
 - **`.daloop.json`** (in the loop repo; non-secret, inspectable, commit-safe):
-  `{ apiUrl, teamId, projectSlug, currentPhaseId }`. Created by `daloop init`;
-  `currentPhaseId` is updated by `phase start`. `apiUrl` defaults to the deployed
-  function URL if `--url` is omitted at init.
+  `{ apiUrl, teamId, projectSlug, currentPhaseId, phases }` where
+  `phases: { [phaseId]: { name, order } }` records each started phase (so
+  `phase set` can re-send a complete body). Created by `daloop init`;
+  `currentPhaseId` and `phases` are updated by `phase start`.
+- **`apiUrl` resolution (precedence): `--url` flag > `DALOOP_API_URL` env >
+  `.daloop.json` `apiUrl`.** `init` writes `apiUrl` from `--url`, or the known
+  deployed function URL as a documented convenience default. The env override is
+  what integration tests use to point the CLI at the locally-booted app.
 - **`DALOOP_API_KEY`** (environment, secret): the per-user key minted via
   `POST /v1/keys`. Never written to `.daloop.json`. The CLI sends it as
   `Authorization: Bearer $DALOOP_API_KEY` and errors clearly if it's unset.
@@ -90,37 +110,77 @@ checklist). Lifecycle mapping:
 | Loop end | `daloop project set --status completed\|failed\|cancelled` |
 
 **Core principle in the skill:** reporting is **best-effort observability and must
-never derail the loop**. If a `daloop` call fails, the agent notes it and
-continues its real work — status reporting is not a gate. The skill also tells the
-agent the key + config must already be set up (`DALOOP_API_KEY` in env,
-`.daloop.json` via `daloop init`).
+never derail the loop**. If a `daloop` call warns, the agent notes it and continues
+its real work — status reporting is not a gate (the CLI's exit-code policy above
+makes reporting failures non-fatal by default). The skill also tells the agent the
+key + config must already be set up (`DALOOP_API_KEY` in env, `.daloop.json` via
+`daloop init`).
 
-## Error handling (CLI)
+**Ordering the skill prescribes (and the CLI is resilient to):** `project set` with
+`--title --status` runs at project start (the create), and `phase start` precedes
+any `phase set` for that phase. The CLI hardens this — `phase set` re-sends the
+phase's recorded `name`/`order` so it's a valid create-or-update, and it errors
+locally if the phase was never started. If the initial `project set` is skipped,
+a later status-only `project set` would get a remote `404`/`400` → surfaced as a
+best-effort warning, not a loop failure.
 
-Map API responses to clear, single-line, actionable messages + non-zero exit:
+## Error handling & exit codes (CLI)
 
-- `401` → "invalid or missing DALOOP_API_KEY".
-- `403` → "your API key's user is not a member of team <teamId>".
-- `404` → "team/project/phase not found — run `daloop init` / `daloop project set` first".
-- `400` → surface the API's validation message.
+To reconcile "reporting is best-effort and must never derail the loop" with useful
+failure signals, the CLI splits failures into two classes:
+
+**Usage errors → exit non-zero** (the agent must fix these; they happen *before* any
+network call, so a wrapping `set -e` aborts only on genuine misconfiguration):
+- Missing `DALOOP_API_KEY` → "set DALOOP_API_KEY (a key minted via POST /v1/keys)".
 - Missing `.daloop.json` → "not initialized — run `daloop init`".
-- Missing `DALOOP_API_KEY` → clear setup error.
-- Network/other errors → non-zero exit, one-line message, no stack dump.
+- Invalid `status`, or `teamId`/`slug`/`phaseId` failing `^[a-z0-9._-]+$`.
+- `phase set <id>` where `<id>` was never started (not in `.daloop.json` `phases`)
+  → "phase <id> not started — run `daloop phase start` first".
+- `commit` with no `currentPhaseId` → "no current phase — run `daloop phase start` first".
+- `commit` with empty git author/message, or no commit in the repo.
+- Unknown command / bad flags.
 
-All calls are idempotent (server-side upserts), so retries are safe.
+**Reporting failures → print a one-line warning to stderr, exit 0 by default** (so a
+transient API/network hiccup never aborts the loop). A `--strict` flag (or
+`DALOOP_STRICT=1`) makes these exit non-zero for callers who want hard failures:
+- `401` → "invalid or expired DALOOP_API_KEY".
+- `403` → "your API key's user is not a member of team <teamId>".
+- `404` → "team/project/phase not found — run `daloop project set` first".
+- `400` → surface the API's validation message.
+- Network/5xx/other → one-line message, no stack dump.
+
+All messages are single-line and actionable; no stack dumps. There is **no
+automatic retry/backoff** — the server-side upserts are idempotent, which only
+means a *manual* re-run is safe.
+
+The SKILL.md complements this: it tells the agent that a `daloop` reporting warning
+is informational and the loop continues regardless (and not to wrap `daloop` in a
+way that treats its output as fatal).
 
 ## Testing
 
 Reuses the repo's Vitest + Firestore-emulator harness.
 
 - **Unit (no network):** arg parsing; `.daloop.json` load / merge / `currentPhaseId`
-  update; `status` enum validation; git-HEAD parsing (fed canned `git log` output);
-  request-building (correct method, URL, headers, body per command).
+  + `phases` update; `status` and id-pattern validation; git-HEAD parsing fed canned
+  `git log -1 --format=%H%n%cI%n%an%n%s` output, asserting `committedAt` is the
+  offset-ISO form; request-building (correct method, URL, headers, body per command,
+  including `phase set` re-sending recorded name/order); and the exit-code policy
+  (usage errors → non-zero; simulated reporting failures → exit 0 by default, exit
+  non-zero under `--strict`).
+- **Local-guard tests:** `phase set` on a never-started id → non-zero with the right
+  message; `commit` with no `currentPhaseId` / empty author / no commits → non-zero;
+  missing `DALOOP_API_KEY` / `.daloop.json` → non-zero.
 - **Integration (against the real API):** boot the existing Express app
-  (`makeApp()`) on a local port pointed at the Firestore emulator; seed an
-  `apiKeys` doc + team membership; drive the CLI end-to-end
+  (`makeApp()`) on a local port pointed at the Firestore emulator; point the CLI at
+  it via `DALOOP_API_URL` (or `init --url`). **Seed the key correctly:** the API
+  resolves keys by `sha256` of the full plaintext, so the test writes
+  `apiKeys/{sha256(plaintextKey)}` (hex, over the full `dl_…` string) with the
+  user's `uid`, and seeds `teams/{teamId}/members/{uid}`; the CLI runs with that
+  **plaintext** key in `DALOOP_API_KEY`. Drive end-to-end
   (`init → project set → phase start → commit → phase set`), asserting Firestore
-  state and the 401 (bad key) / 403 (non-member) error paths.
+  state, and verify the 401 (bad key) / 403 (non-member) paths emit a warning and
+  exit 0 by default.
 
 ## Out of scope
 
