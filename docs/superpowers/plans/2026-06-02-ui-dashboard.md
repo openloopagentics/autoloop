@@ -540,7 +540,30 @@ import { ProjectDetail } from "./dashboard/ProjectDetail";
 ```
 (Remove the old `Home` import/route and the `dashboard → ComingSoon` placeholder; keep `ComingSoon` for teams/keys. `Home.tsx` can be deleted or left unused — delete it and its mention.)
 
-> App.test.tsx's "allowed -> AppShell + Home" assertion (`/pick a section/`) must be updated: with index now redirecting to `/dashboard` → `DashboardHome`, the allowed test renders DashboardHome, which calls `useMyTeams` (real Firebase). To keep App.test firebase-free, change that test to assert the AppShell nav renders (e.g. the "Dashboard" link) WITHOUT asserting dashboard content, OR mock the dashboard hooks. Simplest: assert `getByRole("link", { name: /dashboard/i })` is present (nav from AppShell) and drop the "pick a section" assertion. Update App.test.tsx accordingly so it stays green and firebase-free (the dashboard data path is covered by the component tests, not App.test).
+> **App.test.tsx must be updated — and a plain assertion change is NOT enough.**
+> Once `App.tsx` statically imports `DashboardHome`, the import chain
+> `App → DashboardHome → hooks.ts → firebase.ts` runs at load time, and
+> `firebase.ts`'s top-level `getAuth(app)` throws `auth/invalid-api-key` under the
+> blank test env — crashing `App.test.tsx` at IMPORT time (it won't even collect).
+> Fix: add a **hoisted `vi.mock("./dashboard/hooks", …)`** at the very top of
+> `App.test.tsx` (vi.mock factories hoist above imports, so they intercept before
+> `firebase.ts` loads). Stub all six hooks:
+> ```ts
+> import { vi } from "vitest";
+> vi.mock("./dashboard/hooks", () => ({
+>   useMyTeams: () => ({ data: [], loading: false, error: null }),
+>   useTeam: () => ({ data: null, loading: false, error: null }),
+>   useTeamProjects: () => ({ data: [], loading: false, error: null }),
+>   useProject: () => ({ data: null, loading: false, error: null }),
+>   usePhases: () => ({ data: [], loading: false, error: null }),
+>   useCommits: () => ({ data: [], loading: false, error: null }),
+> }));
+> ```
+> AND change the "allowed" assertion from `/pick a section/` (Home is removed) to
+> assert the AppShell nav renders, e.g. `getByRole("link", { name: /dashboard/i })`.
+> (With the mock, `DashboardHome` renders its no-teams `EmptyState` — fine; the
+> assertion just checks the nav.) Verified: App.test 4/4 green with this. The
+> dashboard data path is covered by the component tests, not App.test.
 
 - [ ] **Step 4: Build + full test**
 
