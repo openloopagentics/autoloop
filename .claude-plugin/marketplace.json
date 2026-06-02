@@ -1,0 +1,11 @@
+{
+  "name": "daloop",
+  "owner": { "name": "OpenLoop Agentics", "email": "ravi@openloopagentics.com" },
+  "plugins": [
+    {
+      "name": "daloop-reporting",
+      "source": "./plugins/daloop-reporting",
+      "description": "Report a development loop's status (project, phases, commits) to a Daloop dashboard via the bundled daloop CLI."
+    }
+  ]
+}

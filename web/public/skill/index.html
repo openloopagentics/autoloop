@@ -60,6 +60,12 @@
   <pre><code>curl -fsSL https://daloop-42b47.web.app/skill/install.sh | bash</code></pre>
   <p>This writes the skill and its bundled CLI to <code>~/.claude/skills/daloop-reporting/</code>. <strong>Restart Claude Code</strong> (or open a new session) — personal skills are discovered at session start.</p>
 
+  <h2>Want auto-updates? Install as a plugin</h2>
+  <p>The installer above is a one-shot copy. For an updatable install, add the Daloop plugin marketplace in Claude Code:</p>
+  <pre><code>/plugin marketplace add openloopagentics/daloop
+/plugin install daloop-reporting@daloop</code></pre>
+  <p>Then enable auto-update under <code>/plugin</code> → Marketplaces → <span class="accent">daloop</span>, or update any time with <code>/plugin marketplace update daloop</code>.</p>
+
   <hr />
 
   <h2>After installing</h2>
