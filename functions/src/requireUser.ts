@@ -11,6 +11,9 @@ const defaultVerifier: TokenVerifier = (idToken) => getAuth().verifyIdToken(idTo
 export function makeRequireUser(verify: TokenVerifier = defaultVerifier): RequestHandler {
   return async (req, _res, next) => {
     try {
+      // ID tokens arrive ONLY via Authorization: Bearer — deliberately NOT via the
+      // shared extractKey() (which also accepts x-api-key); an ID token must never be
+      // accepted through the API-key header. Keep these two auth modes separate.
       const auth = req.headers["authorization"];
       const token = typeof auth === "string" && auth.startsWith("Bearer ")
         ? auth.slice("Bearer ".length).trim()

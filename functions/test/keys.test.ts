@@ -4,6 +4,7 @@ import request from "supertest";
 import "./helpers.js";
 import { db } from "../src/firestore.js";
 import { keysRouter } from "../src/routes/keys.js";
+import { makeApp } from "../src/app.js";
 import { errorHandler } from "../src/errors.js";
 
 function appAs(uid: string) {
@@ -14,6 +15,17 @@ function appAs(uid: string) {
   a.use(errorHandler);
   return a;
 }
+
+describe("/v1/keys is guarded in the real app", () => {
+  // Exercises the actual makeApp() wiring: /v1/keys must sit behind requireUser.
+  // No token -> 401 before any verification, so this needs no Auth emulator.
+  const app = makeApp();
+  it("rejects unauthenticated key requests (401)", async () => {
+    expect((await request(app).post("/v1/keys").send({ label: "x" })).status).toBe(401);
+    expect((await request(app).get("/v1/keys")).status).toBe(401);
+    expect((await request(app).delete("/v1/keys/abc")).status).toBe(401);
+  });
+});
 
 describe("/v1/keys", () => {
   it("POST mints a key (201) and returns plaintext once", async () => {
