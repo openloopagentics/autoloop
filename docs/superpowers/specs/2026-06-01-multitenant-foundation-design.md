@@ -147,7 +147,11 @@ flows are designed around those two constraints.
    allowed when `request.auth.token.email.lower() == resource.data.email`. Both
    evaluate against pre-batch state (invite still `pending`), so the batch is
    atomic — no partial-accept window. (`inviteId` on the member doc is retained
-   as provenance.)
+   as provenance.) **Prefer deleting the invite** on consume; if instead marking
+   `status: "accepted"`, the consume rule must also pin the other invite fields
+   (`email`, `role`, `invitedBy` unchanged) and allow only the
+   `pending → accepted` transition, so an invitee cannot rewrite an invite they
+   can match.
 
 3. **Membership reverse-read — a collection-group match.** In addition to the
    path-scoped `teams/{teamId}/members/{uid}` rule, add a **collection-group**
@@ -170,7 +174,9 @@ bounded:
   cannot mint owners or admins). Expressed in the rule by branching on
   `memberRole(teamId)`.
 - **Immutable fields pinned:** `request.resource.data.uid == resource.data.uid`,
-  and likewise `joinedAt` and `email` are unchanged on update.
+  and likewise `joinedAt`, `email`, and `inviteId` are unchanged on update.
+- A plain `member` (non-manager) has **no update rights** on any member doc,
+  including their own (update is owner/admin only).
 
 Member removal (`delete`) is allowed for a manager, or for the user removing
 their own membership (leave). Preventing removal of the last `owner` is
