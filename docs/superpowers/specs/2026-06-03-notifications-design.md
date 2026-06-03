@@ -66,16 +66,30 @@ since it's an unknown key — confirm it is not in the schema).
     one shared handler): read the written doc's `scenarioId`, load the scenario + its
     `scores` and `testRuns` (filtered by `scenarioId`), call `decideScenarioNotification`
     against `scenario.lastNotifiedState`; if a `type` results, write a notification doc +
-    `tx`-update the scenario's `lastNotifiedState`. Then, if the new state is `met`,
-    compute `allMet` across the project's targeted scenarios → if all met, write a
-    `loop_complete` notification (deduped by a project `lastLoopCompleteNotified` flag so
-    it fires once per completion).
+    `tx`-update the scenario's `lastNotifiedState`. **`allMet` is over ALL scenarios in
+    the project** (true iff ≥1 scenario and every one is `met` — matches the #4 banner's
+    `met === total && total > 0`; a project with no scenarios is NOT complete). There is
+    no "targeted subset". Then: if this write made the new state `met` and `allMet` is now
+    true, write a `loop_complete` notification, deduped by a project
+    `lastLoopCompleteNotified` flag (set when emitting `loop_complete`). **Reset rule:**
+    whenever a scenario flips to `unmet` (the `scenario_unmet` path), CLEAR
+    `lastLoopCompleteNotified` — so a project that completes, regresses, then completes
+    again emits a second `loop_complete`. Without this reset the flag would permanently
+    suppress later completions (a real bug).
   - `onProjectWritten` (`onDocumentWritten` on `teams/{teamId}/projects/{slug}`): if
     `before.status !== "completed" && after.status === "completed"`, write a
-    `loop_complete` notification (same dedup flag).
-  - All writes are best-effort/idempotent where possible; a handler error is logged and
-    does not retry destructively (the function may retry — writes are guarded by the
-    state comparison + dedup flag so a retry is a no-op).
+    `loop_complete` notification. **Self-trigger caution:** this handler also fires on the
+    trigger's own project writes (`lastLoopCompleteNotified`, `currentTaskId`, etc.), so
+    EVERY branch must edge-guard on a before/after transition (`before.x !== after.x`) and
+    never act on mere field presence — otherwise it loops. The status-edge guard above
+    already does this; keep that discipline. (The status-driven and scores-driven
+    `loop_complete` paths are distinct edges; the dedup flag prevents a double-fire when
+    both occur for the same completion, and the unmet-reset re-arms it for the next.)
+  - **Region:** pin the trigger function to `us-central1` (matching the existing `api`
+    function and co-locating with Firestore) to avoid a surprise cross-region deploy.
+  - All writes are best-effort/idempotent; a handler error is logged and does not retry
+    destructively (the function may retry — writes are guarded by the state comparison +
+    dedup flag so a retry is a no-op).
 - **`functions/src/index.ts`** — export the trigger function(s) alongside `api`.
 
 ## Components (rules)
