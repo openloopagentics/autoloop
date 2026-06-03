@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  collection, collectionGroup, doc, onSnapshot, orderBy, query, where,
+  collection, collectionGroup, doc, documentId, onSnapshot, orderBy, query, where,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import type { Commit, Phase, Project, Team, TeamRef } from "./types";
+import type { Commit, DocumentRec, Goal, Phase, Project, Revision, Scenario, Score, Task, Team, TeamRef, TestRun } from "./types";
 
 interface Result<T> { data: T; loading: boolean; error: string | null; }
 
@@ -89,5 +89,117 @@ export function useCommits(teamId: string, slug: string, phaseId: string): Resul
       (snap) => { setData(snap.docs.map((d) => ({ sha: d.id, ...(d.data() as object) })) as Commit[]); setLoading(false); },
       (e) => { setError(e.message); setLoading(false); });
   }, [teamId, slug, phaseId]);
+  return { data, loading, error };
+}
+
+export function useGoals(teamId: string, slug: string): Result<Goal[]> {
+  const [data, setData] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "goals"), orderBy("order"));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Goal[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useScenarios(teamId: string, slug: string): Result<Scenario[]> {
+  const [data, setData] = useState<Scenario[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "scenarios"), orderBy("order"));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Scenario[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useTasks(teamId: string, slug: string): Result<Task[]> {
+  const [data, setData] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "tasks"), orderBy("order"));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Task[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useScores(teamId: string, slug: string): Result<Score[]> {
+  const [data, setData] = useState<Score[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "scores"), orderBy(documentId()));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Score[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useTestRuns(teamId: string, slug: string): Result<TestRun[]> {
+  const [data, setData] = useState<TestRun[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "testRuns"), orderBy(documentId()));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as TestRun[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useRevisions(teamId: string, slug: string): Result<Revision[]> {
+  const [data, setData] = useState<Revision[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "revisions"), orderBy(documentId()));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Revision[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useDocuments(teamId: string, slug: string): Result<DocumentRec[]> {
+  const [data, setData] = useState<DocumentRec[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "documents"), orderBy(documentId()));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as DocumentRec[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useTaskCommits(teamId: string, slug: string, taskId: string): Result<Commit[]> {
+  const [data, setData] = useState<Commit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "tasks", taskId, "commits"), orderBy("createdAt", "desc"));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ sha: d.id, ...(d.data() as object) })) as Commit[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug, taskId]);
   return { data, loading, error };
 }
