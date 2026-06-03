@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { AuthContext, type AuthValue } from "../auth/context";
 import { SignIn } from "./SignIn";
-import { RequestAccess } from "./RequestAccess";
+import { RequestAccessCard } from "./RequestAccess";
 import { AppShell } from "./AppShell";
 
 function withAuth(partial: Partial<AuthValue>, node: React.ReactNode) {
@@ -25,11 +25,28 @@ describe("SignIn", () => {
   });
 });
 
-describe("RequestAccess", () => {
+describe("RequestAccessCard", () => {
   it("shows the user's email and uid", () => {
-    withAuth({ user: { uid: "abc123", email: "p@x.com" } }, <RequestAccess />);
+    render(<RequestAccessCard email="p@x.com" uid="abc123" status={null} onRequest={() => {}} onSignOut={() => {}} />);
     expect(screen.getByText(/p@x.com/)).toBeInTheDocument();
     expect(screen.getByText(/abc123/)).toBeInTheDocument();
+  });
+  it("shows a Request access button when there is no request and emits the note", async () => {
+    const onRequest = vi.fn();
+    render(<RequestAccessCard email="p@x.com" uid="u1" status={null} onRequest={onRequest} onSignOut={() => {}} />);
+    await userEvent.type(screen.getByLabelText(/note/i), "let me in");
+    await userEvent.click(screen.getByRole("button", { name: /request access/i }));
+    expect(onRequest).toHaveBeenCalledWith("let me in");
+  });
+  it("shows a pending message and no request button once submitted", () => {
+    render(<RequestAccessCard email="p@x.com" uid="u1" status="pending" onRequest={() => {}} onSignOut={() => {}} />);
+    expect(screen.getByText(/review it/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /request access/i })).toBeNull();
+  });
+  it("allows re-requesting after a denial", () => {
+    render(<RequestAccessCard email="p@x.com" uid="u1" status="denied" onRequest={() => {}} onSignOut={() => {}} />);
+    expect(screen.getByText(/denied/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /request access/i })).toBeInTheDocument();
   });
 });
 

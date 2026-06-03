@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../auth/context";
+import { db } from "../firebase";
 import { LoopMark } from "../ui/LoopMark";
 
 function CopyRow({ label, value }: { label: string; value: string }) {
@@ -22,8 +24,22 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function RequestAccess() {
-  const { user, signOut } = useAuth();
+/**
+ * Presentational waiting-room card. Holds no Firestore SDK — the request action
+ * is injected via `onRequest(note)` so this can be unit-tested in isolation.
+ */
+export function RequestAccessCard({
+  email, uid, status, error, onRequest, onSignOut,
+}: {
+  email: string;
+  uid: string;
+  status: string | null;
+  error?: string | null;
+  onRequest: (note: string) => void;
+  onSignOut: () => void;
+}) {
+  const [note, setNote] = useState("");
+  const canRequest = status === null || status === "denied";
   return (
     <div className="auth-stage">
       <div className="auth-card auth-card--access card">
@@ -33,17 +49,83 @@ export function RequestAccess() {
         </div>
         <span className="eyebrow" style={{ marginTop: 6 }}>Access pending</span>
         <h2 className="access-title serif">You're in the waiting room</h2>
-        <p className="access-body">
-          Your account isn't on the allowlist yet. Ask a Daloop admin to grant you access —
-          they'll need your <strong>User ID</strong> below.
-        </p>
+
+        {status === "pending" ? (
+          <p className="access-body">Request submitted — an admin will review it.</p>
+        ) : status === "denied" ? (
+          <p className="access-body">Your request was denied. Contact an admin, or request access again.</p>
+        ) : (
+          <p className="access-body">
+            Your account isn't on the allowlist yet. Request access below and a Daloop admin will review it.
+          </p>
+        )}
+
         <div className="copyrows">
-          <CopyRow label="Email" value={user?.email ?? ""} />
-          <CopyRow label="User ID" value={user?.uid ?? ""} />
+          <CopyRow label="Email" value={email} />
+          <CopyRow label="User ID" value={uid} />
         </div>
+
+        {canRequest && (
+          <form
+            className="grant-form"
+            style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}
+            onSubmit={(e) => { e.preventDefault(); onRequest(note.trim()); }}
+          >
+            <textarea
+              className="input"
+              aria-label="Note"
+              placeholder="Optional: a note for the admin"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+            <button className="btn btn-sm" type="submit" style={{ alignSelf: "flex-start" }}>Request access</button>
+          </form>
+        )}
+
+        {error && <p className="access-note" role="alert" style={{ color: "var(--st-cancelled)" }}>{error}</p>}
+
         <p className="access-note">This screen updates automatically once you're approved.</p>
-        <button className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => void signOut()}>Sign out</button>
+        <button className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={onSignOut}>Sign out</button>
       </div>
     </div>
+  );
+}
+
+export function RequestAccess() {
+  const { user, signOut } = useAuth();
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(
+      doc(db, "accessRequests", user.uid),
+      (snap) => { setStatus(snap.exists() ? (snap.data().status as string) : null); },
+      (err) => { console.error("accessRequests listener:", err); },
+    );
+    return unsub;
+  }, [user]);
+
+  const onRequest = (note: string) => {
+    if (!user) return;
+    setError(null);
+    void setDoc(doc(db, "accessRequests", user.uid), {
+      uid: user.uid,
+      email: user.email ?? "",
+      note,
+      status: "pending",
+      requestedAt: serverTimestamp(),
+    }).catch((e) => setError((e as Error).message ?? "Could not submit your request"));
+  };
+
+  return (
+    <RequestAccessCard
+      email={user?.email ?? ""}
+      uid={user?.uid ?? ""}
+      status={status}
+      error={error}
+      onRequest={onRequest}
+      onSignOut={() => void signOut()}
+    />
   );
 }
