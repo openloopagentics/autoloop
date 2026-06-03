@@ -11,9 +11,22 @@ async function requireProject(teamId: string, slug: string) {
   return projectRef;
 }
 
-/** Append a score event. Server stamps the id (sortable ULID) + createdAt. Returns the id. */
-export async function appendScore(teamId: string, slug: string, body: ScoreBody): Promise<string> {
+/**
+ * Resolve the base ref for event writes: the loop doc when loop-scoped, else the project.
+ * Verifies the project (always) and the loop (when loopId) exist.
+ */
+async function resolveBase(teamId: string, slug: string, loopId?: string) {
   const projectRef = await requireProject(teamId, slug);
+  if (!loopId) return { projectRef, baseRef: projectRef };
+  const loopRef = projectRef.collection("loops").doc(loopId);
+  if (!(await loopRef.get()).exists) throw new AppError(404, "not_found", "loop does not exist");
+  return { projectRef, baseRef: loopRef };
+}
+
+/** Append a score event. Server stamps the id (sortable ULID) + createdAt. Returns the id. */
+export async function appendScore(teamId: string, slug: string, body: ScoreBody, loopId?: string): Promise<string> {
+  const { projectRef, baseRef } = await resolveBase(teamId, slug, loopId);
+  // Scenarios are project-level vision — always read from the PROJECT, never the loop.
   const scenarioRef = projectRef.collection("scenarios").doc(body.scenarioId);
   const scenarioSnap = await scenarioRef.get();
   if (!scenarioSnap.exists) throw new AppError(404, "not_found", "scenario does not exist");
@@ -38,15 +51,15 @@ export async function appendScore(teamId: string, slug: string, body: ScoreBody)
   if (body.commitSha !== undefined) data.commitSha = body.commitSha;
   if (body.note !== undefined) data.note = body.note;
   // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
-  await projectRef.collection("scores").doc(id).set(data);
+  await baseRef.collection("scores").doc(id).set(data);
   return id;
 }
 
-export async function appendTestRun(teamId: string, slug: string, body: TestRunBody): Promise<string> {
-  const projectRef = await requireProject(teamId, slug);
+export async function appendTestRun(teamId: string, slug: string, body: TestRunBody, loopId?: string): Promise<string> {
+  const { baseRef } = await resolveBase(teamId, slug, loopId);
   const id = ulid();
   // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
-  await projectRef.collection("testRuns").doc(id).set({
+  await baseRef.collection("testRuns").doc(id).set({
     scenarioId: body.scenarioId,
     taskId: body.taskId,
     passed: body.passed,
@@ -57,11 +70,11 @@ export async function appendTestRun(teamId: string, slug: string, body: TestRunB
   return id;
 }
 
-export async function appendRevision(teamId: string, slug: string, body: RevisionBody): Promise<string> {
-  const projectRef = await requireProject(teamId, slug);
+export async function appendRevision(teamId: string, slug: string, body: RevisionBody, loopId?: string): Promise<string> {
+  const { baseRef } = await resolveBase(teamId, slug, loopId);
   const id = ulid();
   // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
-  await projectRef.collection("revisions").doc(id).set({
+  await baseRef.collection("revisions").doc(id).set({
     trigger: body.trigger,
     changes: body.changes,
     createdAt: FieldValue.serverTimestamp(),

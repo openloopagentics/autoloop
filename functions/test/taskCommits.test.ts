@@ -4,6 +4,10 @@ import "./helpers.js";
 import { authHeader, seedMember } from "./helpers.js";
 import { makeApp } from "../src/app.js";
 import { db } from "../src/firestore.js";
+import { upsertTaskCommit } from "../src/services/taskCommits.js";
+import { upsertTask } from "../src/services/tasks.js";
+import { upsertPhase } from "../src/services/phases.js";
+import { upsertLoop } from "../src/services/loops.js";
 
 const app = makeApp();
 async function seedTeam(teamId = "team1") {
@@ -39,5 +43,23 @@ describe("PUT /v1/teams/:teamId/projects/:slug/tasks/:taskId/commits/:sha", () =
     expect(c.message).toBe("feat: x");
     expect(c.author).toBe("Agent");
     expect(c.committedAt).toBeDefined();
+  });
+
+  it("loop-scoped: writes a commit under loops/l1/tasks/t1", async () => {
+    await createProject();
+    await upsertLoop("team1", "acme", "l1", { goal: "g", order: 1, status: "running" });
+    await upsertPhase("team1", "acme", "p1", { name: "P", order: 1, status: "running" }, "l1");
+    await upsertTask("team1", "acme", "t1", { phaseId: "p1", title: "T", order: 1, status: "running" }, "l1");
+    await upsertTaskCommit("team1", "acme", "t1", "abc", { message: "feat: x", author: "Agent" }, "l1");
+    const c = (await db().doc("teams/team1/projects/acme/loops/l1/tasks/t1/commits/abc").get()).data();
+    expect(c).toBeDefined();
+    expect(c!.message).toBe("feat: x");
+  });
+
+  it("loop-scoped: 404s when the loop-scoped task is missing", async () => {
+    await createProject();
+    await upsertLoop("team1", "acme", "l1", { goal: "g", order: 1, status: "running" });
+    await expect(upsertTaskCommit("team1", "acme", "ghost", "abc", { message: "m", author: "a" }, "l1"))
+      .rejects.toMatchObject({ httpStatus: 404 });
   });
 });

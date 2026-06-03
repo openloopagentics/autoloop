@@ -4,6 +4,9 @@ import "./helpers.js";
 import { authHeader, seedMember } from "./helpers.js";
 import { makeApp } from "../src/app.js";
 import { db } from "../src/firestore.js";
+import { upsertPhase } from "../src/services/phases.js";
+import { upsertTask } from "../src/services/tasks.js";
+import { upsertLoop } from "../src/services/loops.js";
 
 const app = makeApp();
 async function seedTeam(teamId = "team1") {
@@ -51,5 +54,26 @@ describe("PUT /v1/teams/:teamId/projects/:slug/tasks/:taskId", () => {
     await request(app).put("/v1/teams/team1/projects/acme/tasks/t1").set(authHeader()).send({ phaseId: "p1", title: "A", order: 1, status: "running" });
     const proj = (await db().doc("teams/team1/projects/acme").get()).data()!;
     expect(proj.visionOwner).toBe("loop");
+  });
+
+  it("loop-scoped: writes task under loops/l1, derives currentTaskId on loop doc, stamps visionOwner on PROJECT", async () => {
+    await createProject();
+    await upsertLoop("team1", "acme", "l1", { goal: "g", order: 1, status: "running" });
+    await upsertPhase("team1", "acme", "p1", { name: "P", order: 1, status: "running" }, "l1");
+    await upsertTask("team1", "acme", "t1", { phaseId: "p1", title: "A", order: 1, status: "running" }, "l1");
+    const task = (await db().doc("teams/team1/projects/acme/loops/l1/tasks/t1").get()).data();
+    expect(task).toBeDefined();
+    expect(task!.title).toBe("A");
+    const loop = (await db().doc("teams/team1/projects/acme/loops/l1").get()).data()!;
+    expect(loop.currentTaskId).toBe("t1");
+    const project = (await db().doc("teams/team1/projects/acme").get()).data()!;
+    expect(project.visionOwner).toBe("loop"); // stamp stays on project
+    expect(project.currentTaskId ?? null).toBeNull(); // project derivation untouched by loop write
+  });
+
+  it("loop-scoped: 404s when the loop does not exist", async () => {
+    await createProject();
+    await expect(upsertTask("team1", "acme", "t1", { phaseId: "p1", title: "A", order: 1, status: "running" }, "ghost"))
+      .rejects.toMatchObject({ httpStatus: 404 });
   });
 });

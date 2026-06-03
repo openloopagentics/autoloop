@@ -4,9 +4,11 @@ import { AppError } from "../errors.js";
 import type { CommitBody } from "../schemas.js";
 
 export async function upsertTaskCommit(
-  teamId: string, slug: string, taskId: string, sha: string, body: CommitBody,
+  teamId: string, slug: string, taskId: string, sha: string, body: CommitBody, loopId?: string,
 ): Promise<void> {
-  const taskRef = db().doc(`teams/${teamId}/projects/${slug}/tasks/${taskId}`);
+  const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
+  const baseRef = loopId ? projectRef.collection("loops").doc(loopId) : projectRef;
+  const taskRef = baseRef.collection("tasks").doc(taskId);
   const commitRef = taskRef.collection("commits").doc(sha);
   await db().runTransaction(async (tx) => {
     const taskSnap = await tx.get(taskRef);

@@ -4,6 +4,8 @@ import "./helpers.js";
 import { authHeader, seedMember } from "./helpers.js";
 import { makeApp } from "../src/app.js";
 import { db } from "../src/firestore.js";
+import { upsertPhase } from "../src/services/phases.js";
+import { upsertLoop } from "../src/services/loops.js";
 
 const app = makeApp();
 
@@ -93,6 +95,25 @@ describe("PUT /v1/teams/:teamId/projects/:slug/phases/:phaseId", () => {
     await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader()).send({ status: "completed" });
     const second = (await db().doc("teams/team1/projects/acme/phases/p1").get()).data()!.endedAt;
     expect(second.toMillis()).toBe(first.toMillis());
+  });
+
+  it("loop-scoped: writes phase under loops/l1 and derives currentPhaseId on the loop doc (project untouched)", async () => {
+    await createProject();
+    await upsertLoop("team1", "acme", "l1", { goal: "g", order: 1, status: "running" });
+    await upsertPhase("team1", "acme", "p1", { name: "Design", order: 1, status: "running" }, "l1");
+    const phase = (await db().doc("teams/team1/projects/acme/loops/l1/phases/p1").get()).data();
+    expect(phase).toBeDefined();
+    expect(phase!.name).toBe("Design");
+    const loop = (await db().doc("teams/team1/projects/acme/loops/l1").get()).data()!;
+    expect(loop.currentPhaseId).toBe("p1");
+    const project = (await db().doc("teams/team1/projects/acme").get()).data()!;
+    expect(project.currentPhaseId ?? null).toBeNull(); // project derivation untouched by loop write
+  });
+
+  it("loop-scoped: 404s when the loop does not exist", async () => {
+    await createProject();
+    await expect(upsertPhase("team1", "acme", "p1", { name: "D", order: 1, status: "running" }, "ghost"))
+      .rejects.toMatchObject({ httpStatus: 404 });
   });
 
   it("recomputes currentTaskId when the current phase changes", async () => {

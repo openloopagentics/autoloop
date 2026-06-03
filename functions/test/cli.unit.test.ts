@@ -296,6 +296,57 @@ describe("goal/scenario/task/doc verbs (request shapes)", () => {
   });
 });
 
+describe("loop start/set + loop-aware URLs", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: null, currentLoopId: null, loops: {}, phases: { p1: { name: "P", order: 1 } }, tasks: {}, ...extra });
+    return dir;
+  }
+  const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true, id: "01XYZ" }) }; }; return c; };
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+
+  it("init seeds currentLoopId:null and loops:{}", async () => {
+    const dir = tmp();
+    await run(["init", "--team", "acme", "--project", "web", "--url", "http://x"], { cwd: dir, env: {}, log: () => {}, err: () => {} });
+    expect(loadConfig(dir)).toMatchObject({ currentLoopId: null, loops: {} });
+  });
+
+  it("loop start PUTs the loop, records it, sets currentLoopId", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["loop", "start", "l1", "--goal", "build search", "--order", "1"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1");
+    expect(JSON.parse(c.init.body)).toMatchObject({ goal: "build search", order: 1, status: "running" });
+    const cfg = loadConfig(dir);
+    expect(cfg.currentLoopId).toBe("l1");
+    expect(cfg.loops.l1).toMatchObject({ goal: "build search", order: 1 });
+  });
+
+  it("loop set PUTs the status", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["loop", "set", "l1", "--status", "completed"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1");
+    expect(JSON.parse(c.init.body)).toMatchObject({ status: "completed" });
+  });
+
+  it("with currentLoopId set, task/score/commit URLs are loop-scoped", async () => {
+    const dir = initDir({ currentLoopId: "l1", currentTaskId: "t1" });
+    const c = cap();
+    await run(["task", "start", "t1", "--phase", "p1", "--name", "T", "--order", "1"], base(dir, c));
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1/tasks/t1");
+    await run(["score", "s1", "--task", "t1", "--composite", "80", "--criterion", "c=3"], base(dir, c));
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1/scores");
+    const gitRun = () => "deadbeef\n2026-06-02T01:25:49-07:00\nAlice\nfix: thing";
+    await run(["commit"], { ...base(dir, c), gitRun });
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1/tasks/t1/commits/deadbeef");
+  });
+
+  it("without currentLoopId, URLs stay project-direct (legacy)", async () => {
+    const dir = initDir({ currentTaskId: "t1" }); const c = cap();
+    await run(["task", "start", "t1", "--phase", "p1", "--name", "T", "--order", "1"], base(dir, c));
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t1");
+  });
+});
+
 describe("event + vision verbs (request shapes)", () => {
   function initDir() {
     const dir = tmp();

@@ -4,6 +4,8 @@ import "./helpers.js";
 import { authHeader, seedMember } from "./helpers.js";
 import { makeApp } from "../src/app.js";
 import { db } from "../src/firestore.js";
+import { appendScore, appendTestRun, appendRevision } from "../src/services/events.js";
+import { upsertLoop } from "../src/services/loops.js";
 
 const app = makeApp();
 async function seedTeam(teamId = "team1") {
@@ -93,5 +95,37 @@ describe("POST /v1/teams/:teamId/projects/:slug/revisions", () => {
     expect(d.trigger.reason).toBe("still failing");
     expect(d.changes).toHaveLength(2);
     expect(d.changes[0].title).toBe("Harden"); // passthrough detail preserved
+  });
+});
+
+describe("loop-scoped events", () => {
+  it("appendScore writes under loops/l1 but validates against the PROJECT scenario", async () => {
+    await seedScenario(); // scenario s1 seeded at project level
+    await upsertLoop("team1", "acme", "l1", { goal: "g", order: 1, status: "running" });
+    const id = await appendScore("team1", "acme", { scenarioId: "s1", taskId: "t1", criteria: { correctness: 4, ux: 3 }, composite: 82 }, "l1");
+    const d = (await db().doc(`teams/team1/projects/acme/loops/l1/scores/${id}`).get()).data();
+    expect(d).toBeDefined();
+    expect(d!.composite).toBe(82);
+    // not written at project level
+    expect((await db().doc(`teams/team1/projects/acme/scores/${id}`).get()).exists).toBe(false);
+  });
+  it("appendScore loop-scoped still rejects an unknown criterion (validates project scenario)", async () => {
+    await seedScenario();
+    await upsertLoop("team1", "acme", "l1", { goal: "g", order: 1, status: "running" });
+    await expect(appendScore("team1", "acme", { scenarioId: "s1", taskId: "t1", criteria: { bogus: 1 }, composite: 60 }, "l1"))
+      .rejects.toMatchObject({ httpStatus: 400 });
+  });
+  it("appendScore 404s when the loop does not exist", async () => {
+    await seedScenario();
+    await expect(appendScore("team1", "acme", { scenarioId: "s1", taskId: "t1", criteria: { correctness: 3 }, composite: 60 }, "ghost"))
+      .rejects.toMatchObject({ httpStatus: 404 });
+  });
+  it("appendTestRun / appendRevision write under loops/l1", async () => {
+    await createProject();
+    await upsertLoop("team1", "acme", "l1", { goal: "g", order: 1, status: "running" });
+    const tr = await appendTestRun("team1", "acme", { scenarioId: "s1", taskId: "t1", passed: 1, failed: 0 }, "l1");
+    expect((await db().doc(`teams/team1/projects/acme/loops/l1/testRuns/${tr}`).get()).exists).toBe(true);
+    const rv = await appendRevision("team1", "acme", { trigger: { scenarioId: "s1", reason: "x" }, changes: [{ op: "drop", taskId: "t3" }] }, "l1");
+    expect((await db().doc(`teams/team1/projects/acme/loops/l1/revisions/${rv}`).get()).exists).toBe(true);
   });
 });
