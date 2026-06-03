@@ -389,3 +389,46 @@ describe("event + vision verbs (request shapes)", () => {
     expect(urls).toContain("http://api/v1/teams/acme/projects/web/documents/d1");
   });
 });
+
+describe("bug add/set verbs", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {}, ...extra });
+    return dir;
+  }
+  const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true }) }; }; return c; };
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+
+  it("bug add PUTs the bug with default status open", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["bug", "add", "b1", "--title", "Login breaks", "--severity", "high", "--scenario", "s1", "--task", "t1"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/bugs/b1");
+    expect(c.init.method).toBe("PUT");
+    expect(JSON.parse(c.init.body)).toMatchObject({ title: "Login breaks", status: "open", severity: "high", scenarioId: "s1", taskId: "t1" });
+  });
+
+  it("bug set PUTs a status update", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["bug", "set", "b1", "--status", "fixed"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/bugs/b1");
+    expect(JSON.parse(c.init.body)).toMatchObject({ status: "fixed" });
+  });
+
+  it("bug add is loop-scoped when currentLoopId is set", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    await run(["bug", "add", "b1", "--title", "X"], base(dir, c));
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1/bugs/b1");
+  });
+
+  it("bug add rejects an unknown severity", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["bug", "add", "b1", "--title", "X", "--severity", "blocker"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+
+  it("bug set requires at least one field", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["bug", "set", "b1"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+});

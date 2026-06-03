@@ -282,6 +282,43 @@ export async function run(argv, deps = {}) {
         return report({ method: "PUT", url, body: { kind: flags.kind, title: flags.title, format, content } },
           { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
       }
+      case "bug add": {
+        const id = positionals[2]; validateId("bugId", id);
+        if (!flags.title) throw new UsageError("bug add requires --title <t>");
+        const status = flags.status || "open";
+        if (!["open", "fixed"].includes(status)) throw new UsageError(`--status must be open|fixed, got '${status}'`);
+        const body = { title: flags.title, status };
+        if (flags.scenario) { validateId("scenario", flags.scenario); body.scenarioId = flags.scenario; }
+        if (flags.task) { validateId("task", flags.task); body.taskId = flags.task; }
+        if (flags.severity) {
+          if (!["low", "medium", "high"].includes(flags.severity)) throw new UsageError(`--severity must be low|medium|high, got '${flags.severity}'`);
+          body.severity = flags.severity;
+        }
+        if (flags.description) body.description = flags.description;
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
+        return report({ method: "PUT", url, body },
+          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "bug set": {
+        const id = positionals[2]; validateId("bugId", id);
+        const body = {};
+        if (flags.status) {
+          if (!["open", "fixed"].includes(flags.status)) throw new UsageError(`--status must be open|fixed, got '${flags.status}'`);
+          body.status = flags.status;
+        }
+        if (flags.title) body.title = flags.title;
+        if (flags.severity) {
+          if (!["low", "medium", "high"].includes(flags.severity)) throw new UsageError(`--severity must be low|medium|high, got '${flags.severity}'`);
+          body.severity = flags.severity;
+        }
+        if (flags.description) body.description = flags.description;
+        if (Object.keys(body).length === 0) throw new UsageError("bug set requires at least one of --status/--title/--severity/--description");
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
+        return report({ method: "PUT", url, body },
+          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
       case "commit": {
         oneFlag("task", flags.task);
         const cfg = loadConfig(cwd);
