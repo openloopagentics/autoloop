@@ -5,20 +5,24 @@ import { isTerminal, type Status } from "../status.js";
 import { computeCurrentPhaseId, computeCurrentTaskId, type TaskLite } from "../derive.js";
 import type { PhaseBody } from "../schemas.js";
 
-export async function upsertPhase(teamId: string, slug: string, phaseId: string, body: PhaseBody): Promise<void> {
+export async function upsertPhase(teamId: string, slug: string, phaseId: string, body: PhaseBody, loopId?: string): Promise<void> {
   const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
-  const phaseRef = projectRef.collection("phases").doc(phaseId);
+  const baseRef = loopId ? projectRef.collection("loops").doc(loopId) : projectRef;
+  const phaseRef = baseRef.collection("phases").doc(phaseId);
 
   await db().runTransaction(async (tx) => {
     // --- all reads first ---
     // Team existence is covered transitively: a project can only exist under a team
     // that existed when upsertProject created it, so the project check implies the team.
-    const projectSnap = await tx.get(projectRef);
-    if (!projectSnap.exists) throw new AppError(404, "not_found", "project does not exist");
+    // baseSnap === projectSnap in legacy mode (no extra tx.get); loop-scoped reads loopRef.
+    const baseSnap = await tx.get(baseRef);
+    if (!baseSnap.exists) {
+      throw new AppError(404, "not_found", loopId ? "project or loop does not exist" : "project does not exist");
+    }
 
     const phaseSnap = await tx.get(phaseRef);
-    const phasesSnap = await tx.get(projectRef.collection("phases"));
-    const tasksSnap = await tx.get(projectRef.collection("tasks"));
+    const phasesSnap = await tx.get(baseRef.collection("phases"));
+    const tasksSnap = await tx.get(baseRef.collection("tasks"));
 
     const creating = !phaseSnap.exists;
     if (creating && (body.name === undefined || body.order === undefined || body.status === undefined)) {
@@ -57,7 +61,8 @@ export async function upsertPhase(teamId: string, slug: string, phaseId: string,
     const currentTaskId = computeCurrentTaskId(currentPhaseId, tasks);
 
     // --- writes ---
+    // Derived ids live on baseRef: the loop doc when loop-scoped, the project doc when legacy.
     tx.set(phaseRef, phaseData, { merge: true });
-    tx.set(projectRef, { currentPhaseId, currentTaskId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(baseRef, { currentPhaseId, currentTaskId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });
 }
