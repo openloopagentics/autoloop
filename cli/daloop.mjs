@@ -31,6 +31,7 @@ export function parseArgs(argv) {
 }
 
 export function asArray(v) { return v === undefined ? [] : Array.isArray(v) ? v : [v]; }
+function oneFlag(name, v) { if (Array.isArray(v)) throw new UsageError(`--${name} may only be given once`); return v; }
 function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "doc"; }
 
 export function validateStatus(s) {
@@ -120,7 +121,11 @@ export async function run(argv, deps = {}) {
   const [cmd, sub] = positionals;
 
   try {
-    switch (`${cmd} ${sub ?? ""}`.trim()) {
+    // Single-word verbs may take a positional arg (e.g. `score <scenarioId>`), so they
+    // must NOT fold the positional into the dispatch key. Two-word verbs (e.g. `phase start`) do.
+    const ONE_WORD = new Set(["init", "commit", "score", "test-run", "revise"]);
+    const dispatchKey = ONE_WORD.has(cmd) ? cmd : `${cmd} ${sub ?? ""}`.trim();
+    switch (dispatchKey) {
       case "init": {
         const teamId = flags.team, projectSlug = flags.project;
         if (!teamId || !projectSlug) throw new UsageError("init requires --team <teamId> --project <slug>");
@@ -198,6 +203,7 @@ export async function run(argv, deps = {}) {
         if (typeof flags.order === "string") body.order = Number(flags.order);
         if (typeof flags.threshold === "string") body.threshold = Number(flags.threshold);
         if (flags.rubric) {
+          if (typeof flags.rubric !== "string") throw new UsageError("--rubric requires a file path");
           try { body.rubric = JSON.parse(readFileSync(join(cwd, flags.rubric), "utf8")); }
           catch (e) { throw new UsageError(`could not read --rubric '${flags.rubric}': ${e.message}`); }
         }
@@ -247,6 +253,7 @@ export async function run(argv, deps = {}) {
           { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "commit": {
+        oneFlag("task", flags.task);
         const cfg = loadConfig(cwd);
         const apiBase = resolveApiUrl(cfg, env, flags.url);
         const strict = !!flags.strict || env.DALOOP_STRICT === "1";
@@ -272,6 +279,78 @@ export async function run(argv, deps = {}) {
         const url = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/tasks/${taskId}/commits/${c.sha}`;
         return report({ method: "PUT", url, body: { message: c.message, author: c.author, committedAt: c.committedAt } },
           { env, fetchImpl, err, strict, teamId: cfg.teamId });
+      }
+      case "score": {
+        oneFlag("task", flags.task); oneFlag("composite", flags.composite);
+        const scenarioId = positionals[1]; validateId("scenarioId", scenarioId);
+        if (!flags.task) throw new UsageError("score requires --task <taskId>");
+        if (typeof flags.composite !== "string") throw new UsageError("score requires --composite <0..100>");
+        validateId("task", flags.task);
+        const criteria = {};
+        for (const pair of asArray(flags.criterion)) {
+          const [k, v] = String(pair).split("=");
+          if (!k || v === undefined) throw new UsageError(`--criterion must be key=value, got '${pair}'`);
+          criteria[k] = Number(v);
+        }
+        const body = { scenarioId, taskId: flags.task, criteria, composite: Number(flags.composite) };
+        if (flags.commit) body.commitSha = flags.commit;
+        if (flags.note) body.note = flags.note;
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/scores`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "test-run": {
+        oneFlag("task", flags.task);
+        const scenarioId = positionals[1]; validateId("scenarioId", scenarioId);
+        if (!flags.task || typeof flags.passed !== "string" || typeof flags.failed !== "string") throw new UsageError("test-run requires --task <t> --passed <n> --failed <n>");
+        validateId("task", flags.task);
+        const body = { scenarioId, taskId: flags.task, passed: Number(flags.passed), failed: Number(flags.failed), issues: asArray(flags.issue).map(String) };
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/testRuns`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "revise": {
+        oneFlag("scenario", flags.scenario);
+        if (!flags.scenario || !flags.reason) throw new UsageError("revise requires --scenario <s> --reason <text>");
+        validateId("scenario", flags.scenario);
+        const changes = asArray(flags.change).map((spec) => {
+          const [op, taskId] = String(spec).split(":");
+          if (!["add", "replace", "reorder", "drop"].includes(op) || !taskId) throw new UsageError(`--change must be op:taskId (op add|replace|reorder|drop), got '${spec}'`);
+          return { op, taskId };
+        });
+        if (changes.length === 0) throw new UsageError("revise requires at least one --change op:taskId");
+        const body = { trigger: { scenarioId: flags.scenario, reason: flags.reason }, changes };
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/revisions`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "vision import": {
+        if (!flags.file) throw new UsageError("vision import requires --file <vision.json>");
+        const cfg = loadConfig(cwd);
+        let vision;
+        try { vision = JSON.parse(readFileSync(join(cwd, flags.file), "utf8")); }
+        catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
+        const apiBase = resolveApiUrl(cfg, env, flags.url);
+        const strict = !!flags.strict || env.DALOOP_STRICT === "1";
+        const deps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
+        const proj = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
+        let worst = 0;
+        for (const g of vision.goals ?? []) {
+          validateId("goalId", g.id);
+          const { id, ...body } = g;
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/goals/${id}`, body }, deps));
+        }
+        for (const s of vision.scenarios ?? []) {
+          validateId("scenarioId", s.id);
+          const { id, ...body } = s;
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, deps));
+        }
+        for (const d of vision.documents ?? []) {
+          validateId("docId", d.id);
+          const { id, ...body } = d;
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/documents/${id}`, body }, deps));
+        }
+        return worst; // best-effort: 0 unless strict and some report failed
       }
       // commands added in later tasks
       default:

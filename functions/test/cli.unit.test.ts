@@ -278,4 +278,63 @@ describe("goal/scenario/task/doc verbs (request shapes)", () => {
     expect(c.url).toBe("http://api/v1/teams/acme/projects/web/documents/my-vision");
     expect(JSON.parse(c.init.body)).toMatchObject({ kind: "vision", title: "My Vision", format: "url", content: "https://x.com/v" });
   });
+
+  it("scenario set PUTs the scenario with goalId/title/rubric", async () => {
+    const dir = initDir(); const c = cap();
+    const rubric = { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] };
+    writeFileSync(join(dir, "rubric.json"), JSON.stringify(rubric));
+    expect(await run(["scenario", "set", "s1", "--goal", "g1", "--title", "Login", "--rubric", "rubric.json"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/scenarios/s1");
+    expect(JSON.parse(c.init.body)).toMatchObject({ goalId: "g1", title: "Login", rubric });
+  });
+
+  it("task set PUTs the task with status", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["task", "set", "t1", "--status", "completed"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t1");
+    expect(JSON.parse(c.init.body)).toMatchObject({ status: "completed" });
+  });
+});
+
+describe("event + vision verbs (request shapes)", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", phases: {}, tasks: {} });
+    return dir;
+  }
+  const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true, id: "01XYZ" }) }; }; return c; };
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+
+  it("score POSTs criteria map + composite", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["score", "s1", "--task", "t1", "--criterion", "correctness=4", "--criterion", "ux=3", "--composite", "82", "--note", "ok"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/scores");
+    expect(c.init.method).toBe("POST");
+    expect(JSON.parse(c.init.body)).toMatchObject({ scenarioId: "s1", taskId: "t1", criteria: { correctness: 4, ux: 3 }, composite: 82, note: "ok" });
+  });
+  it("test-run POSTs passed/failed + repeated issues", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["test-run", "s1", "--task", "t1", "--passed", "8", "--failed", "1", "--issue", "a", "--issue", "b"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/testRuns");
+    expect(JSON.parse(c.init.body)).toMatchObject({ scenarioId: "s1", taskId: "t1", passed: 8, failed: 1, issues: ["a", "b"] });
+  });
+  it("revise POSTs trigger + parsed changes", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["revise", "--scenario", "s1", "--reason", "short", "--change", "add:t9", "--change", "drop:t3"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/revisions");
+    expect(JSON.parse(c.init.body)).toMatchObject({ trigger: { scenarioId: "s1", reason: "short" }, changes: [{ op: "add", taskId: "t9" }, { op: "drop", taskId: "t3" }] });
+  });
+  it("vision import PUTs each goal, scenario, and document", async () => {
+    const dir = initDir(); const c = cap();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      goals: [{ id: "g1", title: "Ship", order: 1 }],
+      scenarios: [{ id: "s1", goalId: "g1", title: "S", rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } }],
+      documents: [{ id: "d1", kind: "vision", title: "V", format: "markdown", content: "# V" }],
+    }));
+    expect(await run(["vision", "import", "--file", "vision.json"], base(dir, c))).toBe(0);
+    const urls = c.calls.map((x: any) => x.url);
+    expect(urls).toContain("http://api/v1/teams/acme/projects/web/goals/g1");
+    expect(urls).toContain("http://api/v1/teams/acme/projects/web/scenarios/s1");
+    expect(urls).toContain("http://api/v1/teams/acme/projects/web/documents/d1");
+  });
 });

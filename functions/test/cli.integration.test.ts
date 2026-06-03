@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { tmpdir } from "node:os";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type { Server } from "node:http";
@@ -42,13 +42,42 @@ describe("CLI end-to-end against the real API", () => {
     expect(await run(["project", "set", "--title", "Web", "--status", "running"], opts)).toBe(0);
     expect(await run(["phase", "start", "build", "--name", "Build", "--order", "1"], opts)).toBe(0);
     expect(await run(["commit"], opts)).toBe(0);
-
     const project = (await db().doc("teams/itteam/projects/web").get()).data()!;
     expect(project.title).toBe("Web");
     expect(project.currentPhaseId).toBe("build");
-    const commit = (await db().doc("teams/itteam/projects/web/phases/build/commits/abc123").get()).data()!;
+    // commit now auto-creates the implicit 'main' task and lands under it
+    const mainTask = (await db().doc("teams/itteam/projects/web/tasks/main").get()).data()!;
+    expect(mainTask.phaseId).toBe("build");
+    const commit = (await db().doc("teams/itteam/projects/web/tasks/main/commits/abc123").get()).data()!;
     expect(commit.message).toBe("feat: x");
     expect(commit.author).toBe("Agent");
+  });
+
+  it("vision import -> task start -> commit -> score/test-run/revise -> doc add all land in Firestore", async () => {
+    await seedKeyAndMember("loopteam");
+    const cwd = dir();
+    const opts = { cwd, env, log: () => {}, err: () => {}, gitRun: () => "c0ffee\n2026-06-02T10:00:00Z\nAgent\nfeat: y" };
+    writeFileSync(join(cwd, "vision.json"), JSON.stringify({
+      goals: [{ id: "g1", title: "Ship", order: 1 }],
+      scenarios: [{ id: "s1", goalId: "g1", title: "Login", rubric: { criteria: [{ id: "correctness", name: "C", weight: 3, max: 5 }] } }],
+    }));
+    expect(await run(["init", "--team", "loopteam", "--project", "web", "--url", baseUrl], opts)).toBe(0);
+    expect(await run(["project", "set", "--title", "Web", "--status", "running"], opts)).toBe(0);
+    expect(await run(["phase", "start", "build", "--name", "Build", "--order", "1"], opts)).toBe(0);
+    expect(await run(["vision", "import", "--file", "vision.json"], opts)).toBe(0);
+    expect(await run(["task", "start", "t1", "--phase", "build", "--name", "Login", "--order", "1", "--scenarios", "s1"], opts)).toBe(0);
+    expect(await run(["commit", "--task", "t1"], opts)).toBe(0);
+    expect(await run(["score", "s1", "--task", "t1", "--criterion", "correctness=4", "--composite", "80"], opts)).toBe(0);
+    expect(await run(["test-run", "s1", "--task", "t1", "--passed", "5", "--failed", "0"], opts)).toBe(0);
+    expect(await run(["revise", "--scenario", "s1", "--reason", "tighten", "--change", "add:t2"], opts)).toBe(0);
+    expect(await run(["doc", "add", "--kind", "notes", "--title", "Run Notes", "--url", "https://x.com/n"], opts)).toBe(0);
+
+    expect((await db().doc("teams/loopteam/projects/web/scenarios/s1").get()).data()!.title).toBe("Login");
+    expect((await db().doc("teams/loopteam/projects/web/tasks/t1/commits/c0ffee").get()).data()!.message).toBe("feat: y");
+    expect((await db().collection("teams/loopteam/projects/web/scores").get()).size).toBe(1);
+    expect((await db().collection("teams/loopteam/projects/web/testRuns").get()).size).toBe(1);
+    expect((await db().collection("teams/loopteam/projects/web/revisions").get()).size).toBe(1);
+    expect((await db().doc("teams/loopteam/projects/web/documents/run-notes").get()).data()!.format).toBe("url");
   });
 
   it("a bad key warns and returns 0 (best-effort); strict returns 1", async () => {
