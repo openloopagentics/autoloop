@@ -43,6 +43,18 @@ export type CommitBody = z.infer<typeof commitBody>;
 
 const id = z.string().regex(idPattern);
 
+const severity = z.enum(["low", "medium", "high"]);
+const bugStatus = z.enum(["open", "fixed"]);
+export const bugBody = z.object({
+  title: z.string().min(1).optional(),       // required-on-create in the service
+  description: z.string().optional(),
+  scenarioId: id.optional(),
+  taskId: id.optional(),
+  severity: severity.optional(),
+  status: bugStatus.optional(),              // required-on-create in the service
+});
+export type BugBody = z.infer<typeof bugBody>;
+
 export const goalBody = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
@@ -99,6 +111,7 @@ export const testRunBody = z.object({
   passed: z.number().int().min(0),
   failed: z.number().int().min(0),
   issues: z.array(z.string()).optional(),
+  summary: z.string().max(CONTENT_MAX_BYTES, "testRun.summary exceeds 100KB").optional(),
 });
 
 export const revisionBody = z.object({

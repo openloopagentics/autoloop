@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody } from "../src/schemas.js";
+import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody } from "../src/schemas.js";
 
 describe("idPattern", () => {
   it("accepts safe slugs and rejects unsafe ones", () => {
@@ -75,5 +75,37 @@ describe("loop-contract schemas", () => {
     expect(testRunBody.safeParse({ scenarioId: "s1", taskId: "t1", passed: -1, failed: 0 }).success).toBe(false);
     expect(revisionBody.safeParse({ trigger: { scenarioId: "s1", reason: "short" }, changes: [{ op: "drop", taskId: "t9" }] }).success).toBe(true);
     expect(revisionBody.safeParse({ trigger: { scenarioId: "s1", reason: "x" }, changes: [{ op: "bogus", taskId: "t9" }] }).success).toBe(false);
+  });
+});
+
+describe("bugBody", () => {
+  it("accepts a minimal open bug", () => {
+    expect(bugBody.safeParse({ title: "X", status: "open" }).success).toBe(true);
+  });
+  it("accepts the optional fields", () => {
+    expect(bugBody.safeParse({ title: "X", status: "fixed", description: "d", scenarioId: "s1", taskId: "t1", severity: "high" }).success).toBe(true);
+  });
+  it("rejects an unknown status", () => {
+    expect(bugBody.safeParse({ title: "X", status: "wontfix" }).success).toBe(false);
+  });
+  it("rejects an unknown severity", () => {
+    expect(bugBody.safeParse({ title: "X", status: "open", severity: "blocker" }).success).toBe(false);
+  });
+  it("rejects a non-idPattern scenarioId", () => {
+    expect(bugBody.safeParse({ title: "X", status: "open", scenarioId: "Bad Id" }).success).toBe(false);
+  });
+  it("drops unknown keys (plain z.object)", () => {
+    const parsed = bugBody.parse({ title: "X", status: "open", createdAt: "nope" });
+    expect("createdAt" in parsed).toBe(false);
+  });
+});
+
+describe("testRunBody.summary", () => {
+  it("accepts an optional summary", () => {
+    expect(testRunBody.safeParse({ scenarioId: "s1", taskId: "t1", passed: 1, failed: 0, summary: "ran fine" }).success).toBe(true);
+  });
+  it("rejects a summary over 100KB", () => {
+    const big = "x".repeat(100 * 1024 + 1);
+    expect(testRunBody.safeParse({ scenarioId: "s1", taskId: "t1", passed: 1, failed: 0, summary: big }).success).toBe(false);
   });
 });
