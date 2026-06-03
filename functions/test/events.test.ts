@@ -63,3 +63,35 @@ describe("POST /v1/teams/:teamId/projects/:slug/scores", () => {
     expect(snap.docs.map((d) => d.id)).toEqual(ids); // append order == id order
   });
 });
+
+describe("POST /v1/teams/:teamId/projects/:slug/testRuns", () => {
+  it("404s when the project does not exist", async () => {
+    await seedTeam();
+    const res = await request(app).post("/v1/teams/team1/projects/ghost/testRuns").set(authHeader())
+      .send({ scenarioId: "s1", taskId: "t1", passed: 1, failed: 0 });
+    expect(res.status).toBe(404);
+  });
+  it("appends a testRun with issues", async () => {
+    await createProject();
+    const res = await request(app).post("/v1/teams/team1/projects/acme/testRuns").set(authHeader())
+      .send({ scenarioId: "s1", taskId: "t1", passed: 8, failed: 1, issues: ["flaky login"] });
+    expect(res.status).toBe(200);
+    const d = (await db().doc(`teams/team1/projects/acme/testRuns/${res.body.id}`).get()).data()!;
+    expect(d.passed).toBe(8);
+    expect(d.failed).toBe(1);
+    expect(d.issues).toEqual(["flaky login"]);
+  });
+});
+
+describe("POST /v1/teams/:teamId/projects/:slug/revisions", () => {
+  it("appends a revision capturing trigger + changes", async () => {
+    await createProject();
+    const res = await request(app).post("/v1/teams/team1/projects/acme/revisions").set(authHeader())
+      .send({ trigger: { scenarioId: "s1", reason: "still failing" }, changes: [{ op: "add", taskId: "t9", title: "Harden" }, { op: "drop", taskId: "t3" }] });
+    expect(res.status).toBe(200);
+    const d = (await db().doc(`teams/team1/projects/acme/revisions/${res.body.id}`).get()).data()!;
+    expect(d.trigger.reason).toBe("still failing");
+    expect(d.changes).toHaveLength(2);
+    expect(d.changes[0].title).toBe("Harden"); // passthrough detail preserved
+  });
+});

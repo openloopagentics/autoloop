@@ -2,11 +2,18 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../firestore.js";
 import { AppError } from "../errors.js";
 import { ulid } from "../ulid.js";
-import type { ScoreBody } from "../schemas.js";
+import type { ScoreBody, TestRunBody, RevisionBody } from "../schemas.js";
+
+async function requireProject(teamId: string, slug: string) {
+  const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
+  const snap = await projectRef.get();
+  if (!snap.exists) throw new AppError(404, "not_found", "project does not exist");
+  return projectRef;
+}
 
 /** Append a score event. Server stamps the id (sortable ULID) + createdAt. Returns the id. */
 export async function appendScore(teamId: string, slug: string, body: ScoreBody): Promise<string> {
-  const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
+  const projectRef = await requireProject(teamId, slug);
   const scenarioRef = projectRef.collection("scenarios").doc(body.scenarioId);
   const scenarioSnap = await scenarioRef.get();
   if (!scenarioSnap.exists) throw new AppError(404, "not_found", "scenario does not exist");
@@ -30,6 +37,34 @@ export async function appendScore(teamId: string, slug: string, body: ScoreBody)
   };
   if (body.commitSha !== undefined) data.commitSha = body.commitSha;
   if (body.note !== undefined) data.note = body.note;
+  // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
   await projectRef.collection("scores").doc(id).set(data);
+  return id;
+}
+
+export async function appendTestRun(teamId: string, slug: string, body: TestRunBody): Promise<string> {
+  const projectRef = await requireProject(teamId, slug);
+  const id = ulid();
+  // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
+  await projectRef.collection("testRuns").doc(id).set({
+    scenarioId: body.scenarioId,
+    taskId: body.taskId,
+    passed: body.passed,
+    failed: body.failed,
+    issues: body.issues ?? [],
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return id;
+}
+
+export async function appendRevision(teamId: string, slug: string, body: RevisionBody): Promise<string> {
+  const projectRef = await requireProject(teamId, slug);
+  const id = ulid();
+  // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
+  await projectRef.collection("revisions").doc(id).set({
+    trigger: body.trigger,
+    changes: body.changes,
+    createdAt: FieldValue.serverTimestamp(),
+  });
   return id;
 }
