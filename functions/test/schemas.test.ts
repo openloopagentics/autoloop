@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { idPattern, projectBody, phaseBody, commitBody } from "../src/schemas.js";
+import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody } from "../src/schemas.js";
 
 describe("idPattern", () => {
   it("accepts safe slugs and rejects unsafe ones", () => {
@@ -42,5 +42,34 @@ describe("commitBody", () => {
   it("validates committedAt as ISO datetime", () => {
     expect(commitBody.safeParse({ message: "m", author: "a", committedAt: "2026-06-01T10:00:00Z" }).success).toBe(true);
     expect(commitBody.safeParse({ message: "m", author: "a", committedAt: "not-a-date" }).success).toBe(false);
+  });
+});
+
+describe("loop-contract schemas", () => {
+  it("scenario rubric requires criteria with positive weight and max>=1", () => {
+    expect(scenarioBody.safeParse({ goalId: "g1", title: "S", rubric: { criteria: [{ id: "c1", name: "Correctness", weight: 2, max: 5 }] } }).success).toBe(true);
+    expect(scenarioBody.safeParse({ rubric: { criteria: [{ id: "c1", name: "x", weight: 0, max: 5 }] } }).success).toBe(false);
+    expect(scenarioBody.safeParse({ threshold: 150 }).success).toBe(false);
+  });
+  it("task scenarioIds must be valid ids", () => {
+    expect(taskBody.safeParse({ phaseId: "p1", title: "T", order: 1, status: "running", scenarioIds: ["s1", "s2"] }).success).toBe(true);
+    expect(taskBody.safeParse({ scenarioIds: ["Bad Id"] }).success).toBe(false);
+  });
+  it("score criteria are non-negative integers; composite is 0..100", () => {
+    expect(scoreBody.safeParse({ scenarioId: "s1", taskId: "t1", criteria: { c1: 3 }, composite: 80 }).success).toBe(true);
+    expect(scoreBody.safeParse({ scenarioId: "s1", taskId: "t1", criteria: { c1: -1 }, composite: 80 }).success).toBe(false);
+    expect(scoreBody.safeParse({ scenarioId: "s1", taskId: "t1", criteria: { c1: 3 }, composite: 101 }).success).toBe(false);
+  });
+  it("document content is capped at 100KB and format is markdown|url", () => {
+    expect(documentBody.safeParse({ kind: "vision", title: "V", format: "markdown", content: "x" }).success).toBe(true);
+    expect(documentBody.safeParse({ format: "pdf" }).success).toBe(false);
+    expect(documentBody.safeParse({ content: "x".repeat(100 * 1024 + 1) }).success).toBe(false);
+  });
+  it("goal/testRun/revision basic shapes", () => {
+    expect(goalBody.safeParse({ title: "G", order: 1 }).success).toBe(true);
+    expect(testRunBody.safeParse({ scenarioId: "s1", taskId: "t1", passed: 8, failed: 1, issues: ["flaky"] }).success).toBe(true);
+    expect(testRunBody.safeParse({ scenarioId: "s1", taskId: "t1", passed: -1, failed: 0 }).success).toBe(false);
+    expect(revisionBody.safeParse({ trigger: { scenarioId: "s1", reason: "short" }, changes: [{ op: "drop", taskId: "t9" }] }).success).toBe(true);
+    expect(revisionBody.safeParse({ trigger: { scenarioId: "s1", reason: "x" }, changes: [{ op: "bogus", taskId: "t9" }] }).success).toBe(false);
   });
 });
