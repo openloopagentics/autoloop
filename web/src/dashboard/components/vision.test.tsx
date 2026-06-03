@@ -5,6 +5,8 @@ import { ScenarioCard } from "./ScenarioCard";
 import { PlanSection } from "./PlanSection";
 import { PhaseItem } from "./PhaseItem";
 import { TaskItem } from "./TaskItem";
+import { RevisionTimeline } from "./RevisionTimeline";
+import { DocumentsSection } from "./DocumentsSection";
 import type { Scenario, Score, TestRun } from "../types";
 
 const scn: Scenario = { id: "login", goalId: "g1", title: "Login works", threshold: 80, rubric: { criteria: [{ id: "c", name: "Correctness", weight: 1, max: 5 }] } };
@@ -52,5 +54,29 @@ describe("PlanSection legacy fallback", () => {
     expect(screen.getByText("Tasks")).toBeInTheDocument();
     expect(screen.getByText("Login")).toBeInTheDocument();
     expect(screen.getByText("feat")).toBeInTheDocument();
+  });
+});
+
+describe("RevisionTimeline", () => {
+  it("renders each revision's reason and changes", () => {
+    render(<RevisionTimeline revisions={[{ id: "01A", trigger: { scenarioId: "login", reason: "rough UX" }, changes: [{ op: "add", taskId: "polish" }] }]} />);
+    expect(screen.getByText(/rough UX/)).toBeInTheDocument();
+    expect(screen.getByText(/add/)).toBeInTheDocument();
+    expect(screen.getByText(/polish/)).toBeInTheDocument();
+  });
+  it("renders nothing when there are no revisions", () => {
+    const { container } = render(<RevisionTimeline revisions={[]} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("DocumentsSection", () => {
+  it("links url docs and shows markdown content", () => {
+    render(<DocumentsSection documents={[
+      { id: "spec", kind: "spec", title: "Spec", format: "url", content: "https://x/s" },
+      { id: "vision", kind: "vision", title: "Vision", format: "markdown", content: "# V" },
+    ]} />);
+    expect(screen.getByRole("link", { name: /Spec/ })).toHaveAttribute("href", "https://x/s");
+    expect(screen.getByText("# V")).toBeInTheDocument();
   });
 });
