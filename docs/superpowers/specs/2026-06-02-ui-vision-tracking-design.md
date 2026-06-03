@@ -52,7 +52,8 @@ Add, each a thin `onSnapshot` wrapper returning `Result<T>` like the existing
   — read the whole subcollection ordered by document id (`orderBy(documentId())`),
   which is the ULID replay order.
 - `useRevisions(teamId, slug)` → `Revision[]` (ordered by document id).
-- `useDocuments(teamId, slug)` → `DocumentRec[]`.
+- `useDocuments(teamId, slug)` → `DocumentRec[]` (ordered by document id — documents
+  have no `order` field).
 
 The existing `useCommits` (phase-scoped) stays for the legacy fallback.
 
@@ -89,7 +90,11 @@ unit-testable.
   the scenarios it advances (`scenarioIds`), and its **task-scoped commits**
   (`useTaskCommits`). **Legacy fallback:** if the project has **no tasks at all**,
   render today's phases + phase-scoped commits exactly as the current `ProjectDetail`
-  does (so existing projects are unaffected).
+  does — same "Phases" section header and markup (so existing projects are
+  byte-for-byte unaffected; the plan must faithfully preserve that legacy path). The
+  fallback trigger is strictly "no tasks at all": a project with scenarios but zero
+  tasks still shows the Vision section and falls back to phase-commit rendering for the
+  plan area.
 - **`RevisionTimeline`** — revisions in id order; each entry shows the trigger
   (scenario + reason) and the `add/replace/reorder/drop` changes.
 - **`DocumentsSection`** — documents listed by title/kind; `format:"url"` → external
