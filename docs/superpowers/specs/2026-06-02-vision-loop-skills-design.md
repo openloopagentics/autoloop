@@ -83,9 +83,14 @@ Field rules (mirror the loop-contract zod schemas so `vision import` accepts the
 output): ids match `^[a-z0-9._-]+$`; rubric `criteria` non-empty, each
 `{ id, name, weight>0, max≥1 }`; `threshold` `0..100`; `document.format` ∈
 `markdown|url`. The **only field not in the contract** is `scenario.test`
-(`{ command?: string }`) — it is a *loop-local* hint (how to test the scenario), not
-sent to the API as-is; the loop may also persist the test approach as a
-`Document` of `kind:"test-spec"` via `vision import`.
+(`{ command?: string }`) — it is a *loop-local* hint (how to test the scenario).
+**It must be stripped client-side before `vision import`** (the validator exposes a
+helper that returns the import-safe scenario without `test`): the server's
+`scenarioBody` is a plain `z.object` that happens to drop unknown keys today, but the
+loop must not depend on that drop — stripping client-side keeps the loop-local
+boundary explicit and robust if `scenarioBody` ever gains `.passthrough()`. The loop
+may separately persist the test approach as a `Document` of `kind:"test-spec"` via
+`vision import` (`documentBody.kind` is free-form, so `"test-spec"` is accepted).
 
 ### Validator (the one piece of real code)
 
@@ -129,7 +134,10 @@ a `vision.json` (offer to run `/daloop-vision` if missing) and an initialized
 1. **Import & plan.** `daloop vision import --file vision.json`. Then invoke
    `superpowers:writing-plans` to turn the vision into a phases→tasks plan, where
    **each task is tagged with the `scenarioIds` it advances**. Report the plan:
-   `phase start` per phase, `task start <id> --phase <p> --scenarios <ids>` per task.
+   `phase start <id> --name <n> --order <k>` per phase, then
+   `task start <id> --phase <p> --name <n> --order <k> --scenarios <ids>` per task.
+   (`--name` and `--order` are CLI-required on both verbs — the SKILL.md must always
+   include them or the call exits 1; abbreviated forms elsewhere omit them for brevity.)
 2. **Iterate per task** (in plan order, respecting the current task):
    - Implement the task via `superpowers:subagent-driven-development` (or
      `superpowers:test-driven-development` for a single-task slice).
