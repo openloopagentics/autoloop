@@ -102,8 +102,29 @@ write path (#5) is unaffected (it edits the project-level vision).
 
 **Base-path-aware services:** refactor the existing `upsertPhase/upsertTask/
 upsertTaskCommit/appendScore/…` to take an optional `loopId` (or a resolved base
-DocumentReference). With `loopId`: operate under `loops/{loopId}` and derive on the
-loop doc. Without: today's project-direct behavior. DRY — one code path, two mounts.
+DocumentReference). With `loopId`: the **run-data doc** is written under
+`loops/{loopId}/…` and **per-loop derivation reads+writes the loop subtree**. Without:
+today's project-direct behavior. DRY — one code path, two mounts.
+
+**Base-path boundary (CRITICAL — what stays project-level even when loop-scoped):**
+the base ref governs ONLY where run-data docs live and where per-loop derivation runs.
+These remain on the **project** in both scopes:
+- **Scenario + rubric reads (`appendScore`)** always read `projectRef.collection("scenarios")`
+  (the vision is project-level; scenarios do NOT exist under a loop). A loop-scoped score
+  writes its doc under `loops/{id}/scores` but validates criterion keys/maxes against the
+  **project** scenario. (A literal "everything under base" refactor would 404 every
+  loop-scoped score — don't.)
+- **`visionOwner` stamp (`upsertTask` and the goal/scenario/document upserts)** always
+  stamps the **project doc** (`visionOwner` is vision-ownership consumed by #5's
+  `assertWebEditable`, not run state). A loop-scoped task write derives `currentTaskId` on
+  the **loop doc** but must STILL stamp `visionOwner:"loop"` on the **project doc** — else
+  #5's web-editability guard regresses.
+- **`upsertTask`'s `currentPhaseId` input + phase/task sets**: when loop-scoped, read them
+  from the **loop subtree** (`loops/{id}` doc's `currentPhaseId`, `loops/{id}/phases`,
+  `loops/{id}/tasks`) and write `currentTaskId` to the loop doc; when project-direct,
+  today's project-doc/project-collection behavior — unchanged.
+- Keep `appendScore`'s non-transactional `.set()` (server-generated id) as-is; loop-scoping
+  doesn't change that.
 
 ## CLI (`daloop`)
 
@@ -115,6 +136,10 @@ loop doc. Without: today's project-direct behavior. DRY — one code path, two m
   (URL includes `/loops/<id>`); when it is NOT set, they use today's project-direct
   URLs (legacy `main` loop) — exactly the back-compat shape. (`commit`'s implicit-`main`
   *task* behavior from #1 is preserved within whichever loop scope is active.)
+  `score`/`test-run`/`revise` still pass `--scenario` (project-level) + `--task`
+  (loop-level): the loop prefix scopes only the event doc + its `taskId`; `scenarioId`
+  resolves project-level on the server (per the Base-path boundary) — don't scope
+  scenarios under the loop.
 - `daloop init` seeds `currentLoopId: null, loops: {}` alongside the existing config.
 - Best-effort semantics unchanged (exit 0 unless `--strict`).
 
