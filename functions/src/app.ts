@@ -3,6 +3,7 @@ import { ensureApp } from "./firestore.js";
 import { makeRequireUser } from "./requireUser.js";
 import { makeRequireAdmin } from "./requireAdmin.js";
 import { requireApiKeyMember } from "./requireApiKeyMember.js";
+import { requireMember } from "./requireMember.js";
 import { AppError, errorHandler } from "./errors.js";
 import { keysRouter } from "./routes/keys.js";
 import { adminRouter } from "./routes/admin.js";
@@ -15,6 +16,7 @@ import { tasksRouter } from "./routes/tasks.js";
 import { taskCommitsRouter } from "./routes/taskCommits.js";
 import { documentsRouter } from "./routes/documents.js";
 import { scoresRouter, testRunsRouter, revisionsRouter } from "./routes/events.js";
+import { userProjectsRouter } from "./routes/userProjects.js";
 
 export function makeApp() {
   // Initialize the Admin SDK before any handler runs, so the ID-token auth
@@ -45,6 +47,9 @@ export function makeApp() {
   teamRouter.use("/:slug/revisions", revisionsRouter);
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);
+
+  // User vision writes (Firebase ID token -> team membership). Web-owned projects only.
+  app.use("/v1/u/teams/:teamId/projects", makeRequireUser(), requireMember, userProjectsRouter);
 
   // Unknown route -> consistent 404 envelope (intentionally unauthenticated:
   // there is no blanket /v1 guard; each route group declares its own auth above).
