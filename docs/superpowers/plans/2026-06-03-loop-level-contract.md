@@ -22,6 +22,8 @@ The base-path refactor MUST preserve these or it regresses #1/#5 (the existing 1
 - **Vision services unchanged:** `upsertProject`/`applyProjectUpsert`, goals/scenarios/documents (and the whole `/v1/u` path) are project-level — DO NOT add a loopId to them.
 - **Reads before writes** in every transaction (as today). Keep `appendScore`'s non-transactional `.set()` (server id).
 - Legacy behavior (loopId undefined → `baseRef===projectRef`) must be **byte-for-byte** today's behavior so #1's phases/tasks/commits/events tests pass unchanged.
+- **Read-set discipline:** in legacy mode the already-read `projectSnap` IS `baseSnap` (don't add a second `tx.get` for the same ref); loop-scoped adds exactly one `tx.get(loopRef)` for `baseSnap`. (Keeps the transaction read-set identical to today in legacy mode.)
+- **Phase-commits stays legacy-only by design.** Only **task-commits** become loop-scoped (the spec nests commits under tasks; the CLI `commit` uses the task-commits path). Do NOT add a loop-scoped mount for the legacy phase-commits route (`commitsRouter`/`upsertCommit`) — leave it untouched.
 - **Commands:** `cd functions && npm test` (full, emulator) / `npm run test:run -- <name>` (running emulator) / `npm run build`. Do NOT `git add -A`.
 
 ## File structure
