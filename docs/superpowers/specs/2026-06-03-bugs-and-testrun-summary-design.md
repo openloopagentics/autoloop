@@ -114,6 +114,11 @@ byte-identical to today).
 
 ## Validation (`functions/src/schemas.ts`)
 
+Place `bugBody` **after** the module-private `const id = z.string().regex(idPattern)`
+declaration (it reuses `id`), not next to `phaseBody`/`commitBody` which precede it. The
+`testRun.summary` cap reuses the module-private `CONTENT_MAX_BYTES`, and `testRunBody`
+already sits below it.
+
 ```ts
 const severity = z.enum(["low", "medium", "high"]);
 const bugStatus = z.enum(["open", "fixed"]);
@@ -154,8 +159,8 @@ Loop-aware via the existing `loopSeg(cfg)` helper (targets the current loop when
 - Best-effort semantics unchanged (exit 0 unless `--strict`).
 - `daloop init` config seeding is unchanged (bugs need no client config).
 
-Sync the canonical `cli/daloop.mjs` to the plugin `bin/daloop` and
-`web/public/skill/daloop.mjs` via `scripts/sync-daloop-cli.sh`.
+Sync the canonical `cli/daloop.mjs` to `plugins/daloop-reporting/bin/daloop` and
+`web/public/skill/daloop.mjs` via `scripts/sync-daloop-cli.sh` (the three CLI copies).
 
 ## Rules
 
