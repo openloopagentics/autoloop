@@ -47,7 +47,11 @@ Field rules:
      loop AI-judge it" (then omit `test`).
    - Prefer the user's own words for titles/descriptions. Assign stable kebab-case ids.
 3. **Validate before writing.** Write your candidate to `vision.json`, then run the
-   bundled validator: `node "${CLAUDE_PLUGIN_ROOT}/bin/vision-schema.mjs" vision.json`.
+   bundled validator: run `node <vision-schema.mjs> vision.json`, where the validator is
+   at `${CLAUDE_PLUGIN_ROOT}/bin/vision-schema.mjs` when installed as a plugin, or
+   alongside this skill (`vision-schema.mjs` in the skill's own directory) when installed
+   via the curl `/skill` installer. If it isn't found, validate the fields manually
+   against the rules above before writing.
    If it reports problems, fix them with the user and re-run — **never leave an
    invalid vision.json**.
 4. **Confirm** the written `vision.json` with the user.
