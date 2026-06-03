@@ -116,6 +116,14 @@ export type ScoreBody = z.infer<typeof scoreBody>;
 export type TestRunBody = z.infer<typeof testRunBody>;
 export type RevisionBody = z.infer<typeof revisionBody>;
 
+export const loopBody = z.object({
+  goal: z.string().min(1).optional(),
+  name: z.string().min(1).optional(),
+  order: z.number().int().optional(),
+  status: status.optional(),
+});
+export type LoopBody = z.infer<typeof loopBody>;
+
 export const keyMintBody = z.object({
   label: z.string().trim().min(1).max(100),
 });

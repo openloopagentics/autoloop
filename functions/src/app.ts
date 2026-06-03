@@ -16,6 +16,7 @@ import { tasksRouter } from "./routes/tasks.js";
 import { taskCommitsRouter } from "./routes/taskCommits.js";
 import { documentsRouter } from "./routes/documents.js";
 import { scoresRouter, testRunsRouter, revisionsRouter } from "./routes/events.js";
+import { loopsRouter } from "./routes/loops.js";
 import { userProjectsRouter } from "./routes/userProjects.js";
 
 export function makeApp() {
@@ -45,6 +46,7 @@ export function makeApp() {
   teamRouter.use("/:slug/scores", scoresRouter);
   teamRouter.use("/:slug/testRuns", testRunsRouter);
   teamRouter.use("/:slug/revisions", revisionsRouter);
+  teamRouter.use("/:slug/loops", loopsRouter); // loop entity
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);
 
