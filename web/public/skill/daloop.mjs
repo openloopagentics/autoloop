@@ -343,7 +343,9 @@ export async function run(argv, deps = {}) {
         }
         for (const s of vision.scenarios ?? []) {
           validateId("scenarioId", s.id);
-          const { id, ...body } = s;
+          // `test` is a loop-local hint (how /daloop-loop tests the scenario), not part
+          // of the contract — strip it client-side so the import body never carries it.
+          const { id, test, ...body } = s;
           worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
         }
         for (const d of vision.documents ?? []) {
