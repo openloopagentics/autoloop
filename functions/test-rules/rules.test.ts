@@ -306,6 +306,33 @@ describe("rules: loop-contract subcollections", () => {
   });
 });
 
+describe("rules: notifications", () => {
+  async function seedNotification(teamId: string, notifId: string) {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`teams/${teamId}/notifications/${notifId}`).set({
+        type: "scenario_met", projectSlug: "web", title: "Scenario met", message: "s1 is now met",
+      });
+    });
+  }
+
+  it("a member can read team notifications; a non-member cannot", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "member");
+    await seedNotification("t1", "n1");
+    await assertSucceeds(authed("alice").doc("teams/t1/notifications/n1").get());
+    await assertFails(authed("bob").doc("teams/t1/notifications/n1").get());
+  });
+
+  it("no client can write a notification, even an owner", async () => {
+    await seedTeam("t1", "alice");
+    await seedMember("t1", "alice", "owner");
+    await seedNotification("t1", "n1");
+    const db = authed("alice");
+    await assertFails(db.doc("teams/t1/notifications/n1").set({ type: "scenario_met", projectSlug: "web", title: "x", message: "x" }));
+    await assertFails(db.doc("teams/t1/notifications/n2").set({ type: "scenario_met", projectSlug: "web", title: "x", message: "x" }));
+  });
+});
+
 describe("rules: apiKeys", () => {
   it("clients cannot read or write apiKeys (managed only by the API)", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
