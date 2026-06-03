@@ -45,4 +45,11 @@ describe("PUT /v1/teams/:teamId/projects/:slug/tasks/:taskId", () => {
     await request(app).put("/v1/teams/team1/projects/acme/tasks/t1").set(authHeader()).send({ phaseId: "p1", title: "A", order: 1, status: "running", scenarioIds: ["s1", "s2"] });
     expect((await db().doc("teams/team1/projects/acme/tasks/t1").get()).data()!.scenarioIds).toEqual(["s1", "s2"]);
   });
+  it("stamps visionOwner 'loop' on the project when an agent upserts a task", async () => {
+    await createProject();
+    await startPhase("p1", 1);
+    await request(app).put("/v1/teams/team1/projects/acme/tasks/t1").set(authHeader()).send({ phaseId: "p1", title: "A", order: 1, status: "running" });
+    const proj = (await db().doc("teams/team1/projects/acme").get()).data()!;
+    expect(proj.visionOwner).toBe("loop");
+  });
 });

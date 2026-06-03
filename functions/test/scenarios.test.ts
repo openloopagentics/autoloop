@@ -33,4 +33,10 @@ describe("PUT /v1/teams/:teamId/projects/:slug/scenarios/:scenarioId", () => {
     expect(s.threshold).toBe(90);
     expect(s.title).toBe("Login works");
   });
+  it("stamps visionOwner 'loop' on the project when an agent upserts a scenario", async () => {
+    await createProject();
+    await request(app).put("/v1/teams/team1/projects/acme/scenarios/s1").set(authHeader()).send({ goalId: "g1", title: "S", rubric });
+    const proj = (await db().doc("teams/team1/projects/acme").get()).data()!;
+    expect(proj.visionOwner).toBe("loop");
+  });
 });

@@ -34,4 +34,11 @@ describe("PUT /v1/teams/:teamId/projects/:slug/documents/:docId", () => {
       .send({ kind: "vision", title: "V", format: "markdown", content: "x".repeat(100 * 1024 + 1) });
     expect(res.status).toBe(400);
   });
+  it("stamps visionOwner 'loop' on the project when an agent upserts a document", async () => {
+    await createProject();
+    await request(app).put("/v1/teams/team1/projects/acme/documents/d1").set(authHeader())
+      .send({ kind: "vision", title: "Vision", format: "markdown", content: "# Vision" });
+    const proj = (await db().doc("teams/team1/projects/acme").get()).data()!;
+    expect(proj.visionOwner).toBe("loop");
+  });
 });
