@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { UserRow } from "./UserRow";
 import { UserList } from "./UserList";
 import { GrantByUidForm } from "./GrantByUidForm";
+import { AccessRequests } from "./AccessRequests";
 
 describe("UserRow", () => {
   it("shows email or uid; Allow on a disallowed user emits true", async () => {
@@ -40,5 +41,27 @@ describe("GrantByUidForm", () => {
     await userEvent.type(screen.getByLabelText(/email/i), "n@x.com");
     await userEvent.click(screen.getByRole("button", { name: /grant/i }));
     expect(onGrant).toHaveBeenCalledWith("NewUid", "n@x.com");
+  });
+});
+
+describe("AccessRequests", () => {
+  it("empty vs populated; Approve/Deny emit the uid", async () => {
+    const onApprove = vi.fn();
+    const onDeny = vi.fn();
+    const { rerender } = render(<AccessRequests requests={[]} onApprove={onApprove} onDeny={onDeny} />);
+    expect(screen.getByText(/no pending requests/i)).toBeInTheDocument();
+    rerender(
+      <AccessRequests
+        requests={[{ uid: "u1", email: "u1@x.com", note: "please", status: "pending" }]}
+        onApprove={onApprove}
+        onDeny={onDeny}
+      />,
+    );
+    expect(screen.getByText(/u1@x.com/)).toBeInTheDocument();
+    expect(screen.getByText(/please/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /approve/i }));
+    expect(onApprove).toHaveBeenCalledWith("u1");
+    await userEvent.click(screen.getByRole("button", { name: /deny/i }));
+    expect(onDeny).toHaveBeenCalledWith("u1");
   });
 });

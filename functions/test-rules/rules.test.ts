@@ -343,3 +343,42 @@ describe("rules: apiKeys", () => {
     await assertFails(db.doc("apiKeys/def").set({ uid: "alice" }));
   });
 });
+
+describe("rules: accessRequests", () => {
+  it("a signed-in user can create their own pending request and read it", async () => {
+    const db = authed("newbie");
+    await assertSucceeds(db.doc("accessRequests/newbie").set({ uid: "newbie", email: "n@x.com", status: "pending" }));
+    await assertSucceeds(db.doc("accessRequests/newbie").get());
+  });
+  it("cannot create a request for another uid, or with non-pending status", async () => {
+    const db = authed("newbie");
+    await assertFails(db.doc("accessRequests/someoneelse").set({ uid: "someoneelse", status: "pending" }));
+    await assertFails(db.doc("accessRequests/newbie").set({ uid: "newbie", status: "approved" }));
+  });
+  it("cannot read someone else's request, nor update/delete own", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("accessRequests/alice").set({ uid: "alice", status: "pending" });
+    });
+    await assertFails(authed("newbie").doc("accessRequests/alice").get());
+    await assertFails(authed("alice").doc("accessRequests/alice").update({ status: "approved" }));
+    await assertFails(authed("alice").doc("accessRequests/alice").delete());
+  });
+  it("a denied owner can re-request (denied -> pending) but never self-approve", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("accessRequests/alice").set({ uid: "alice", email: "a@x.com", status: "denied" });
+    });
+    // re-request: set on the existing doc is an update; denied -> pending is allowed
+    await assertSucceeds(authed("alice").doc("accessRequests/alice").set({ uid: "alice", email: "a@x.com", status: "pending" }));
+    // but the owner can never flip it to approved
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("accessRequests/alice").set({ uid: "alice", email: "a@x.com", status: "denied" });
+    });
+    await assertFails(authed("alice").doc("accessRequests/alice").set({ uid: "alice", email: "a@x.com", status: "approved" }));
+  });
+  it("a non-owner cannot re-request someone else's denied doc", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("accessRequests/alice").set({ uid: "alice", status: "denied" });
+    });
+    await assertFails(authed("mallory").doc("accessRequests/alice").set({ uid: "alice", status: "pending" }));
+  });
+});

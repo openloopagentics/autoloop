@@ -1,5 +1,5 @@
 import { auth } from "../firebase";
-import type { AdminUser } from "./types";
+import type { AdminUser, AccessRequest } from "./types";
 
 const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 async function headers(): Promise<HeadersInit> {
@@ -22,6 +22,16 @@ export async function setAllowed(uid: string, isAllowed: boolean, email?: string
   const res = await fetch(`${BASE}/v1/admin/users/${uid}`, {
     method: "PUT", headers: await headers(),
     body: JSON.stringify(email ? { isAllowed, email } : { isAllowed }),
+  });
+  await parse<unknown>(res);
+}
+export async function listAccessRequests(): Promise<AccessRequest[]> {
+  const res = await fetch(`${BASE}/v1/admin/access-requests`, { headers: await headers() });
+  return (await parse<{ requests: AccessRequest[] }>(res)).requests;
+}
+export async function decideAccessRequest(uid: string, decision: "approve" | "deny"): Promise<void> {
+  const res = await fetch(`${BASE}/v1/admin/access-requests/${uid}`, {
+    method: "POST", headers: await headers(), body: JSON.stringify({ decision }),
   });
   await parse<unknown>(res);
 }
