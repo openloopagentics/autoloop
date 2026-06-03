@@ -388,6 +388,19 @@ describe("event + vision verbs (request shapes)", () => {
     expect(urls).toContain("http://api/v1/teams/acme/projects/web/scenarios/s1");
     expect(urls).toContain("http://api/v1/teams/acme/projects/web/documents/d1");
   });
+
+  it("test-run includes --summary in the body", async () => {
+    const dir = initDir(); const c = cap();
+    await run(["test-run", "s1", "--task", "t1", "--passed", "1", "--failed", "0", "--summary", "ran fine"], base(dir, c));
+    expect(JSON.parse(c.init.body)).toMatchObject({ summary: "ran fine" });
+  });
+
+  it("test-run reads --summary-file and it wins over --summary", async () => {
+    const dir = initDir(); const c = cap();
+    writeFileSync(join(dir, "sum.md"), "# from file");
+    await run(["test-run", "s1", "--task", "t1", "--passed", "1", "--failed", "0", "--summary", "inline", "--summary-file", "sum.md"], base(dir, c));
+    expect(JSON.parse(c.init.body).summary).toBe("# from file");
+  });
 });
 
 describe("bug add/set verbs", () => {

@@ -372,6 +372,12 @@ export async function run(argv, deps = {}) {
         if (!flags.task || typeof flags.passed !== "string" || typeof flags.failed !== "string") throw new UsageError("test-run requires --task <t> --passed <n> --failed <n>");
         validateId("task", flags.task);
         const body = { scenarioId, taskId: flags.task, passed: Number(flags.passed), failed: Number(flags.failed), issues: asArray(flags.issue).map(String) };
+        if (flags["summary-file"]) {
+          try { body.summary = readFileSync(join(cwd, flags["summary-file"]), "utf8"); }
+          catch (e) { throw new UsageError(`could not read --summary-file '${flags["summary-file"]}': ${e.message}`); }
+        } else if (flags.summary) {
+          body.summary = flags.summary;
+        }
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/testRuns`;
         return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
