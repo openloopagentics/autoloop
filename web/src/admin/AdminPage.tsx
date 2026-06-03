@@ -1,19 +1,24 @@
 import { useEffect, useState } from "react";
-import { listUsers, setAllowed } from "./client";
+import { listUsers, setAllowed, listAccessRequests, decideAccessRequest } from "./client";
 import { UserList } from "./components/UserList";
 import { GrantByUidForm } from "./components/GrantByUidForm";
+import { AccessRequests } from "./components/AccessRequests";
 import { Spinner } from "../dashboard/components/Spinner";
 import { ErrorNote } from "../dashboard/components/ErrorNote";
-import type { AdminUser } from "./types";
+import type { AdminUser, AccessRequest } from "./types";
 
 export function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
-    try { setUsers(await listUsers()); setError(null); }
+    try {
+      const [u, r] = await Promise.all([listUsers(), listAccessRequests()]);
+      setUsers(u); setRequests(r); setError(null);
+    }
     catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }
@@ -35,6 +40,18 @@ export function AdminPage() {
       </section>
 
       {error && <ErrorNote message={error} />}
+
+      <section className="mblock">
+        <h2 className="mblock-title">Access requests</h2>
+        <p className="mblock-hint">People who signed in and asked for access.</p>
+        {loading ? <Spinner /> : (
+          <AccessRequests
+            requests={requests}
+            onApprove={(uid) => act(decideAccessRequest(uid, "approve"))}
+            onDeny={(uid) => act(decideAccessRequest(uid, "deny"))}
+          />
+        )}
+      </section>
 
       <section className="mblock">
         <h2 className="mblock-title">All users</h2>
