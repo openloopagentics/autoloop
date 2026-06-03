@@ -50,7 +50,10 @@ status. (The data-hygiene half — the driver marking tasks done — is SP3.)
    Dashboard/Loops/Bugs; hidden on Vision) and routes to the four tab components. Tab +
    selection live in component state (no URL/deep-link plumbing — YAGNI; can be added later).
 
-All views remain `onSnapshot`-live; switching loops re-subscribes the loop-scoped hooks.
+All views remain `onSnapshot`-live; switching loops re-subscribes the loop-scoped hooks (add
+`loopId` to each loop-aware hook's `useEffect` dependency array). The Firestore rules already
+cover the new reads — the recursive `match /projects/{slug}/{document=**}` grants member-read to
+`loops`/`bugs` and all loop-scoped subcollections — so **no rules change**.
 
 ## Data model (web `types.ts` additions)
 
@@ -68,6 +71,9 @@ export interface Bug {
 ```
 Extend existing interfaces:
 - `Project`: add `currentLoopId?: string | null;` and `currentTaskId?: string | null;`
+  (both are written by the contract: `currentTaskId` is set on the project doc in the
+  project-direct/legacy path — verified `phases.ts`/`tasks.ts` write it to `baseRef` which is
+  the project doc when no loop — so `main`'s in-progress task resolves correctly.)
 - `TestRun`: add `summary?: string;`
 
 A **selectable loop** (the synthesized view-model) is:
@@ -85,8 +91,11 @@ and `loopId` passed to hooks is `undefined`.
 - `defaultSelectedLoop(list, currentLoopId) → string` (currentLoopId → most-recent → "main" →
   "" when empty).
 - `phaseProgress(phases: Phase[]) → { done: number; total: number }` (done = terminal-status
-  phases; reuse the contract's terminal set — `completed`/`cancelled`/etc. via a small
-  `isTerminalStatus` shared with `status.ts`).
+  phases). The web package cannot import `functions/`, so add a local `isTerminalStatus` to web
+  `status.ts` mirroring the contract's terminal set (`completed`/`failed`/`cancelled`).
+  **Terminal includes `failed`/`cancelled`** — a failed phase counts toward done/total
+  (intentional; mirrors the contract's `isTerminal`). `phaseProgress` for ANY selected loop reads
+  that loop's phases via `usePhases(teamId, slug, loopId)`, not just the current loop.
 - `loopIsRunning(loop) → boolean` (status === "running").
 
 **New hooks (in `hooks.ts`):** `useLoops`, `useBugs`; add optional `loopId` param to the seven
@@ -156,7 +165,9 @@ loop's** scores/testRuns), `LoopsTab.tsx` (LoopList + LoopDetail), `BugsTab.tsx`
   RollupStrip counts loops/running; DashboardTab shows `2/5` + the in-progress task; tab
   switching renders the right container; a legacy (main-only) project renders unchanged content.
 - `web` typecheck/build clean (`npm run build` in `web`); existing dashboard tests stay green
-  (ProjectDetail refactor must not regress `detail.test.tsx`).
+  **except** `detail.test.tsx`'s existing assertion that a `running` task gets `is-live` — that
+  is a deliberate behavior change (now only the current task is live), so update those specific
+  assertions to the new rule rather than treating the change as a regression.
 
 ## Out of scope (separate sub-projects / deferred)
 
