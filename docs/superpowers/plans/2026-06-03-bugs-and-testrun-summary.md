@@ -159,7 +159,7 @@ In `functions/src/services/events.ts`, delete the local `requireProject` (lines 
 import { resolveBase } from "./baseRef.js";
 ```
 
-Leave the three `appendScore`/`appendTestRun`/`appendRevision` bodies unchanged (they already call `resolveBase`). Keep the `db`, `FieldValue`, `AppError`, `ulid` imports that the appenders still use (`AppError` is still used by `appendScore`'s scenario/criterion checks).
+Leave the three `appendScore`/`appendTestRun`/`appendRevision` bodies unchanged (they already call `resolveBase`). **Remove the now-unused `db` import** (its only use was inside the extracted `requireProject`); keep `FieldValue`, `AppError`, `ulid` (still used by the appenders — `AppError` by `appendScore`'s scenario/criterion checks).
 
 - [ ] **Step 3: Run the events suite to verify no regression**
 
@@ -199,7 +199,6 @@ import { seedMember } from "./helpers.js";
 import { db } from "../src/firestore.js";
 import { upsertBug } from "../src/services/bugs.js";
 import { upsertLoop } from "../src/services/loops.js";
-import { AppError } from "../src/errors.js";
 
 async function seedProject(teamId = "team1", slug = "acme") {
   await db().doc(`teams/${teamId}`).set({ name: "Team", createdBy: "u1" });
@@ -258,7 +257,7 @@ describe("upsertBug", () => {
 });
 ```
 
-> Note: `AppError` carries `httpStatus` — see how `events.test.ts` asserts `{ httpStatus: 400/404 }`. Match that. (The import of `AppError` above is only for type familiarity; remove it if unused to keep the build clean.)
+> Note: `AppError` carries `httpStatus` — the service throws `AppError`, so `.rejects.toMatchObject({ httpStatus: 400/404 })` works (matches how `events.test.ts` asserts loop-scoped failures). No need to import `AppError` in the test.
 
 - [ ] **Step 2: Run to verify it fails**
 
