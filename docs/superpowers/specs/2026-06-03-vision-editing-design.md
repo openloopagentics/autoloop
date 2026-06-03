@@ -93,9 +93,12 @@ write happen in the **same** transaction.)
 User-path (ID-token) endpoints, each in **one** transaction that reads the project,
 calls `assertWebEditable`, runs the matching `applyXUpsert(tx, …, "web")`, and stamps
 `visionOwner: "web"`. They reuse the **existing zod schemas**:
-- `PUT /:slug` — create/patch a web project (reuses `projectBody`; on create stamps
-  `visionOwner: "web"`, `createdAt`; `status` defaults to `"running"`). Create is
-  allowed when the project is absent; patch requires not-loop-owned.
+- `PUT /:slug` — create/patch a web project (reuses `projectBody`). Mirror
+  `upsertProject`'s create invariants via a split-out `applyProjectUpsert(tx, …)`
+  helper: require the **team** doc to exist (`404` if not), and on create set
+  `slug`, `createdAt`, `currentPhaseId: null`, `status` (default `"running"`), and
+  `visionOwner: "web"`. Create is allowed when the project is absent; patch requires
+  not-loop-owned (`assertWebEditable`).
 - `PUT /:slug/goals/:goalId`, `PUT /:slug/scenarios/:scenarioId`,
   `PUT /:slug/documents/:docId` — guard + `applyXUpsert(tx, …, "web")`.
 - `DELETE /:slug/goals/:goalId`, `DELETE /:slug/scenarios/:scenarioId`,
