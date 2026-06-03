@@ -5,7 +5,7 @@
 # Writes three skills into ~/.claude/skills/ :
 #   - daloop-reporting (SKILL.md, CODEX.md, bundled `daloop` CLI)
 #   - daloop-vision    (SKILL.md + bundled vision-schema.mjs validator)
-#   - daloop-loop      (SKILL.md)
+#   - daloop           (SKILL.md — the loop driver, invoked as /daloop)
 # Claude Code discovers personal skills at session start, so restart Claude Code
 # (or open a new session) after installing.
 set -euo pipefail
@@ -22,7 +22,7 @@ say "  to:   $DEST"
 command -v curl >/dev/null 2>&1 || { say "✗ curl is required."; exit 1; }
 
 VISION_DEST="${DALOOP_VISION_DIR:-$HOME/.claude/skills/daloop-vision}"
-LOOP_DEST="${DALOOP_LOOP_DIR:-$HOME/.claude/skills/daloop-loop}"
+LOOP_DEST="${DALOOP_LOOP_DIR:-$HOME/.claude/skills/daloop}"
 
 # fetch SRC (relative to $BASE) into DST, atomically.
 fetch() {
@@ -45,9 +45,9 @@ fetch "daloop-vision/SKILL.md" "$VISION_DEST/SKILL.md"
 fetch "vision-schema.mjs" "$VISION_DEST/vision-schema.mjs"
 chmod +x "$VISION_DEST/vision-schema.mjs"
 
-# daloop-loop skill.
+# daloop skill (the loop driver, invoked as /daloop).
 mkdir -p "$LOOP_DEST"
-fetch "daloop-loop/SKILL.md" "$LOOP_DEST/SKILL.md"
+fetch "daloop/SKILL.md" "$LOOP_DEST/SKILL.md"
 
 # Node check (the CLI needs Node 22+).
 if command -v node >/dev/null 2>&1; then
@@ -62,7 +62,7 @@ fi
 say ""
 say "✓ Installed daloop-reporting → $DEST"
 say "✓ Installed daloop-vision    → $VISION_DEST"
-say "✓ Installed daloop-loop      → $LOOP_DEST"
+say "✓ Installed daloop           → $LOOP_DEST"
 say "  • Restart Claude Code (or start a new session) to load the three skills."
 say "  • Mint a key in the Daloop app → API keys, then:  export DALOOP_API_KEY=…"
 say "  • Initialize a loop:  node \"$DEST/daloop.mjs\" init --team <teamId> --project <slug>"

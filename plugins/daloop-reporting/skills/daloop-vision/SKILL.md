@@ -6,7 +6,7 @@ description: Use to author or extend a project's Daloop vision — interview the
 # Daloop Vision Authoring
 
 Interview the user to produce a **`vision.json`** — the goals, scenarios, scoring
-rubrics, and (optional) per-scenario test commands that the `/daloop-loop` driver
+rubrics, and (optional) per-scenario test commands that the `/daloop` driver
 later builds toward and scores against.
 
 ## Output: vision.json
@@ -69,8 +69,8 @@ Field rules:
 ## Boundaries
 
 - You author the **what** (the vision). You do NOT generate the plan, write code, run
-  tests, or score anything — that is `/daloop-loop`'s job. When the vision is ready,
-  tell the user they can run `/daloop-loop` to build toward it.
+  tests, or score anything — that is `/daloop`'s job. When the vision is ready,
+  tell the user they can run `/daloop` to build toward it.
 - Keep scenarios concrete and few; a good first vision is 1–3 goals with 1–3 scenarios
   each. Resist inventing criteria the user didn't ask for (YAGNI).
 
