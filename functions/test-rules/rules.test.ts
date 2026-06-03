@@ -232,15 +232,24 @@ describe("rules: invites", () => {
   });
 });
 
+async function seedProjectTree(teamId: string) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const fs = ctx.firestore();
+    await fs.doc(`teams/${teamId}/projects/web`).set({ title: "Web", status: "running" });
+    await fs.doc(`teams/${teamId}/projects/web/phases/p1`).set({ name: "A", order: 1, status: "running" });
+    await fs.doc(`teams/${teamId}/projects/web/phases/p1/commits/abc`).set({ message: "m", author: "a" });
+    await fs.doc(`teams/${teamId}/projects/web/goals/g1`).set({ title: "Ship", order: 1 });
+    await fs.doc(`teams/${teamId}/projects/web/scenarios/s1`).set({ goalId: "g1", title: "S", rubric: { criteria: [] } });
+    await fs.doc(`teams/${teamId}/projects/web/tasks/t1`).set({ phaseId: "p1", title: "T", order: 1, status: "running" });
+    await fs.doc(`teams/${teamId}/projects/web/tasks/t1/commits/c1`).set({ message: "m", author: "a" });
+    await fs.doc(`teams/${teamId}/projects/web/scores/01ABC`).set({ scenarioId: "s1", taskId: "t1", composite: 80 });
+    await fs.doc(`teams/${teamId}/projects/web/testRuns/01DEF`).set({ scenarioId: "s1", taskId: "t1", passed: 1, failed: 0 });
+    await fs.doc(`teams/${teamId}/projects/web/revisions/01GHI`).set({ trigger: { scenarioId: "s1", reason: "x" }, changes: [] });
+    await fs.doc(`teams/${teamId}/projects/web/documents/d1`).set({ kind: "vision", title: "V", format: "markdown", content: "x" });
+  });
+}
+
 describe("rules: projects + isolation", () => {
-  async function seedProjectTree(teamId: string) {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      const fs = ctx.firestore();
-      await fs.doc(`teams/${teamId}/projects/web`).set({ title: "Web", status: "running" });
-      await fs.doc(`teams/${teamId}/projects/web/phases/p1`).set({ name: "A", order: 1, status: "running" });
-      await fs.doc(`teams/${teamId}/projects/web/phases/p1/commits/abc`).set({ message: "m", author: "a" });
-    });
-  }
 
   it("members can read project, phase, and commit docs", async () => {
     await seedTeam("t1", "alice");
@@ -272,6 +281,28 @@ describe("rules: projects + isolation", () => {
     await assertFails(alice.doc("teams/t2/projects/web").get());
     await assertFails(alice.doc("teams/t2/members/bob").get());
     await assertFails(alice.doc("teams/t2/invites/i9").get());
+  });
+});
+
+describe("rules: loop-contract subcollections", () => {
+  const paths = [
+    "goals/g1", "scenarios/s1", "tasks/t1", "tasks/t1/commits/c1",
+    "scores/01ABC", "testRuns/01DEF", "revisions/01GHI", "documents/d1",
+  ];
+  it("members can read every loop-contract doc", async () => {
+    await seedTeam("t1", "alice"); await seedMember("t1", "alice", "member"); await seedProjectTree("t1");
+    const db = authed("alice");
+    for (const p of paths) await assertSucceeds(db.doc(`teams/t1/projects/web/${p}`).get());
+  });
+  it("non-members cannot read loop-contract docs", async () => {
+    await seedTeam("t1", "alice"); await seedMember("t1", "alice", "member"); await seedProjectTree("t1");
+    const db = authed("bob");
+    for (const p of paths) await assertFails(db.doc(`teams/t1/projects/web/${p}`).get());
+  });
+  it("clients cannot write loop-contract docs, even an owner", async () => {
+    await seedTeam("t1", "alice"); await seedMember("t1", "alice", "owner"); await seedProjectTree("t1");
+    const db = authed("alice");
+    for (const p of paths) await assertFails(db.doc(`teams/t1/projects/web/${p}`).set({ x: 1 }));
   });
 });
 
