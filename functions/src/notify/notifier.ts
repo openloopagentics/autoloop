@@ -16,6 +16,10 @@ export async function processScenarioEvent(teamId: string, slug: string, scenari
   const scnSnap = await db().doc(`${base}/scenarios/${scenarioId}`).get();
   if (!scnSnap.exists) return;
   const scenario = { id: scenarioId, threshold: scnSnap.data()!.threshold as number | undefined };
+  // NOTE: this read-modify-write of lastNotifiedState is retry-safe (a retry re-reads the
+  // updated state and no-ops) but NOT concurrency-safe; per-scenario scores are written
+  // serially today, so concurrent double-notify is not a concern. Wrap in a transaction
+  // if concurrent scoring is ever introduced.
   const lastState = scnSnap.data()!.lastNotifiedState as State | undefined;
   const scores = await colById(`${base}/scores`) as Array<{ id: string; scenarioId?: string; composite?: number }>;
   const testRuns = await colById(`${base}/testRuns`) as Array<{ id: string; scenarioId?: string; failed?: number }>;
