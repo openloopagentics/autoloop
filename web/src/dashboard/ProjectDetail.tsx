@@ -1,39 +1,72 @@
 import { useParams, Link } from "react-router-dom";
-import { useProject, usePhases, useCommits } from "./hooks";
+import {
+  useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits,
+} from "./hooks";
 import { ProjectHeader } from "./components/ProjectHeader";
+import { ScenariosMetBanner } from "./components/ScenariosMetBanner";
+import { VisionSection } from "./components/VisionSection";
+import { PlanSection } from "./components/PlanSection";
+import { TaskItem } from "./components/TaskItem";
 import { PhaseItem } from "./components/PhaseItem";
+import { RevisionTimeline } from "./components/RevisionTimeline";
+import { DocumentsSection } from "./components/DocumentsSection";
 import { Spinner } from "./components/Spinner";
 import { ErrorNote } from "./components/ErrorNote";
 import { EmptyState } from "./components/EmptyState";
-import type { Phase } from "./types";
+import { summarize } from "./scenarioState";
+import type { Phase, Task } from "./types";
 
-function PhaseItemContainer({ teamId, slug, phase }: { teamId: string; slug: string; phase: Phase & { id?: string } }) {
-  const { data: commits } = useCommits(teamId, slug, phase.id ?? "");
-  return <PhaseItem phase={phase} commits={commits} />;
+// Small containers so commit hooks are called at component top-level (not in a callback).
+function LegacyPhase({ teamId, slug, phase }: { teamId: string; slug: string; phase: Phase }) {
+  const { data } = useCommits(teamId, slug, phase.id ?? "");
+  return <PhaseItem phase={phase} commits={data} />;
+}
+function PlanTask({ teamId, slug, task }: { teamId: string; slug: string; task: Task }) {
+  const { data } = useTaskCommits(teamId, slug, task.id);
+  return <TaskItem task={task} commits={data} />;
 }
 
 export function ProjectDetail() {
   const { teamId = "", slug = "" } = useParams();
   const project = useProject(teamId, slug);
   const phases = usePhases(teamId, slug);
+  const goals = useGoals(teamId, slug);
+  const scenarios = useScenarios(teamId, slug);
+  const tasks = useTasks(teamId, slug);
+  const scores = useScores(teamId, slug);
+  const testRuns = useTestRuns(teamId, slug);
+  const revisions = useRevisions(teamId, slug);
+  const documents = useDocuments(teamId, slug);
+
+  const hasScenarios = scenarios.data.length > 0;
+  const { met, total } = summarize(scenarios.data, scores.data, testRuns.data);
 
   return (
     <div className="main main--narrow">
       <Link to="/dashboard" className="back">← back to dashboard</Link>
-
       {project.loading ? <Spinner />
         : project.error ? <ErrorNote message={project.error} />
         : project.data === null ? <EmptyState message="Project not found." />
         : (
           <>
             {project.data && <ProjectHeader project={project.data} />}
-            <div className="proj-section-head">
-              <h2 className="proj-section-title">Phases</h2>
-            </div>
-            {phases.loading ? <Spinner />
-              : phases.error ? <ErrorNote message={phases.error} />
-              : phases.data.length === 0 ? <EmptyState message="No phases yet." />
-              : <div className="phaselist">{phases.data.map((p) => <PhaseItemContainer key={(p as { id?: string }).id} teamId={teamId} slug={slug} phase={p} />)}</div>}
+            {hasScenarios && <ScenariosMetBanner met={met} total={total} />}
+            {hasScenarios && <VisionSection goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />}
+
+            {(phases.loading || tasks.loading) ? <Spinner />
+              : (phases.error || tasks.error) ? <ErrorNote message={phases.error || tasks.error || ""} />
+              : (
+                <PlanSection
+                  phases={phases.data}
+                  tasks={tasks.data}
+                  renderLegacyPhase={(p) => <LegacyPhase teamId={teamId} slug={slug} phase={p} />}
+                  renderTask={(t) => <PlanTask teamId={teamId} slug={slug} task={t} />}
+                />
+              )}
+
+            <RevisionTimeline revisions={revisions.data} />
+            <DocumentsSection documents={documents.data} />
           </>
         )}
     </div>

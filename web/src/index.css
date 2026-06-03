@@ -616,3 +616,165 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .grant-form { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
 .grant-form .input { flex: 1; min-width: 150px; }
+
+/* ==========================================================================
+   VISION LOOP — scenarios met banner
+   ========================================================================== */
+.metbanner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px var(--card-pad); margin-bottom: var(--gap);
+  border-left: 3px solid var(--brand);
+}
+.metbanner--all {
+  border-color: var(--st-completed);
+  background: color-mix(in oklab, var(--st-completed) 8%, var(--surface-raised));
+}
+.metbanner-num {
+  font-size: 20px; font-weight: 700; color: var(--brand);
+  font-family: var(--font-serif); letter-spacing: -0.02em; flex-shrink: 0;
+}
+.metbanner--all .metbanner-num { color: var(--st-completed); }
+.metbanner-label { font-size: 12.5px; color: var(--fg-soft); }
+
+/* ==========================================================================
+   VISION LOOP — goals + scenario grid
+   ========================================================================== */
+.goalblock { margin-bottom: var(--section-gap); }
+.goal-title {
+  font-family: var(--font-serif); font-size: 15px; font-weight: 600;
+  color: var(--fg); margin: 0 0 5px;
+}
+.goal-desc { font-size: 13px; color: var(--fg-soft); margin: 0 0 12px; }
+
+.scngrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--gap);
+}
+
+/* scenario card */
+.scncard { padding: var(--card-pad); display: flex; flex-direction: column; gap: 10px; }
+.scncard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.scncard-title { font-size: 13.5px; font-weight: 600; color: var(--fg); flex: 1; min-width: 0; }
+
+/* scenario badge (met / unmet / pending) */
+.scnbadge {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px; border-radius: var(--radius-full);
+  font-size: 11px; font-weight: 500; letter-spacing: 0.02em; white-space: nowrap; flex-shrink: 0;
+}
+.scnbadge.scn-met {
+  color: var(--st-completed);
+  background: color-mix(in oklab, var(--st-completed) 15%, transparent);
+  border: 1px solid color-mix(in oklab, var(--st-completed) 35%, transparent);
+}
+.scnbadge.scn-unmet {
+  color: var(--st-blocked);
+  background: color-mix(in oklab, var(--st-blocked) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--st-blocked) 30%, transparent);
+}
+.scnbadge.scn-pending {
+  color: var(--fg-meta);
+  background: color-mix(in oklab, var(--fg-meta) 10%, transparent);
+  border: 1px solid var(--border-soft);
+}
+
+/* light tint on the whole card for met/unmet */
+.scncard.scn-met   { border-color: color-mix(in oklab, var(--st-completed) 28%, var(--border)); }
+.scncard.scn-unmet { border-color: color-mix(in oklab, var(--st-blocked)   22%, var(--border)); }
+
+.scncard-desc { font-size: 12.5px; color: var(--fg-soft); margin: 0; line-height: 1.55; }
+
+/* score bar */
+.scncard-score { display: flex; align-items: center; gap: 10px; }
+.scorebar {
+  flex: 1; height: 6px; border-radius: var(--radius-full);
+  background: var(--surface-inset); border: 1px solid var(--border-soft);
+  position: relative; overflow: visible;
+}
+.scorebar-fill {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  border-radius: var(--radius-full);
+  background: var(--brand);
+  transition: width .3s ease;
+}
+.scncard.scn-met .scorebar-fill   { background: var(--st-completed); }
+.scncard.scn-unmet .scorebar-fill { background: color-mix(in oklab, var(--st-blocked) 70%, var(--brand)); }
+.scorebar-thresh {
+  position: absolute; top: -3px; bottom: -3px; width: 2px;
+  background: var(--fg-meta); border-radius: 1px; opacity: 0.55;
+}
+.scorebar-val { font-size: 11.5px; color: var(--fg-soft); flex-shrink: 0; min-width: 24px; text-align: right; }
+
+.scncard-test { font-size: 12px; color: var(--fg-meta); }
+
+.scncard-hist { font-size: 12px; color: var(--fg-soft); }
+.scncard-hist summary { cursor: pointer; color: var(--fg-meta); }
+.scncard-hist summary:hover { color: var(--fg-soft); }
+.scnhist {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px;
+  list-style: none; padding: 0;
+}
+.scnhist li {
+  font-size: 11.5px; color: var(--fg-body);
+  background: var(--surface-inset); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs); padding: 2px 6px;
+}
+
+/* ==========================================================================
+   VISION LOOP — plan (tasks mode)
+   ========================================================================== */
+.planlist { display: flex; flex-direction: column; gap: var(--gap); }
+
+.planphase { overflow: hidden; }
+.planphase-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px var(--card-pad); border-bottom: 1px solid var(--border-soft);
+  background: color-mix(in oklab, var(--brand) 5%, var(--surface-raised));
+}
+.planphase-name { font-size: 13.5px; font-weight: 600; color: var(--fg); }
+
+.tasklist { display: flex; flex-direction: column; }
+.taskrow { border-bottom: 1px solid var(--border-soft); }
+.taskrow:last-child { border-bottom: none; }
+.taskrow-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px var(--card-pad); flex-wrap: wrap;
+}
+.taskrow-name { font-size: 13px; font-weight: 500; color: var(--fg); flex: 1; min-width: 0; }
+.taskrow-scns { font-size: 11.5px; color: var(--fg-meta); flex-shrink: 0; }
+.taskrow-count { font-size: 11.5px; color: var(--fg-meta); flex-shrink: 0; white-space: nowrap; margin-left: auto; }
+
+/* commits inside a taskrow get a slightly inset look */
+.taskrow .commits { padding: 0 var(--card-pad) 10px; border-top: 1px solid var(--border-soft); background: var(--surface-inset); }
+
+/* ==========================================================================
+   VISION LOOP — revision timeline
+   ========================================================================== */
+.revlist { display: flex; flex-direction: column; gap: var(--gap); list-style: none; padding: 0; }
+.revrow { padding: var(--card-pad); display: flex; flex-direction: column; gap: 8px; }
+.revrow-trigger { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.revrow-scn { font-size: 12px; color: var(--accent); }
+.revrow-reason { font-size: 13px; color: var(--fg-body); }
+.revchanges { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.revchange {
+  font-size: 12.5px; color: var(--fg-soft); display: flex; gap: 8px; align-items: baseline;
+  padding: 4px 10px; background: var(--surface-inset); border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+}
+
+/* ==========================================================================
+   VISION LOOP — documents section
+   ========================================================================== */
+.doclist { display: flex; flex-direction: column; gap: var(--gap); }
+.docrow { padding: var(--card-pad); display: flex; flex-direction: column; gap: 8px; }
+.docrow-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.docrow-title {
+  font-size: 13.5px; font-weight: 600; color: var(--fg);
+  transition: color .15s; text-decoration: none; flex: 1; min-width: 0;
+}
+a.docrow-title:hover { color: var(--accent); }
+.docrow-url { font-size: 12px; color: var(--fg-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ensure long markdown content wraps rather than overflows */
+.doc-pre, pre { white-space: pre-wrap; }
