@@ -87,7 +87,7 @@ export const scoreBody = z.object({
   scenarioId: id,
   taskId: id,
   commitSha: id.optional(),
-  criteria: z.record(z.string(), z.number().int().min(0)),
+  criteria: z.record(z.string(), z.number().int().min(0)).refine((c) => Object.keys(c).length > 0, "criteria must not be empty"),
   composite: z.number().min(0).max(100),
   by: z.string().min(1).optional(),
   note: z.string().optional(),

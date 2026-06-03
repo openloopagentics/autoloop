@@ -60,6 +60,10 @@ describe("loop-contract schemas", () => {
     expect(scoreBody.safeParse({ scenarioId: "s1", taskId: "t1", criteria: { c1: -1 }, composite: 80 }).success).toBe(false);
     expect(scoreBody.safeParse({ scenarioId: "s1", taskId: "t1", criteria: { c1: 3 }, composite: 101 }).success).toBe(false);
   });
+  it("rejects a score with empty criteria", () => {
+    expect(scoreBody.safeParse({ scenarioId: "s1", taskId: "t1", criteria: {}, composite: 80 }).success).toBe(false);
+    expect(scoreBody.safeParse({ scenarioId: "s1", taskId: "t1", criteria: { c1: 3 }, composite: 80 }).success).toBe(true);
+  });
   it("document content is capped at 100KB and format is markdown|url", () => {
     expect(documentBody.safeParse({ kind: "vision", title: "V", format: "markdown", content: "x" }).success).toBe(true);
     expect(documentBody.safeParse({ format: "pdf" }).success).toBe(false);
