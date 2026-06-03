@@ -44,6 +44,9 @@ best-effort: a `daloop` warning is noted, never fatal — it must not derail the
        honest judge — cite what's missing). Compute the weighted composite normalised
        to `0..100`:
        `composite = round(100 * Σ(value_i × weight_i) / Σ(max_i × weight_i))`.
+       (The **rounded** composite is the value reported and the one the `met` rule in
+       step 3 compares to the threshold — e.g. a raw 79.5 rounds to 80 and counts as met
+       at threshold 80.)
        Report:
        `daloop score <scenarioId> --task <taskId> --criterion <id>=<value> [--criterion ...] --composite <n> --commit <sha> [--note "..."]`.
 
