@@ -37,4 +37,10 @@ describe("PUT /v1/teams/:teamId/projects/:slug/goals/:goalId", () => {
     expect(g.title).toBe("Ship"); // unchanged on patch
     expect(g.description).toBe("x");
   });
+  it("stamps visionOwner 'loop' on the project when an agent upserts a goal", async () => {
+    await createProject();
+    await request(app).put("/v1/teams/team1/projects/acme/goals/g1").set(authHeader()).send({ title: "Ship" });
+    const proj = (await db().doc("teams/team1/projects/acme").get()).data()!;
+    expect(proj.visionOwner).toBe("loop");
+  });
 });

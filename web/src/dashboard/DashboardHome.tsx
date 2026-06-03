@@ -1,8 +1,12 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMyTeams, useTeam, useTeamProjects } from "./hooks";
 import { TeamSection } from "./components/TeamSection";
 import { Spinner } from "./components/Spinner";
 import { ErrorNote } from "./components/ErrorNote";
 import { EmptyState } from "./components/EmptyState";
+import { NewProjectForm } from "./components/edit/NewProjectForm";
+import { putProject } from "./api";
 import type { TeamRef } from "./types";
 
 function TeamSectionContainer({ teamRef }: { teamRef: TeamRef }) {
@@ -21,6 +25,15 @@ function TeamSectionContainer({ teamRef }: { teamRef: TeamRef }) {
 
 export function DashboardHome() {
   const { data: teams, loading, error } = useMyTeams();
+  const navigate = useNavigate();
+  const [showNew, setShowNew] = useState(false);
+
+  async function createProject({ teamId, slug, title }: { teamId: string; slug: string; title: string }) {
+    await putProject(teamId, slug, { title });
+    setShowNew(false);
+    navigate(`/dashboard/${teamId}/${slug}`);
+  }
+
   return (
     <div className="main">
       <div className="page-head dash-head">
@@ -30,6 +43,13 @@ export function DashboardHome() {
         </div>
         <span className="live-pill"><span className="sdot s-running is-live" /> live</span>
       </div>
+
+      {teams.length > 0 && (
+        <div className="dash-newproj">
+          <button className="btn btn-sm btn-ghost" type="button" onClick={() => setShowNew((v) => !v)}>+ New project</button>
+          {showNew && <NewProjectForm teams={teams} onCreate={createProject} />}
+        </div>
+      )}
 
       {loading ? <Spinner />
         : error ? <ErrorNote message={error} />

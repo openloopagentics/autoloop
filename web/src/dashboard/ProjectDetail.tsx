@@ -6,6 +6,7 @@ import {
 import { ProjectHeader } from "./components/ProjectHeader";
 import { ScenariosMetBanner } from "./components/ScenariosMetBanner";
 import { VisionSection } from "./components/VisionSection";
+import { VisionEditableSection } from "./VisionEditableSection";
 import { PlanSection } from "./components/PlanSection";
 import { TaskItem } from "./components/TaskItem";
 import { PhaseItem } from "./components/PhaseItem";
@@ -40,6 +41,7 @@ export function ProjectDetail() {
   const documents = useDocuments(teamId, slug);
 
   const hasScenarios = scenarios.data.length > 0;
+  const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
   const { met, total } = summarize(scenarios.data, scores.data, testRuns.data);
 
   return (
@@ -52,7 +54,9 @@ export function ProjectDetail() {
           <>
             {project.data && <ProjectHeader project={project.data} />}
             {hasScenarios && <ScenariosMetBanner met={met} total={total} />}
-            {hasScenarios && <VisionSection goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />}
+            {editable
+              ? <VisionEditableSection teamId={teamId} slug={slug} goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} documents={documents.data} />
+              : hasScenarios && <VisionSection goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />}
 
             {(phases.loading || tasks.loading) ? <Spinner />
               : (phases.error || tasks.error) ? <ErrorNote message={phases.error || tasks.error || ""} />

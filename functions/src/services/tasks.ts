@@ -40,6 +40,6 @@ export async function upsertTask(teamId: string, slug: string, taskId: string, b
     const currentTaskId = computeCurrentTaskId(currentPhaseId, tasks);
 
     tx.set(taskRef, data, { merge: true });
-    tx.set(projectRef, { currentTaskId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(projectRef, { currentTaskId, visionOwner: "loop", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });
 }
