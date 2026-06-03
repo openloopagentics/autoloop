@@ -29,7 +29,7 @@ below for a description of each.
 |-------|----------|---------|
 | `daloop-reporting` | `skills/daloop-reporting/SKILL.md` | Report a loop's live status (project, phases, commits, scores) to the Daloop dashboard. Auto-activates while a loop is running. |
 | `daloop-vision` | `skills/daloop-vision/SKILL.md` | Interview the user to author a `vision.json` file (goals, user scenarios, rubrics). Run once before starting the loop. |
-| `daloop-loop` | `skills/daloop-loop/SKILL.md` | Drive the vision-driven self-evaluating development loop: plan → execute → score → iterate, using the `vision.json` produced by `daloop-vision`. |
+| `daloop` | `skills/daloop/SKILL.md` | Drive the vision-driven self-evaluating development loop: plan → execute → score → iterate, using the `vision.json` produced by `daloop-vision`. (Invoke with `/daloop`.) |
 
 ## Layout
 
@@ -41,8 +41,8 @@ plugins/daloop-reporting/
 │   └── CODEX.md          # same commands, for Codex loops
 ├── skills/daloop-vision/
 │   └── SKILL.md          # vision authoring interview
-├── skills/daloop-loop/
-│   └── SKILL.md          # vision-driven self-evaluating loop driver
+├── skills/daloop/
+│   └── SKILL.md          # vision-driven self-evaluating loop driver (/daloop)
 └── bin/
     ├── daloop            # the CLI (added to $PATH when the plugin is active)
     └── vision-schema.mjs # JSON schema validator for vision.json

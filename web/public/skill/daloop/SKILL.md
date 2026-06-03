@@ -1,6 +1,6 @@
 ---
-name: daloop-loop
-description: Use to run a vision-driven, self-evaluating development loop from a vision.json — generate a task plan, implement each task, re-test and self-score the scenarios it advances, record revisions when quality is short, and report progress to Daloop. Trigger when the user wants to "run the loop", "build toward the vision", "/daloop-loop", or drive a scenario-scored build.
+name: daloop
+description: Use to run a vision-driven, self-evaluating development loop from a vision.json — generate a task plan, implement each task, re-test and self-score the scenarios it advances, record revisions when quality is short, and report progress to Daloop. Trigger when the user wants to "run the loop", "build toward the vision", "/daloop", or drive a scenario-scored build.
 ---
 
 # Daloop Loop Driver
