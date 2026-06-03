@@ -9,5 +9,8 @@ cd "$(dirname "$0")/.."
 cp cli/daloop.mjs web/public/skill/daloop.mjs
 cp cli/daloop.mjs plugins/daloop-reporting/bin/daloop
 chmod +x plugins/daloop-reporting/bin/daloop
+cp cli/vision-schema.mjs plugins/daloop-reporting/bin/vision-schema.mjs
+chmod +x plugins/daloop-reporting/bin/vision-schema.mjs
 
 echo "✓ synced cli/daloop.mjs → web/public/skill/daloop.mjs, plugins/daloop-reporting/bin/daloop"
+echo "✓ synced cli/vision-schema.mjs → plugins/daloop-reporting/bin/vision-schema.mjs"
