@@ -60,6 +60,11 @@ Field rules:
    isn't initialised, point the user to `daloop init --team <t> --project <slug>`
    (and the Daloop app's API-keys page to mint a key). The loop-local `scenario.test`
    field is dropped on import (it stays in your local `vision.json`).
+6. **Persist the test approach (optional).** When a scenario has a non-trivial test
+   approach — a command or a described verification procedure — optionally persist it as
+   a Document of `kind: "test-spec"`, e.g. `daloop doc add --kind test-spec --title
+   "<scenario> tests" --file <notes.md>` (or `--url <link>`), so the loop and the
+   dashboard share the test definition. This is optional; the loop reads it when present.
 
 ## Boundaries
 
