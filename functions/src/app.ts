@@ -10,6 +10,7 @@ import { projectsRouter } from "./routes/projects.js";
 import { phasesRouter } from "./routes/phases.js";
 import { commitsRouter } from "./routes/commits.js";
 import { goalsRouter } from "./routes/goals.js";
+import { scenariosRouter } from "./routes/scenarios.js";
 
 export function makeApp() {
   // Initialize the Admin SDK before any handler runs, so the ID-token auth
@@ -31,6 +32,7 @@ export function makeApp() {
   teamRouter.use("/:slug/phases/:phaseId/commits", commitsRouter);
   teamRouter.use("/:slug/phases", phasesRouter);
   teamRouter.use("/:slug/goals", goalsRouter);
+  teamRouter.use("/:slug/scenarios", scenariosRouter);
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);
 
