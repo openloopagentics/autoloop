@@ -637,11 +637,14 @@ export function DocumentsSection({ documents }: { documents: DocumentRec[] }) {
         {documents.map((d) => (
           <div key={d.id} className="docrow card">
             <div className="docrow-head">
-              <span className="docrow-title">{d.title ?? d.id}</span>
+              {/* url docs: the TITLE is the link (its accessible name is the title); markdown: plain title + <pre> body */}
+              {d.format === "url"
+                ? <a className="docrow-title" href={d.content} target="_blank" rel="noopener">{d.title ?? d.id}</a>
+                : <span className="docrow-title">{d.title ?? d.id}</span>}
               <code className="chip">{d.kind}</code>
             </div>
             {d.format === "url"
-              ? <a className="doc-link-url mono" href={d.content} target="_blank" rel="noopener">{d.content}</a>
+              ? <span className="docrow-url dim mono">{d.content}</span>
               : <pre className="doc-pre mono">{d.content}</pre>}
           </div>
         ))}
@@ -753,7 +756,7 @@ export function ProjectDetail() {
 
 - [ ] **Step 2: Add CSS** (`web/src/index.css`, append)
 
-Add classes used above, styled on the existing espresso/gold palette (reuse existing CSS variables — inspect the top of `index.css` for `--` tokens and match them). Minimum set: `.metbanner`, `.metbanner-num`, `.metbanner-label`, `.metbanner--all`; `.goalblock`, `.goal-title`, `.goal-desc`, `.scngrid`; `.scncard`, `.scncard-head`, `.scncard-title`, `.scnbadge`, `.scn-met`, `.scn-unmet`, `.scncard-desc`, `.scncard-score`, `.scorebar`, `.scorebar-fill`, `.scorebar-thresh`, `.scorebar-val`, `.scncard-test`, `.scncard-hist`, `.scnhist`; `.planlist`, `.planphase`, `.planphase-head`, `.planphase-name`, `.tasklist`, `.taskrow`, `.taskrow-head`, `.taskrow-name`, `.taskrow-scns`, `.taskrow-count`; `.revlist`, `.revrow`, `.revrow-trigger`, `.revrow-scn`, `.revrow-reason`, `.revchanges`, `.revchange`; `.doclist`, `.docrow`, `.docrow-head`, `.docrow-title`. Keep it simple and consistent (cards reuse `.card`; met=gold/green accent, unmet=muted; `.scorebar` a thin track with a filled portion and a threshold tick). Exact visual polish is at the implementer's discretion within the existing design language.
+Add classes used above, styled on the existing espresso/gold palette (reuse existing CSS variables — inspect the top of `index.css` for `--` tokens and match them). Minimum set: `.metbanner`, `.metbanner-num`, `.metbanner-label`, `.metbanner--all`; `.goalblock`, `.goal-title`, `.goal-desc`, `.scngrid`; `.scncard`, `.scncard-head`, `.scncard-title`, `.scnbadge`, `.scn-met`, `.scn-unmet`, `.scncard-desc`, `.scncard-score`, `.scorebar`, `.scorebar-fill`, `.scorebar-thresh`, `.scorebar-val`, `.scncard-test`, `.scncard-hist`, `.scnhist`; `.planlist`, `.planphase`, `.planphase-head`, `.planphase-name`, `.tasklist`, `.taskrow`, `.taskrow-head`, `.taskrow-name`, `.taskrow-scns`, `.taskrow-count`; `.revlist`, `.revrow`, `.revrow-trigger`, `.revrow-scn`, `.revrow-reason`, `.revchanges`, `.revchange`; `.doclist`, `.docrow`, `.docrow-head`, `.docrow-title`, `.docrow-url`. Keep it simple and consistent (cards reuse `.card`; met=gold/green accent, unmet=muted; `.scorebar` a thin track with a filled portion and a threshold tick). Give `.doc-pre` (and any markdown `<pre>`) `white-space: pre-wrap` so long content wraps inside the card instead of overflowing. Exact visual polish is at the implementer's discretion within the existing design language.
 
 - [ ] **Step 3: Type-check + build + full web tests**
 
@@ -786,7 +789,7 @@ Expected: `tsc -b` 0 errors + `vite build` succeeds.
 - [ ] **Step 3: Functions suite unaffected (sanity — no backend change expected)**
 
 Run: `cd functions && npm test`
-Expected: still 151/151 (this sub-project changed nothing under `functions/`).
+Expected: green, unchanged from the functions baseline (this sub-project changed nothing under `functions/`; treat a fully-green run as the criterion rather than a literal count).
 
 - [ ] **Step 4: Confirm success criteria by inspection**
 
