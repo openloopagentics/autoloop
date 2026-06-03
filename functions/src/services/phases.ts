@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../firestore.js";
 import { AppError } from "../errors.js";
 import { isTerminal, type Status } from "../status.js";
-import { computeCurrentPhaseId } from "../derive.js";
+import { computeCurrentPhaseId, computeCurrentTaskId, type TaskLite } from "../derive.js";
 import type { PhaseBody } from "../schemas.js";
 
 export async function upsertPhase(teamId: string, slug: string, phaseId: string, body: PhaseBody): Promise<void> {
@@ -18,6 +18,7 @@ export async function upsertPhase(teamId: string, slug: string, phaseId: string,
 
     const phaseSnap = await tx.get(phaseRef);
     const phasesSnap = await tx.get(projectRef.collection("phases"));
+    const tasksSnap = await tx.get(projectRef.collection("tasks"));
 
     const creating = !phaseSnap.exists;
     if (creating && (body.name === undefined || body.order === undefined || body.status === undefined)) {
@@ -51,8 +52,12 @@ export async function upsertPhase(teamId: string, slug: string, phaseId: string,
     phases.push({ id: phaseId, order: newOrder, status: newStatus });
     const currentPhaseId = computeCurrentPhaseId(phases);
 
+    const tasks: TaskLite[] = tasksSnap.docs
+      .map((d) => ({ id: d.id, phaseId: d.data().phaseId as string, order: d.data().order as number, status: d.data().status as Status }));
+    const currentTaskId = computeCurrentTaskId(currentPhaseId, tasks);
+
     // --- writes ---
     tx.set(phaseRef, phaseData, { merge: true });
-    tx.set(projectRef, { currentPhaseId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(projectRef, { currentPhaseId, currentTaskId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });
 }
