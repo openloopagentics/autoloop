@@ -72,6 +72,7 @@ describe("CLI end-to-end against the real API", () => {
     expect(await run(["revise", "--scenario", "s1", "--reason", "tighten", "--change", "add:t2"], opts)).toBe(0);
     expect(await run(["doc", "add", "--kind", "notes", "--title", "Run Notes", "--url", "https://x.com/n"], opts)).toBe(0);
 
+    expect((await db().doc("teams/loopteam/projects/web/goals/g1").get()).data()!.title).toBe("Ship");
     expect((await db().doc("teams/loopteam/projects/web/scenarios/s1").get()).data()!.title).toBe("Login");
     expect((await db().doc("teams/loopteam/projects/web/tasks/t1/commits/c0ffee").get()).data()!.message).toBe("feat: y");
     expect((await db().collection("teams/loopteam/projects/web/scores").get()).size).toBe(1);

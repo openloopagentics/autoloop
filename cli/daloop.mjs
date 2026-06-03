@@ -325,6 +325,7 @@ export async function run(argv, deps = {}) {
         return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "vision import": {
+        oneFlag("file", flags.file);
         if (!flags.file) throw new UsageError("vision import requires --file <vision.json>");
         const cfg = loadConfig(cwd);
         let vision;
@@ -332,23 +333,23 @@ export async function run(argv, deps = {}) {
         catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
         const apiBase = resolveApiUrl(cfg, env, flags.url);
         const strict = !!flags.strict || env.DALOOP_STRICT === "1";
-        const deps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
+        const reportDeps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
         const proj = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
         let worst = 0;
         for (const g of vision.goals ?? []) {
           validateId("goalId", g.id);
           const { id, ...body } = g;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/goals/${id}`, body }, deps));
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/goals/${id}`, body }, reportDeps));
         }
         for (const s of vision.scenarios ?? []) {
           validateId("scenarioId", s.id);
           const { id, ...body } = s;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, deps));
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
         }
         for (const d of vision.documents ?? []) {
           validateId("docId", d.id);
           const { id, ...body } = d;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/documents/${id}`, body }, deps));
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/documents/${id}`, body }, reportDeps));
         }
         return worst; // best-effort: 0 unless strict and some report failed
       }
