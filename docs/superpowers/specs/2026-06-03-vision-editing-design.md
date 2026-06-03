@@ -55,41 +55,58 @@ app.use("/v1/u/teams/:teamId/projects", makeRequireUser(), requireMember, userPr
 ```
 A distinct `/v1/u/...` subtree (the agent path stays at `/v1/teams/...`).
 
+### Refactor existing upserts to shared `(tx, …)` inner helpers — resolves transaction nesting
+
+The Firestore Admin SDK does **not** support nesting `runTransaction` inside another.
+So the web path must **not** call the existing `upsertGoal`/`upsertScenario`/
+`upsertDocument` (each opens its own transaction) from inside a guard transaction.
+Instead, refactor each entity service to expose a **pure inner helper** that takes the
+open `tx` and does the merge + project owner-stamp, and keep a thin public wrapper that
+opens the transaction for the agent path. For example in `services/goals.ts`:
+
+```
+// inner: assumes an open tx + an already-existence-checked project; stamps the owner.
+applyGoalUpsert(tx, projectRef, goalRef, body, owner: "web" | "loop")
+upsertGoal(teamId, slug, goalId, body)   // agent wrapper: runTransaction → check project
+                                          // → applyGoalUpsert(tx, …, "loop")
+```
+
+The agent wrapper preserves today's behavior **plus** stamps `visionOwner: "loop"`
+via `tx.set(projectRef, { visionOwner: "loop" }, { merge: true })` **inside the same
+transaction** (goals/scenarios/documents don't touch the project doc today, so this
+adds one in-transaction project write; `upsertTask` already writes the project doc, so
+it just adds the field). Stamping is applied to `upsertGoal`/`upsertScenario`/
+`upsertDocument`/`upsertTask` — the "a loop is driving this" signals. Plain
+`project set`/`phase` do **not** stamp owner, so a bare status board stays
+web-editable.
+
+### Ownership guard (`functions/src/services/visionOwner.ts`)
+
+`assertWebEditable(tx, projectSnap)` — given the project snapshot read at the top of a
+transaction: throws `404` if missing, `409 "project is loop-owned (read-only in the
+web)"` if `visionOwner === "loop"`; otherwise returns. (No TOCTOU: the read and the
+write happen in the **same** transaction.)
+
 ### `userProjectsRouter` (`functions/src/routes/userProjects.ts`)
 
-User-path (ID-token) endpoints. All reuse the **existing zod schemas** and, where
-possible, the **existing upsert services**, wrapped with the ownership guard:
+`Router({ mergeParams: true })` so its `:teamId`/`:slug` handlers see the mount params.
+User-path (ID-token) endpoints, each in **one** transaction that reads the project,
+calls `assertWebEditable`, runs the matching `applyXUpsert(tx, …, "web")`, and stamps
+`visionOwner: "web"`. They reuse the **existing zod schemas**:
 - `PUT /:slug` — create/patch a web project (reuses `projectBody`; on create stamps
-  `visionOwner: "web"`, `createdAt`, etc.; `status` defaults to `"running"`).
+  `visionOwner: "web"`, `createdAt`; `status` defaults to `"running"`). Create is
+  allowed when the project is absent; patch requires not-loop-owned.
 - `PUT /:slug/goals/:goalId`, `PUT /:slug/scenarios/:scenarioId`,
-  `PUT /:slug/documents/:docId` — reuse `goalBody`/`scenarioBody`/`documentBody` +
-  `upsertGoal`/`upsertScenario`/`upsertDocument`, guarded.
+  `PUT /:slug/documents/:docId` — guard + `applyXUpsert(tx, …, "web")`.
 - `DELETE /:slug/goals/:goalId`, `DELETE /:slug/scenarios/:scenarioId`,
-  `DELETE /:slug/documents/:docId` — **new delete services**.
+  `DELETE /:slug/documents/:docId` — new delete services (below).
 
 Responses use the existing envelope (`{ ok: true }` / error `{ error: {code,message} }`).
 
-### Ownership guard + stamping (`functions/src/services/visionOwner.ts`)
-
-- `assertWebEditable(tx, projectRef)` — reads the project; throws `404` if missing,
-  `409 "project is loop-owned (read-only in the web)"` if `visionOwner === "loop"`.
-- Web-path upserts run inside a transaction that calls `assertWebEditable` first, then
-  the entity write, then stamps `visionOwner: "web"` on the project.
-- Agent-path upserts (existing services) additionally stamp `visionOwner: "loop"` on
-  the project doc (a one-line merge added to `upsertGoal`/`upsertScenario`/
-  `upsertDocument`/`upsertTask`/`upsertCommit`/`vision import` — i.e. any agent write
-  asserts loop ownership). To keep this DRY and avoid editing six services, the agent
-  routes set it centrally: the existing `requireApiKeyMember` `teamRouter` adds a tiny
-  post-write step, OR each agent upsert sets it. **Decision:** stamp it in the agent
-  entity services that the loop's vision/plan use (`upsertGoal`, `upsertScenario`,
-  `upsertDocument`, `upsertTask`) — these are exactly the "a loop is driving this"
-  signals; commits/events imply a task already exists. (Plain `project set`/`phase`
-  do NOT stamp owner, so a bare status board stays web-editable.)
-
 ### Delete services (`functions/src/services/*.ts` additions)
 
-`deleteGoal`/`deleteScenario`/`deleteDocument(teamId, slug, id)` — transaction:
-assert project exists + web-editable, delete the doc. (Deleting a scenario does not
+`deleteGoal`/`deleteScenario`/`deleteDocument(teamId, slug, id)` — one transaction:
+read project, `assertWebEditable`, `tx.delete(docRef)`. (Deleting a scenario does not
 cascade to its events; orphaned scores/testRuns are harmless and rare in web-authored
 projects, which have no loop events. Documented.)
 
@@ -98,9 +115,15 @@ projects, which have no loop events. Documented.)
 ### Write client (`web/src/dashboard/api.ts`)
 
 A small helper that calls the `/v1/u/...` endpoints with the user's ID token
-(`auth.currentUser.getIdToken()`), mirroring the existing API-keys page POST pattern.
-Exposes typed `putGoal`/`deleteGoal`/`putScenario`/… returning `{ ok }` or throwing on
-non-2xx (with the server error message for the UI).
+(`auth.currentUser.getIdToken()`), mirroring the existing ID-token `Bearer` POST
+templates in `web/src/keys/client.ts` / `web/src/admin/client.ts`. Exposes typed
+`putGoal`/`deleteGoal`/`putScenario`/… returning `{ ok }` or throwing on non-2xx (with
+the server error message for the UI).
+
+**Project type:** add `visionOwner?: "web" | "loop"` to the dashboard `Project` type
+(`web/src/dashboard/types.ts`). **Absence of the field means web-editable** — a
+web-created project or a bare status board has no `visionOwner`, which is correct and
+not a bug; only the explicit `"loop"` value makes the web read-only.
 
 ### Edit UI (`web/src/dashboard/components/edit/…`)
 
