@@ -7,9 +7,12 @@ export const idPattern = /^[a-z0-9._-]+$/;
 
 const status = z.enum(STATUSES);
 
+const contentFormat = z.enum(["markdown", "url"]);
+const CONTENT_MAX_BYTES = 100 * 1024;
+
 const design = z.object({
-  format: z.enum(["markdown", "url"]),
-  content: z.string().max(100 * 1024, "design.content exceeds 100KB"),
+  format: contentFormat,
+  content: z.string().max(CONTENT_MAX_BYTES, "design.content exceeds 100KB"),
 });
 
 // All content fields optional (required-on-create is enforced in the service layer).
@@ -74,8 +77,8 @@ export const taskBody = z.object({
 export const documentBody = z.object({
   kind: z.string().min(1).optional(),
   title: z.string().min(1).optional(),
-  format: z.enum(["markdown", "url"]).optional(),
-  content: z.string().max(100 * 1024, "document.content exceeds 100KB").optional(),
+  format: contentFormat.optional(),
+  content: z.string().max(CONTENT_MAX_BYTES, "document.content exceeds 100KB").optional(),
 });
 
 // Events: append-only POST. All fields required (an event is never a partial patch);
