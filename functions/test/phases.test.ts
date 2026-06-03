@@ -70,6 +70,14 @@ describe("PUT /v1/teams/:teamId/projects/:slug/phases/:phaseId", () => {
     expect((await db().doc("teams/team1/projects/acme").get()).data()!.currentPhaseId).toBe("p1");
   });
 
+  it("breaks ties by id (alphabetically-lower) when two non-terminal phases share an order", async () => {
+    await createProject();
+    // write the higher id first to prove the tiebreak is by id, not write time
+    await request(app).put("/v1/teams/team1/projects/acme/phases/p2").set(authHeader()).send({ name: "B", order: 1, status: "running" });
+    await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader()).send({ name: "A", order: 1, status: "running" });
+    expect((await db().doc("teams/team1/projects/acme").get()).data()!.currentPhaseId).toBe("p1");
+  });
+
   it("sets currentPhaseId to null when all phases are terminal", async () => {
     await createProject();
     await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader()).send({ name: "A", order: 1, status: "running" });

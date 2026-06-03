@@ -13,7 +13,7 @@ export function computeCurrentPhaseId(phases: PhaseLite[]): string | null {
   return open.length > 0 ? open[0].id : null;
 }
 
-/** Lowest-order non-terminal task in the current phase; tiebreak by id. Null if no current phase. */
+/** Lowest-order non-terminal task in the current phase; tiebreak by id. Null if currentPhaseId is null or all tasks in the current phase are terminal. */
 export function computeCurrentTaskId(currentPhaseId: string | null, tasks: TaskLite[]): string | null {
   if (!currentPhaseId) return null;
   const open = tasks.filter((t) => t.phaseId === currentPhaseId && !isTerminal(t.status)).sort(byOrderThenId);
