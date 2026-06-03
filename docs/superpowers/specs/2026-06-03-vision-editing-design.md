@@ -82,7 +82,7 @@ web-editable.
 
 ### Ownership guard (`functions/src/services/visionOwner.ts`)
 
-`assertWebEditable(tx, projectSnap)` — given the project snapshot read at the top of a
+`assertWebEditable(projectSnap)` — given the project snapshot read at the top of a
 transaction: throws `404` if missing, `409 "project is loop-owned (read-only in the
 web)"` if `visionOwner === "loop"`; otherwise returns. (No TOCTOU: the read and the
 write happen in the **same** transaction.)
