@@ -11,6 +11,7 @@ import { phasesRouter } from "./routes/phases.js";
 import { commitsRouter } from "./routes/commits.js";
 import { goalsRouter } from "./routes/goals.js";
 import { scenariosRouter } from "./routes/scenarios.js";
+import { tasksRouter } from "./routes/tasks.js";
 
 export function makeApp() {
   // Initialize the Admin SDK before any handler runs, so the ID-token auth
@@ -33,6 +34,8 @@ export function makeApp() {
   teamRouter.use("/:slug/phases", phasesRouter);
   teamRouter.use("/:slug/goals", goalsRouter);
   teamRouter.use("/:slug/scenarios", scenariosRouter);
+  // NOTE: Task 8 will insert: teamRouter.use("/:slug/tasks/:taskId/commits", taskCommitsRouter) HERE, before /:slug/tasks
+  teamRouter.use("/:slug/tasks", tasksRouter);
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);
 
