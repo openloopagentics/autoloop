@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { GoalForm } from "./GoalForm";
 import { ScenarioForm } from "./ScenarioForm";
 import { DocumentForm } from "./DocumentForm";
+import { NewProjectForm } from "./NewProjectForm";
 
 describe("GoalForm", () => {
   it("submits title + order via onSave and clears", async () => {
@@ -89,5 +90,31 @@ describe("DocumentForm", () => {
     fireEvent.change(screen.getByPlaceholderText(/kind/i), { target: { value: "spec" } });
     // title + content empty
     expect(screen.getByRole("button", { name: /add document/i })).toBeDisabled();
+  });
+});
+
+describe("NewProjectForm", () => {
+  const teams = [{ teamId: "t1", role: "member" }];
+
+  it("submits teamId, slug, title via onCreate", async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<NewProjectForm teams={teams} onCreate={onCreate} />);
+    fireEvent.change(screen.getByPlaceholderText(/slug/i), { target: { value: "web" } });
+    fireEvent.change(screen.getByPlaceholderText(/project title/i), { target: { value: "Web" } });
+    fireEvent.click(screen.getByRole("button", { name: /create project/i }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ teamId: "t1", slug: "web", title: "Web" }));
+  });
+
+  it("disables submit for an invalid slug", () => {
+    render(<NewProjectForm teams={teams} onCreate={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/slug/i), { target: { value: "Bad Slug!" } });
+    fireEvent.change(screen.getByPlaceholderText(/project title/i), { target: { value: "Web" } });
+    expect(screen.getByRole("button", { name: /create project/i })).toBeDisabled();
+  });
+
+  it("disables submit with empty title", () => {
+    render(<NewProjectForm teams={teams} onCreate={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/slug/i), { target: { value: "web" } });
+    expect(screen.getByRole("button", { name: /create project/i })).toBeDisabled();
   });
 });
