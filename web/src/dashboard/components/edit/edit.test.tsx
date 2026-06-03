@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { GoalForm } from "./GoalForm";
 import { ScenarioForm } from "./ScenarioForm";
+import { DocumentForm } from "./DocumentForm";
 
 describe("GoalForm", () => {
   it("submits title + order via onSave and clears", async () => {
@@ -66,5 +67,27 @@ describe("ScenarioForm", () => {
     fireEvent.change(screen.getByPlaceholderText(/scenario title/i), { target: { value: "Login" } });
     // criterion left blank → invalid
     expect(screen.getByRole("button", { name: /add scenario/i })).toBeDisabled();
+  });
+});
+
+describe("DocumentForm", () => {
+  it("submits kind, title, format, content", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<DocumentForm onSave={onSave} />);
+    fireEvent.change(screen.getByPlaceholderText(/kind/i), { target: { value: "spec" } });
+    fireEvent.change(screen.getByPlaceholderText(/document title/i), { target: { value: "Spec" } });
+    fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "url" } });
+    fireEvent.change(screen.getByPlaceholderText(/content/i), { target: { value: "https://x/s" } });
+    fireEvent.click(screen.getByRole("button", { name: /add document/i }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "spec", title: "Spec", format: "url", content: "https://x/s",
+    })));
+  });
+
+  it("disables submit when a required field is empty", () => {
+    render(<DocumentForm onSave={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/kind/i), { target: { value: "spec" } });
+    // title + content empty
+    expect(screen.getByRole("button", { name: /add document/i })).toBeDisabled();
   });
 });
