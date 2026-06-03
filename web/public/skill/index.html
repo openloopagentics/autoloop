@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Daloop reporting skill — install</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Lora:wght@600&display=swap');
+  :root {
+    --surface:#1c1912; --raised:#232016; --inset:#18150f; --border:#3a3428;
+    --fg:#f2ece0; --body:#d4c9b4; --soft:#9a8f7a; --meta:#6a6055; --brand:#b89058;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--surface); color:var(--body);
+    font-family:'Inter',system-ui,sans-serif; line-height:1.6; font-size:15px;
+    -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:720px; margin:0 auto; padding:64px 24px 96px; }
+  .brand { display:flex; align-items:center; gap:11px; margin-bottom:40px; }
+  .brand svg { display:block; }
+  .brand span { font-family:'Lora',serif; font-size:20px; font-weight:600; color:var(--fg); letter-spacing:-.01em; }
+  h1 { font-family:'Lora',serif; font-weight:600; font-size:30px; color:var(--fg);
+    letter-spacing:-.02em; margin:0 0 10px; }
+  .lede { color:var(--soft); font-size:16px; margin:0 0 40px; }
+  h2 { font-family:'Lora',serif; font-weight:600; font-size:17px; color:var(--fg); margin:38px 0 12px; }
+  .step-eyebrow { font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--meta); margin-bottom:8px; }
+  p { margin:0 0 14px; }
+  code { font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:.9em;
+    background:var(--inset); border:1px solid var(--border); border-radius:4px; padding:1px 6px; color:var(--brand); }
+  pre { background:var(--inset); border:1px solid var(--border); border-radius:10px;
+    padding:16px 18px; overflow-x:auto; margin:0 0 14px; }
+  pre code { background:none; border:0; padding:0; color:var(--body); font-size:13px; line-height:1.7; }
+  .accent { color:var(--brand); }
+  .card { background:var(--raised); border:1px solid var(--border); border-radius:12px; padding:20px 22px; margin:0 0 14px; }
+  a { color:var(--brand); }
+  hr { border:0; border-top:1px solid var(--border); margin:40px 0; }
+  .muted { color:var(--meta); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M20 12a8 8 0 1 1-2.4-5.7" stroke="#b89058" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M20 4.4V8.2H16.2" stroke="#b89058" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="2.6" fill="#b89058"/>
+    </svg>
+    <span>daloop</span>
+  </div>
+
+  <div class="step-eyebrow">Claude Code skill</div>
+  <h1>Install the Daloop reporting skill</h1>
+  <p class="lede">Let your agentic loops report their status — project, phases, and commits — to your Daloop dashboard as they run.</p>
+
+  <h2>Option 1 — tell Claude Code</h2>
+  <p>Paste this into a Claude Code session:</p>
+  <div class="card">Install the Daloop reporting skill from <span class="accent">https://daloop-42b47.web.app/skill/install.sh</span></div>
+  <p class="muted">Claude Code will run the installer below for you.</p>
+
+  <h2>Option 2 — run it yourself</h2>
+  <pre><code>curl -fsSL https://daloop-42b47.web.app/skill/install.sh | bash</code></pre>
+  <p>This writes the skill and its bundled CLI to <code>~/.claude/skills/daloop-reporting/</code>. <strong>Restart Claude Code</strong> (or open a new session) — personal skills are discovered at session start.</p>
+
+  <h2>Want auto-updates? Install as a plugin</h2>
+  <p>The installer above is a one-shot copy. For an updatable install, add the Daloop plugin marketplace in Claude Code:</p>
+  <pre><code>/plugin marketplace add openloopagentics/daloop
+/plugin install daloop-reporting@daloop</code></pre>
+  <p>Then enable auto-update under <code>/plugin</code> → Marketplaces → <span class="accent">daloop</span>, or update any time with <code>/plugin marketplace update daloop</code>.</p>
+
+  <hr />
+
+  <h2>After installing</h2>
+  <pre><code># 1. Mint a key in the Daloop app → API keys
+export DALOOP_API_KEY=…
+
+# 2. Point a loop's working dir at your team + project
+node ~/.claude/skills/daloop-reporting/daloop.mjs init --team &lt;teamId&gt; --project &lt;slug&gt;</code></pre>
+  <p>From then on the skill auto-activates when a loop should report status. It needs <strong>Node 22+</strong> and the <code>DALOOP_API_KEY</code> env var.</p>
+
+  <p class="muted">Reporting is best-effort — a failed report never blocks the loop. Files: <a href="install.sh">install.sh</a> · <a href="SKILL.md">SKILL.md</a> · <a href="CODEX.md">CODEX.md</a> · <a href="daloop.mjs">daloop.mjs</a></p>
+</div>
+</body>
+</html>

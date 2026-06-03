@@ -21,8 +21,20 @@ function TeamSectionContainer({ teamRef }: { teamRef: TeamRef }) {
 
 export function DashboardHome() {
   const { data: teams, loading, error } = useMyTeams();
-  if (loading) return <Spinner />;
-  if (error) return <ErrorNote message={error} />;
-  if (teams.length === 0) return <EmptyState message="You're not on a team yet." />;
-  return <>{teams.map((t) => <TeamSectionContainer key={t.teamId} teamRef={t} />)}</>;
+  return (
+    <div className="main">
+      <div className="page-head dash-head">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-sub">Live status, streaming from your agents.</p>
+        </div>
+        <span className="live-pill"><span className="sdot s-running is-live" /> live</span>
+      </div>
+
+      {loading ? <Spinner />
+        : error ? <ErrorNote message={error} />
+        : teams.length === 0 ? <EmptyState message="You're not on a team yet." />
+        : teams.map((t) => <TeamSectionContainer key={t.teamId} teamRef={t} />)}
+    </div>
+  );
 }

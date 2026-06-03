@@ -34,13 +34,27 @@ export function KeysPage() {
   }
 
   return (
-    <div>
-      <h1>API Keys</h1>
-      <p>Keys let your agents report status. Set one as <code>DALOOP_API_KEY</code> for the daloop CLI.</p>
-      <KeyMintForm onMint={onMint} pending={pending} />
+    <div className="main main--narrow">
+      <div className="page-head">
+        <h1 className="page-title">API keys</h1>
+        <p className="page-sub">
+          Mint keys for the <code className="chip">daloop</code> CLI. Set one as{" "}
+          <code className="chip">DALOOP_API_KEY</code> so your agents can report status.
+        </p>
+      </div>
+
+      <section className="mblock">
+        <h2 className="mblock-title">Mint a key</h2>
+        <KeyMintForm onMint={onMint} pending={pending} />
+      </section>
+
       {revealed && <NewKeyReveal keyValue={revealed} onDismiss={() => setRevealed(null)} />}
       {error && <ErrorNote message={error} />}
-      {loading ? <Spinner /> : <KeyList keys={keys} onRevoke={onRevoke} />}
+
+      <section className="mblock">
+        <h2 className="mblock-title">Your keys{!loading && <span className="dim tnum" style={{ fontWeight: 400 }}>{keys.length}</span>}</h2>
+        {loading ? <Spinner /> : <KeyList keys={keys} onRevoke={onRevoke} />}
+      </section>
     </div>
   );
 }

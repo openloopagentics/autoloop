@@ -22,12 +22,24 @@ export function AdminPage() {
   const act = (p: Promise<unknown>) => p.then(refresh).catch((e) => setError((e as Error).message));
 
   return (
-    <div>
-      <h1>Admin — allowlist</h1>
-      <h2>Grant access by UID</h2>
-      <GrantByUidForm onGrant={(uid, email) => act(setAllowed(uid, true, email || undefined))} />
+    <div className="main main--narrow">
+      <div className="page-head">
+        <h1 className="page-title">Admin</h1>
+        <p className="page-sub">Manage the global access allowlist.</p>
+      </div>
+
+      <section className="mblock">
+        <h2 className="mblock-title">Grant access by UID</h2>
+        <p className="mblock-hint">For people who haven't signed in yet — use the User ID from their Request Access screen.</p>
+        <GrantByUidForm onGrant={(uid, email) => act(setAllowed(uid, true, email || undefined))} />
+      </section>
+
       {error && <ErrorNote message={error} />}
-      {loading ? <Spinner /> : <UserList users={users} onSetAllowed={(uid, next) => act(setAllowed(uid, next))} />}
+
+      <section className="mblock">
+        <h2 className="mblock-title">All users</h2>
+        {loading ? <Spinner /> : <UserList users={users} onSetAllowed={(uid, next) => act(setAllowed(uid, next))} />}
+      </section>
     </div>
   );
 }

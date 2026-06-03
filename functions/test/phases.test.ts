@@ -70,6 +70,14 @@ describe("PUT /v1/teams/:teamId/projects/:slug/phases/:phaseId", () => {
     expect((await db().doc("teams/team1/projects/acme").get()).data()!.currentPhaseId).toBe("p1");
   });
 
+  it("breaks ties by id (alphabetically-lower) when two non-terminal phases share an order", async () => {
+    await createProject();
+    // write the higher id first to prove the tiebreak is by id, not write time
+    await request(app).put("/v1/teams/team1/projects/acme/phases/p2").set(authHeader()).send({ name: "B", order: 1, status: "running" });
+    await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader()).send({ name: "A", order: 1, status: "running" });
+    expect((await db().doc("teams/team1/projects/acme").get()).data()!.currentPhaseId).toBe("p1");
+  });
+
   it("sets currentPhaseId to null when all phases are terminal", async () => {
     await createProject();
     await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader()).send({ name: "A", order: 1, status: "running" });
@@ -85,5 +93,19 @@ describe("PUT /v1/teams/:teamId/projects/:slug/phases/:phaseId", () => {
     await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader()).send({ status: "completed" });
     const second = (await db().doc("teams/team1/projects/acme/phases/p1").get()).data()!.endedAt;
     expect(second.toMillis()).toBe(first.toMillis());
+  });
+
+  it("recomputes currentTaskId when the current phase changes", async () => {
+    await createProject();
+    await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader()).send({ name: "A", order: 1, status: "running" });
+    await request(app).put("/v1/teams/team1/projects/acme/phases/p2").set(authHeader()).send({ name: "B", order: 2, status: "queued" });
+    await request(app).put("/v1/teams/team1/projects/acme/tasks/t1").set(authHeader()).send({ phaseId: "p1", title: "A", order: 1, status: "running" });
+    await request(app).put("/v1/teams/team1/projects/acme/tasks/t2").set(authHeader()).send({ phaseId: "p2", title: "B", order: 1, status: "queued" });
+    expect((await db().doc("teams/team1/projects/acme").get()).data()!.currentTaskId).toBe("t1");
+    // complete p1 -> current phase becomes p2 -> current task becomes t2
+    await request(app).put("/v1/teams/team1/projects/acme/phases/p1").set(authHeader()).send({ status: "completed" });
+    const project = (await db().doc("teams/team1/projects/acme").get()).data()!;
+    expect(project.currentPhaseId).toBe("p2");
+    expect(project.currentTaskId).toBe("t2");
   });
 });

@@ -15,7 +15,12 @@ export function makeRequireAdmin(verify: TokenVerifier = defaultVerifier): Reque
         ? auth.slice("Bearer ".length).trim() : undefined;
       if (!token) throw new AppError(401, "unauthorized", "missing ID token");
       let uid: string;
-      try { ({ uid } = await verify(token)); } catch { throw new AppError(401, "unauthorized", "invalid ID token"); }
+      try {
+        ({ uid } = await verify(token));
+      } catch (e) {
+        console.warn("ID token verification failed (requireAdmin):", (e as Error)?.message);
+        throw new AppError(401, "unauthorized", "invalid ID token");
+      }
       const snap = await db().doc(`users/${uid}`).get();
       const d = snap.data();
       if (!snap.exists || d?.isAllowed !== true || d?.isAdmin !== true) {
