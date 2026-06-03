@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const ID_RE = /^[a-z0-9._-]+$/;
+const CONTENT_MAX_BYTES = 100 * 1024;
 const isId = (v) => typeof v === "string" && ID_RE.test(v);
 const nonEmpty = (v) => typeof v === "string" && v.length > 0;
 
@@ -60,6 +61,7 @@ export function validateVision(v) {
     if (!nonEmpty(d?.title)) errors.push(`documents[${i}].title is required`);
     if (d?.format !== "markdown" && d?.format !== "url") errors.push(`documents[${i}].format must be markdown|url`);
     if (typeof d?.content !== "string") errors.push(`documents[${i}].content is required`);
+    if (typeof d?.content === "string" && d.content.length > CONTENT_MAX_BYTES) errors.push(`documents[${i}].content exceeds 100KB`);
   });
 
   return errors.length ? { ok: false, errors } : { ok: true };

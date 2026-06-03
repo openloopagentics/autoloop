@@ -41,6 +41,9 @@ describe("validateVision", () => {
   it("treats missing goals/scenarios/documents as empty (valid)", () => {
     expect(validateVision({})).toEqual({ ok: true });
   });
+  it("rejects document content over 100KB (matches zod cap)", () => {
+    expect(validateVision({ documents: [{ id: "d1", kind: "k", title: "t", format: "markdown", content: "x".repeat(100 * 1024 + 1) }] }).ok).toBe(false);
+  });
 });
 
 describe("stripForImport", () => {
