@@ -1,9 +1,13 @@
 import { describe, it, expect } from "vitest";
 import "./helpers.js";
-import { seedMember } from "./helpers.js";
+import { seedMember, authHeader } from "./helpers.js";
 import { db } from "../src/firestore.js";
 import { upsertBug } from "../src/services/bugs.js";
 import { upsertLoop } from "../src/services/loops.js";
+import request from "supertest";
+import { makeApp } from "../src/app.js";
+
+const app = makeApp();
 
 async function seedProject(teamId = "team1", slug = "acme") {
   await db().doc(`teams/${teamId}`).set({ name: "Team", createdBy: "u1" });
@@ -58,5 +62,39 @@ describe("upsertBug", () => {
     await seedMember("team1");
     await expect(upsertBug("team1", "ghost", "b1", { title: "X", status: "open" }))
       .rejects.toMatchObject({ httpStatus: 404 });
+  });
+});
+
+describe("PUT bugs (API)", () => {
+  it("creates a bug via the project-direct route", async () => {
+    await seedProject();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/bugs/b1").set(authHeader())
+      .send({ title: "Login breaks", status: "open" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true });
+    expect((await db().doc("teams/team1/projects/acme/bugs/b1").get()).data()!.title).toBe("Login breaks");
+  });
+
+  it("creates a bug via the loop-scoped route", async () => {
+    await seedProject();
+    await upsertLoop("team1", "acme", "l1", { goal: "g", order: 1, status: "running" });
+    const res = await request(app).put("/v1/teams/team1/projects/acme/loops/l1/bugs/b1").set(authHeader())
+      .send({ title: "X", status: "open" });
+    expect(res.status).toBe(200);
+    expect((await db().doc("teams/team1/projects/acme/loops/l1/bugs/b1").get()).exists).toBe(true);
+  });
+
+  it("400s when creating without title+status", async () => {
+    await seedProject();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/bugs/b1").set(authHeader())
+      .send({ title: "X" });
+    expect(res.status).toBe(400);
+  });
+
+  it("400s on an unknown status enum", async () => {
+    await seedProject();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/bugs/b1").set(authHeader())
+      .send({ title: "X", status: "wontfix" });
+    expect(res.status).toBe(400);
   });
 });
