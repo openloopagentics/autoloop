@@ -46,6 +46,14 @@ export function makeApp() {
   teamRouter.use("/:slug/scores", scoresRouter);
   teamRouter.use("/:slug/testRuns", testRunsRouter);
   teamRouter.use("/:slug/revisions", revisionsRouter);
+  // Loop-scoped variants reuse the SAME routers (mergeParams propagates :loopId).
+  // Order: more-specific mounts before the /:slug/loops entity mount.
+  teamRouter.use("/:slug/loops/:loopId/tasks/:taskId/commits", taskCommitsRouter);
+  teamRouter.use("/:slug/loops/:loopId/tasks", tasksRouter);
+  teamRouter.use("/:slug/loops/:loopId/phases", phasesRouter);
+  teamRouter.use("/:slug/loops/:loopId/scores", scoresRouter);
+  teamRouter.use("/:slug/loops/:loopId/testRuns", testRunsRouter);
+  teamRouter.use("/:slug/loops/:loopId/revisions", revisionsRouter);
   teamRouter.use("/:slug/loops", loopsRouter); // loop entity
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);
