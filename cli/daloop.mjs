@@ -20,14 +20,18 @@ export function parseArgs(argv) {
     if (a.startsWith("--")) {
       const key = a.slice(2);
       const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--")) { flags[key] = true; }
-      else { flags[key] = next; i++; }
+      const val = (next === undefined || next.startsWith("--")) ? true : (i++, next);
+      if (key in flags) flags[key] = [].concat(flags[key], val); // repeated -> array
+      else flags[key] = val;
     } else {
       positionals.push(a);
     }
   }
   return { positionals, flags };
 }
+
+export function asArray(v) { return v === undefined ? [] : Array.isArray(v) ? v : [v]; }
+function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "doc"; }
 
 export function validateStatus(s) {
   if (!STATUSES.includes(s)) throw new UsageError(`invalid status '${s}' (expected one of: ${STATUSES.join(", ")})`);
@@ -123,7 +127,7 @@ export async function run(argv, deps = {}) {
         validateId("teamId", teamId);
         validateId("projectSlug", projectSlug);
         const apiUrl = (typeof flags.url === "string" && flags.url) || DEFAULT_API_URL;
-        saveConfig(cwd, { apiUrl, teamId, projectSlug, currentPhaseId: null, phases: {} });
+        saveConfig(cwd, { apiUrl, teamId, projectSlug, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
         log(`daloop: initialized .daloop.json (team=${teamId}, project=${projectSlug})`);
         return 0;
       }
@@ -174,9 +178,90 @@ export async function run(argv, deps = {}) {
         return report({ method: "PUT", url, body: { name: rec.name, order: rec.order, status: flags.status } },
           { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
       }
+      case "goal set": {
+        const id = positionals[2]; validateId("goalId", id);
+        const cfg = loadConfig(cwd);
+        const body = {};
+        if (flags.title) body.title = flags.title;
+        if (flags.description) body.description = flags.description;
+        if (typeof flags.order === "string") body.order = Number(flags.order);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/goals/${id}`;
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "scenario set": {
+        const id = positionals[2]; validateId("scenarioId", id);
+        const cfg = loadConfig(cwd);
+        const body = {};
+        if (flags.goal) body.goalId = flags.goal;
+        if (flags.title) body.title = flags.title;
+        if (flags.description) body.description = flags.description;
+        if (typeof flags.order === "string") body.order = Number(flags.order);
+        if (typeof flags.threshold === "string") body.threshold = Number(flags.threshold);
+        if (flags.rubric) {
+          try { body.rubric = JSON.parse(readFileSync(join(cwd, flags.rubric), "utf8")); }
+          catch (e) { throw new UsageError(`could not read --rubric '${flags.rubric}': ${e.message}`); }
+        }
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/scenarios/${id}`;
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "task start": {
+        const id = positionals[2]; validateId("taskId", id);
+        if (!flags.phase || !flags.name || typeof flags.order !== "string") throw new UsageError("task start requires --phase <p> --name <n> --order <number>");
+        validateId("phase", flags.phase);
+        const order = Number(flags.order);
+        if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
+        const scenarioIds = flags.scenarios ? String(flags.scenarios).split(",").filter(Boolean) : [];
+        const cfg = loadConfig(cwd);
+        cfg.tasks = cfg.tasks || {};
+        cfg.tasks[id] = { phaseId: flags.phase, title: flags.name, order };
+        cfg.currentTaskId = id;
+        saveConfig(cwd, cfg);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/tasks/${id}`;
+        return report({ method: "PUT", url, body: { phaseId: flags.phase, title: flags.name, order, status: "running", scenarioIds } },
+          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "task set": {
+        const id = positionals[2]; validateId("taskId", id);
+        if (!flags.status) throw new UsageError("task set requires --status <s>");
+        validateStatus(flags.status);
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/tasks/${id}`;
+        return report({ method: "PUT", url, body: { status: flags.status } },
+          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "doc add": {
+        if (!flags.kind || !flags.title) throw new UsageError("doc add requires --kind <k> --title <t>");
+        if (!flags.file && !flags.url) throw new UsageError("doc add requires --file <path> or --url <url>");
+        const cfg = loadConfig(cwd);
+        let format, content;
+        if (flags.file) {
+          try { content = readFileSync(join(cwd, flags.file), "utf8"); }
+          catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
+          format = "markdown";
+        } else { format = "url"; content = flags.url; }
+        const docId = flags.id ? (validateId("docId", flags.id), flags.id) : slugify(flags.title);
+        // NOTE: --url is overloaded here (it's the DOCUMENT url, not an API-base override),
+        // so resolve the API base from cfg/env only — pass `undefined` as the flag override.
+        const url = `${resolveApiUrl(cfg, env, undefined)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/documents/${docId}`;
+        return report({ method: "PUT", url, body: { kind: flags.kind, title: flags.title, format, content } },
+          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
       case "commit": {
         const cfg = loadConfig(cwd);
-        if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `daloop phase start` first");
+        const apiBase = resolveApiUrl(cfg, env, flags.url);
+        const strict = !!flags.strict || env.DALOOP_STRICT === "1";
+        let taskId = (typeof flags.task === "string" && flags.task) || cfg.currentTaskId || null;
+        if (taskId) validateId("taskId", taskId);
+        if (!taskId) {
+          if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `daloop phase start` (or pass --task)");
+          taskId = "main";
+          const taskUrl = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/tasks/${taskId}`;
+          const tcode = await report({ method: "PUT", url: taskUrl, body: { phaseId: cfg.currentPhaseId, title: "Main", order: 0, status: "running", scenarioIds: [] } },
+            { env, fetchImpl, err, strict, teamId: cfg.teamId });
+          if (strict && tcode !== 0) return tcode;
+          cfg.currentTaskId = taskId; cfg.tasks = cfg.tasks || {}; cfg.tasks[taskId] = { phaseId: cfg.currentPhaseId, title: "Main", order: 0 };
+          saveConfig(cwd, cfg);
+        }
         let raw;
         try { raw = (gitRun ? gitRun(cwd) : defaultGitRun(cwd)).trim(); }
         catch (e) { throw new UsageError(`could not read git HEAD (is this a git repo with commits?): ${e.message}`); }
@@ -184,9 +269,9 @@ export async function run(argv, deps = {}) {
         validateId("sha", c.sha);
         if (!c.author) throw new UsageError("git author empty — set `git config user.name`");
         if (!c.message) throw new UsageError("git commit message empty");
-        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/phases/${cfg.currentPhaseId}/commits/${c.sha}`;
+        const url = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/tasks/${taskId}/commits/${c.sha}`;
         return report({ method: "PUT", url, body: { message: c.message, author: c.author, committedAt: c.committedAt } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict, teamId: cfg.teamId });
       }
       // commands added in later tasks
       default:

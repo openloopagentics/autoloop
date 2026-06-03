@@ -189,26 +189,43 @@ describe("parseGitHead", () => {
 });
 
 describe("commit", () => {
-  function initDir() {
+  function initDir(currentTaskId: string | null = null) {
     const dir = tmp();
-    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "build", phases: { build: { name: "Build", order: 1 } } });
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "build", currentTaskId, phases: { build: { name: "Build", order: 1 } }, tasks: {} });
     return dir;
   }
   const gitRun = () => "deadbeef\n2026-06-02T01:25:49-07:00\nAlice\nfix: thing";
 
-  it("PUTs the commit under currentPhaseId with git fields", async () => {
-    const dir = initDir();
-    let captured: any;
-    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
-      fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
+  it("auto-creates an implicit 'main' task then PUTs the commit under it", async () => {
+    const dir = initDir(); const calls: any[] = [];
+    const fetchImpl = async (url: string, init: any) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({}) }; };
+    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun, fetchImpl });
     expect(code).toBe(0);
-    expect(captured.url).toBe("http://api/v1/teams/acme/projects/web/phases/build/commits/deadbeef");
-    expect(JSON.parse(captured.init.body)).toMatchObject({ message: "fix: thing", author: "Alice", committedAt: "2026-06-02T01:25:49-07:00" });
+    expect(calls[0].url).toBe("http://api/v1/teams/acme/projects/web/tasks/main"); // implicit task created
+    expect(JSON.parse(calls[0].init.body)).toMatchObject({ phaseId: "build", title: "Main", order: 0, status: "running", scenarioIds: [] });
+    expect(calls[1].url).toBe("http://api/v1/teams/acme/projects/web/tasks/main/commits/deadbeef");
+    expect(loadConfig(dir).currentTaskId).toBe("main");
   });
 
-  it("exits 1 when no currentPhaseId", async () => {
+  it("uses --task when given (no implicit task)", async () => {
+    const dir = initDir(); let captured: any;
+    const code = await run(["commit", "--task", "t7"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
+      fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
+    expect(code).toBe(0);
+    expect(captured.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t7/commits/deadbeef");
+  });
+
+  it("uses currentTaskId when set (no implicit task)", async () => {
+    const dir = initDir("t3"); const calls: any[] = [];
+    await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
+      fetchImpl: async (url: string, init: any) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({}) }; } });
+    expect(calls).toHaveLength(1); // no implicit-task PUT
+    expect(calls[0].url).toBe("http://api/v1/teams/acme/projects/web/tasks/t3/commits/deadbeef");
+  });
+
+  it("exits 1 when no currentPhaseId and no task can be resolved", async () => {
     const dir = tmp();
-    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, phases: {} });
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
     const errs: string[] = [];
     const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), gitRun, fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
@@ -217,9 +234,48 @@ describe("commit", () => {
 
   it("exits 1 when git author is empty", async () => {
     const errs: string[] = [];
-    const code = await run(["commit"], { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+    const code = await run(["commit", "--task", "t1"], { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
       gitRun: () => "deadbeef\n2026-06-02T01:25:49-07:00\n\nfix: thing", fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/author/);
+  });
+});
+
+describe("parseArgs repeated flags", () => {
+  it("collects repeated flags into an array", () => {
+    const { flags } = parseArgs(["score", "s1", "--criterion", "a=1", "--criterion", "b=2"]);
+    expect(flags.criterion).toEqual(["a=1", "b=2"]);
+  });
+});
+
+describe("goal/scenario/task/doc verbs (request shapes)", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: null, phases: { p1: { name: "P", order: 1 } }, tasks: {} });
+    return dir;
+  }
+  const cap = () => { const c: any = {}; c.fetchImpl = async (url: string, init: any) => { c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true }) }; }; return c; };
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+
+  it("goal set PUTs the goal", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["goal", "set", "g1", "--title", "Ship", "--order", "1"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/goals/g1");
+    expect(JSON.parse(c.init.body)).toMatchObject({ title: "Ship", order: 1 });
+  });
+
+  it("task start PUTs the task, records it, and sets currentTaskId", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["task", "start", "t1", "--phase", "p1", "--name", "Build", "--order", "1", "--scenarios", "s1,s2"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t1");
+    expect(JSON.parse(c.init.body)).toMatchObject({ phaseId: "p1", title: "Build", order: 1, status: "running", scenarioIds: ["s1", "s2"] });
+    expect(loadConfig(dir).currentTaskId).toBe("t1");
+  });
+
+  it("doc add derives a docId from the title and sends url content", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["doc", "add", "--kind", "vision", "--title", "My Vision", "--url", "https://x.com/v"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/documents/my-vision");
+    expect(JSON.parse(c.init.body)).toMatchObject({ kind: "vision", title: "My Vision", format: "url", content: "https://x.com/v" });
   });
 });
