@@ -40,14 +40,16 @@ export async function appendTestRun(teamId: string, slug: string, body: TestRunB
   const { baseRef } = await resolveBase(teamId, slug, loopId);
   const id = ulid();
   // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
-  await baseRef.collection("testRuns").doc(id).set({
+  const data: Record<string, unknown> = {
     scenarioId: body.scenarioId,
     taskId: body.taskId,
     passed: body.passed,
     failed: body.failed,
     issues: body.issues ?? [],
     createdAt: FieldValue.serverTimestamp(),
-  });
+  };
+  if (body.summary !== undefined) data.summary = body.summary;
+  await baseRef.collection("testRuns").doc(id).set(data);
   return id;
 }
 
