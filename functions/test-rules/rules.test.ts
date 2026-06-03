@@ -246,6 +246,12 @@ async function seedProjectTree(teamId: string) {
     await fs.doc(`teams/${teamId}/projects/web/testRuns/01DEF`).set({ scenarioId: "s1", taskId: "t1", passed: 1, failed: 0 });
     await fs.doc(`teams/${teamId}/projects/web/revisions/01GHI`).set({ trigger: { scenarioId: "s1", reason: "x" }, changes: [] });
     await fs.doc(`teams/${teamId}/projects/web/documents/d1`).set({ kind: "vision", title: "V", format: "markdown", content: "x" });
+    // loop subtree: covered by the recursive match /projects/{slug}/{document=**} rule (no rules change).
+    await fs.doc(`teams/${teamId}/projects/web/loops/l1`).set({ goal: "g", order: 1, status: "running" });
+    await fs.doc(`teams/${teamId}/projects/web/loops/l1/phases/p1`).set({ name: "A", order: 1, status: "running" });
+    await fs.doc(`teams/${teamId}/projects/web/loops/l1/tasks/t1`).set({ phaseId: "p1", title: "T", order: 1, status: "running" });
+    await fs.doc(`teams/${teamId}/projects/web/loops/l1/tasks/t1/commits/c1`).set({ message: "m", author: "a" });
+    await fs.doc(`teams/${teamId}/projects/web/loops/l1/scores/01XYZ`).set({ scenarioId: "s1", taskId: "t1", composite: 80 });
   });
 }
 
@@ -300,6 +306,28 @@ describe("rules: loop-contract subcollections", () => {
     for (const p of paths) await assertFails(db.doc(`teams/t1/projects/web/${p}`).get());
   });
   it("clients cannot write loop-contract docs, even an owner", async () => {
+    await seedTeam("t1", "alice"); await seedMember("t1", "alice", "owner"); await seedProjectTree("t1");
+    const db = authed("alice");
+    for (const p of paths) await assertFails(db.doc(`teams/t1/projects/web/${p}`).set({ x: 1 }));
+  });
+});
+
+describe("rules: loop subcollections", () => {
+  const paths = [
+    "loops/l1", "loops/l1/phases/p1", "loops/l1/tasks/t1",
+    "loops/l1/tasks/t1/commits/c1", "loops/l1/scores/01XYZ",
+  ];
+  it("members can read every loop-scoped doc", async () => {
+    await seedTeam("t1", "alice"); await seedMember("t1", "alice", "member"); await seedProjectTree("t1");
+    const db = authed("alice");
+    for (const p of paths) await assertSucceeds(db.doc(`teams/t1/projects/web/${p}`).get());
+  });
+  it("non-members cannot read loop-scoped docs", async () => {
+    await seedTeam("t1", "alice"); await seedMember("t1", "alice", "member"); await seedProjectTree("t1");
+    const db = authed("bob");
+    for (const p of paths) await assertFails(db.doc(`teams/t1/projects/web/${p}`).get());
+  });
+  it("clients cannot write loop-scoped docs, even an owner", async () => {
     await seedTeam("t1", "alice"); await seedMember("t1", "alice", "owner"); await seedProjectTree("t1");
     const db = authed("alice");
     for (const p of paths) await assertFails(db.doc(`teams/t1/projects/web/${p}`).set({ x: 1 }));
