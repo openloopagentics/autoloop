@@ -121,6 +121,11 @@ service cloud.firestore {
           allow write: if false;
         }
       }
+
+      match /notifications/{notifId} {
+        allow read: if isMember(teamId);
+        allow write: if false;
+      }
     }
   }
 }
