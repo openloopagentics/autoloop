@@ -54,12 +54,16 @@ export function ProjectDetail() {
             {hasScenarios && <ScenariosMetBanner met={met} total={total} />}
             {hasScenarios && <VisionSection goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />}
 
-            <PlanSection
-              phases={phases.data}
-              tasks={tasks.data}
-              renderLegacyPhase={(p) => <LegacyPhase teamId={teamId} slug={slug} phase={p} />}
-              renderTask={(t) => <PlanTask teamId={teamId} slug={slug} task={t} />}
-            />
+            {(phases.loading || tasks.loading) ? <Spinner />
+              : (phases.error || tasks.error) ? <ErrorNote message={phases.error || tasks.error || ""} />
+              : (
+                <PlanSection
+                  phases={phases.data}
+                  tasks={tasks.data}
+                  renderLegacyPhase={(p) => <LegacyPhase teamId={teamId} slug={slug} phase={p} />}
+                  renderTask={(t) => <PlanTask teamId={teamId} slug={slug} task={t} />}
+                />
+              )}
 
             <RevisionTimeline revisions={revisions.data} />
             <DocumentsSection documents={documents.data} />

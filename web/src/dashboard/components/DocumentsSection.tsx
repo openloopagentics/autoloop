@@ -11,7 +11,7 @@ export function DocumentsSection({ documents }: { documents: DocumentRec[] }) {
             <div className="docrow-head">
               {/* url docs: the TITLE is the link (accessible name = title); markdown: plain title + <pre> body */}
               {d.format === "url"
-                ? <a className="docrow-title" href={d.content} target="_blank" rel="noopener">{d.title ?? d.id}</a>
+                ? <a className="docrow-title" href={d.content} target="_blank" rel="noopener noreferrer">{d.title ?? d.id}</a>
                 : <span className="docrow-title">{d.title ?? d.id}</span>}
               <code className="chip">{d.kind}</code>
             </div>
