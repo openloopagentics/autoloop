@@ -2,6 +2,7 @@ import { isTerminal, type Status } from "./status.js";
 
 export interface PhaseLite { id: string; order: number; status: Status; }
 export interface TaskLite { id: string; phaseId: string; order: number; status: Status; }
+export interface LoopLite { id: string; order: number; status: Status; }
 
 function byOrderThenId(a: { order: number; id: string }, b: { order: number; id: string }): number {
   return a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -17,5 +18,11 @@ export function computeCurrentPhaseId(phases: PhaseLite[]): string | null {
 export function computeCurrentTaskId(currentPhaseId: string | null, tasks: TaskLite[]): string | null {
   if (!currentPhaseId) return null;
   const open = tasks.filter((t) => t.phaseId === currentPhaseId && !isTerminal(t.status)).sort(byOrderThenId);
+  return open.length > 0 ? open[0].id : null;
+}
+
+/** Lowest-order non-terminal loop; tiebreak by id. Null if all terminal / none. */
+export function computeCurrentLoopId(loops: LoopLite[]): string | null {
+  const open = loops.filter((l) => !isTerminal(l.status)).sort(byOrderThenId);
   return open.length > 0 ? open[0].id : null;
 }
