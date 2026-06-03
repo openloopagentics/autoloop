@@ -5,7 +5,7 @@
     {
       "name": "daloop-reporting",
       "source": "./plugins/daloop-reporting",
-      "description": "Report a development loop's status (project, phases, commits) to a Daloop dashboard via the bundled daloop CLI."
+      "description": "Author a vision, drive a self-evaluating development loop, and report its status (goals, scenarios, scores, phases, commits) to a Daloop dashboard via the bundled daloop CLI."
     }
   ]
 }

@@ -1,8 +1,9 @@
 # daloop-reporting (Claude Code plugin)
 
-A Claude Code plugin that lets agentic development loops report their status —
-project, phases, and commits — to a [Daloop](https://daloop-42b47.web.app)
-dashboard, via the bundled `daloop` CLI.
+A Claude Code plugin that lets you author a vision, drive a self-evaluating
+development loop, and report its status — goals, scenarios, scores, phases,
+and commits — to a [Daloop](https://daloop-42b47.web.app) dashboard, via the
+bundled `daloop` CLI.
 
 ## Install
 
@@ -19,8 +20,16 @@ manually any time with `/plugin marketplace update daloop`.
 1. Mint a key in the Daloop app → **API keys**, then `export DALOOP_API_KEY=…`
 2. In a loop's working directory: `daloop init --team <teamId> --project <slug>`
 
-The skill then auto-activates when a loop should report status. See
-`skills/daloop-reporting/SKILL.md`.
+The skills auto-discover and activate automatically. See the **Skills** section
+below for a description of each.
+
+## Skills
+
+| Skill | SKILL.md | Purpose |
+|-------|----------|---------|
+| `daloop-reporting` | `skills/daloop-reporting/SKILL.md` | Report a loop's live status (project, phases, commits, scores) to the Daloop dashboard. Auto-activates while a loop is running. |
+| `daloop-vision` | `skills/daloop-vision/SKILL.md` | Interview the user to author a `vision.json` file (goals, user scenarios, rubrics). Run once before starting the loop. |
+| `daloop-loop` | `skills/daloop-loop/SKILL.md` | Drive the vision-driven self-evaluating development loop: plan → execute → score → iterate, using the `vision.json` produced by `daloop-vision`. |
 
 ## Layout
 
@@ -30,7 +39,13 @@ plugins/daloop-reporting/
 ├── skills/daloop-reporting/
 │   ├── SKILL.md          # invoked by Claude Code
 │   └── CODEX.md          # same commands, for Codex loops
-└── bin/daloop            # the CLI (added to $PATH when the plugin is active)
+├── skills/daloop-vision/
+│   └── SKILL.md          # vision authoring interview
+├── skills/daloop-loop/
+│   └── SKILL.md          # vision-driven self-evaluating loop driver
+└── bin/
+    ├── daloop            # the CLI (added to $PATH when the plugin is active)
+    └── vision-schema.mjs # JSON schema validator for vision.json
 ```
 
 `bin/daloop` is a copy of the canonical `cli/daloop.mjs` at the repo root.
