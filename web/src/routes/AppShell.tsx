@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/context";
 import { LoopMark } from "../ui/LoopMark";
+import { NotificationsBell } from "../notifications/NotificationsBell";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard" },
@@ -50,6 +51,8 @@ export function AppShell() {
 
         <div className="hdr-actions hdr-actions--desktop">
           <NavLink to="/getting-started" className="help-link">Getting started</NavLink>
+
+          <NotificationsBell />
 
           <div className="profile" ref={profileRef}>
             <button

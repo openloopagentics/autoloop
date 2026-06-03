@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  collection, collectionGroup, doc, documentId, onSnapshot, orderBy, query, where,
+  collection, collectionGroup, doc, documentId, limit, onSnapshot, orderBy, query, where,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
+import type { Notification } from "../notifications/types";
 import type { Commit, DocumentRec, Goal, Phase, Project, Revision, Scenario, Score, Task, Team, TeamRef, TestRun } from "./types";
 
 interface Result<T> { data: T; loading: boolean; error: string | null; }
@@ -187,6 +188,20 @@ export function useDocuments(teamId: string, slug: string): Result<DocumentRec[]
       (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as DocumentRec[]); setLoading(false); },
       (e) => { setError(e.message); setLoading(false); });
   }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useTeamNotifications(teamId: string): Result<Notification[]> {
+  const [data, setData] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "notifications"), orderBy(documentId(), "desc"), limit(50));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, teamId, ...(d.data() as object) })) as Notification[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId]);
   return { data, loading, error };
 }
 
