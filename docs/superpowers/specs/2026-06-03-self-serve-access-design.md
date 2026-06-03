@@ -43,16 +43,23 @@ match /accessRequests/{uid} {
   allow create: if isSignedIn() && request.auth.uid == uid
                 && request.resource.data.uid == uid
                 && request.resource.data.status == 'pending';
-  allow update, delete: if false;                                // admins decide via Admin SDK
+  // Re-request: a setDoc on an existing doc is an update — allow owner denied -> pending only.
+  allow update: if isSignedIn() && request.auth.uid == uid
+                && resource.data.status == 'denied'
+                && request.resource.data.status == 'pending'
+                && request.resource.data.uid == uid;
+  allow delete: if false;                                        // admins decide via Admin SDK
 }
 ```
 Notes: only the requester creates **their own** pending request; nobody else reads it
-(admins read via the server/Admin SDK, which bypasses rules); clients can't mutate it
-(so a requester can't self-approve — approval flips `users/{uid}.isAllowed`, which is
-already client-write-forbidden). Re-requesting overwrites the same doc (create on an
-existing doc id is a set; acceptable — a re-request resets to pending). Rules tests
-assert: owner create(pending)/read; non-owner create/read denied; client update/delete
-denied.
+(admins read via the server/Admin SDK, which bypasses rules). A re-request is a
+`setDoc()` on the **existing** doc id, which Firestore evaluates against the `update`
+rule (not `create` — `create` matches only when no doc exists). The `update` rule allows
+the owner to flip their own request **only `denied → pending`**: never to `approved`, and
+never from a `pending`/`approved` doc. So a requester still can't self-approve — approval
+flips `users/{uid}.isAllowed`, which is client-write-forbidden. Rules tests assert: owner
+create(pending)/read; non-owner create/read denied; denied → pending re-request succeeds
+while denied → approved fails; non-owner re-request denied; delete denied.
 
 ### Functions (extend `functions/src/routes/admin.ts`, already `makeRequireAdmin`-gated)
 

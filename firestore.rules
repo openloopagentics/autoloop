@@ -36,13 +36,20 @@ service cloud.firestore {
 
     // Self-serve access requests: a signed-in (not-yet-allowed) user creates their own
     // pending request. Approval/denial is admin-only (Admin SDK bypasses rules) — clients
-    // can never update or delete, so a requester can never self-approve.
+    // can never set isAllowed or mark a request approved, so a requester can never self-approve.
     match /accessRequests/{uid} {
       allow read:   if isSignedIn() && request.auth.uid == uid;
       allow create: if isSignedIn() && request.auth.uid == uid
                     && request.resource.data.uid == uid
                     && request.resource.data.status == 'pending';
-      allow update, delete: if false;
+      // Re-request: a setDoc() on an EXISTING doc is an update, not a create.
+      // Only the owner may flip their own denied request back to pending — never to
+      // approved (isAllowed remains client-write-forbidden, so no self-escalation).
+      allow update: if isSignedIn() && request.auth.uid == uid
+                    && resource.data.status == 'denied'
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.uid == uid;
+      allow delete: if false;
     }
 
     // Reverse lookup: a user reads their own member docs across all teams.
