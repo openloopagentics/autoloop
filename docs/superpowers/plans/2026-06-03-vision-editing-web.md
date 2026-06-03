@@ -188,6 +188,7 @@ describe("GoalForm", () => {
 
 - [ ] **Step 1: ProjectDetail — editable vision when web-owned.**
   - Compute `editable = project.data && project.data.visionOwner !== "loop"`.
+  - **CRITICAL:** mount the editable affordances gated on `editable`, **NOT** on `hasScenarios`. `VisionSection` returns `null` when there are no scenarios and is only rendered when `hasScenarios` — so a brand-new web project (zero goals/scenarios) would otherwise show **no way to add the first goal/scenario**. The editable container (Add-goal / Add-scenario / Add-document controls) must render whenever `editable` is true, independent of whether any vision data exists yet. (Loop-owned ⇒ `editable` false ⇒ exactly the #4 read-only view.)
   - When `editable`, render the edit affordances alongside the read-only Vision section: an "Add goal" (`GoalForm` → `putGoal(teamId, slug, slugify(title), body)`), per-goal "Add scenario"/delete, per-scenario edit/delete (`ScenarioForm`/`deleteScenario`), an "Add document" (`DocumentForm`), and delete buttons — each calling the `dashboard/api.ts` client. Errors surface inline (reuse `ErrorNote`). The live `onSnapshot` hooks re-render on success.
   - When NOT editable (loop-owned), render exactly the #4 read-only view (no controls).
   - Keep it tasteful: a compact "＋ Add" control that toggles the relevant form; edit pencil/delete on each card. Generated ids: `slugify(title)` for new goals/scenarios/documents (validate against id pattern; if slug empty/dup, append a short suffix).
