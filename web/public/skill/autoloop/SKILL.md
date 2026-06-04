@@ -35,7 +35,7 @@ session, not inside a subagent.** Subagents implement code; you report status.
 autoloop vision import --file vision.json
 autoloop project set --title "<project>" --status running
 autoloop loop start loop-YYYY-MM-DD --goal "<objective>" --order <n>
-autoloop init --session-log   # writes Stop hook so every response appears in the dashboard
+autoloop init --session-log   # real-time hook: session log updates in the dashboard as the loop runs
 ```
 
 Use `superpowers:writing-plans` to turn the vision into a phases → tasks plan.

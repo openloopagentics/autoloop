@@ -167,7 +167,9 @@ function readHookStdin() {
   } catch { return null; }
 }
 
-/** Write the Stop hook to global ~/.claude/settings.json so session logs upload after every response. */
+/** Install a PostToolUse hook in global ~/.claude/settings.json so the session log updates
+ *  in real time. PostToolUse fires after EVERY tool call — Stop only fires once per turn, which
+ *  in an autonomous loop (one long turn of many tool calls) almost never fires mid-loop. */
 function installSessionLogHook(env, log) {
   const home = env.HOME || env.USERPROFILE || "";
   if (!home) { log("autoloop: cannot install session-log hook — HOME not set"); return; }
@@ -184,17 +186,21 @@ function installSessionLogHook(env, log) {
   try { copyFileSync(process.argv[1], stableCli); }
   catch (e) { log(`autoloop: could not copy CLI to stable path: ${e.message}`); return; }
 
-  // Settings file uses { "hooks": { "Stop": [...] } } — write to the correct nested path.
   if (!settings.hooks) settings.hooks = {};
-  // session push reads loop from .autoloop.json and transcript_path from the hook's stdin payload.
+  // session push reads the loop from .autoloop.json and transcript_path from the hook stdin payload.
   const hookCmd = `node "${stableCli}" session push`;
-  const stopHooks = settings.hooks.Stop ?? [];
-  // Drop any prior autoloop session-push hook (may point at a stale versioned path), then re-add.
-  const cleaned = stopHooks.filter((h) => !h.hooks?.some((hh) => hh.command?.includes("session push")));
-  cleaned.push({ hooks: [{ type: "command", command: hookCmd }] });
-  settings.hooks.Stop = cleaned;
+  const newEntry = { matcher: "*", hooks: [{ type: "command", command: hookCmd }] };
+
+  // Remove any prior autoloop session-push hook (from Stop or PostToolUse, possibly stale path).
+  for (const ev of ["Stop", "PostToolUse"]) {
+    if (Array.isArray(settings.hooks[ev])) {
+      settings.hooks[ev] = settings.hooks[ev].filter((h) => !h.hooks?.some((hh) => hh.command?.includes("session push")));
+    }
+  }
+  settings.hooks.PostToolUse = settings.hooks.PostToolUse ?? [];
+  settings.hooks.PostToolUse.push(newEntry);
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-  log(`autoloop: session-log hook installed → ${settingsPath} (CLI: ${stableCli})`);
+  log(`autoloop: real-time session-log hook (PostToolUse) installed → ${settingsPath} (CLI: ${stableCli})`);
 }
 
 /**
@@ -581,8 +587,8 @@ export async function run(argv, deps = {}) {
         };
         dbg(`session push invoked (argv: ${argv.join(" ")})`);
 
-        // When run as a Stop hook, Claude Code pipes a JSON payload on stdin:
-        // { session_id, transcript_path, cwd, hook_event_name, ... }
+        // When run as a hook (PostToolUse), Claude Code pipes a JSON payload on stdin:
+        // { session_id, transcript_path, cwd, hook_event_name, tool_name, ... }
         const hook = readHookStdin();
         dbg(`stdin payload: ${hook ? JSON.stringify({ session_id: hook.session_id, transcript_path: hook.transcript_path, cwd: hook.cwd }) : "none (TTY or empty)"}`);
         const transcriptPath = flags.file || hook?.transcript_path;
