@@ -96,7 +96,15 @@ export async function report(req, deps) {
     return strict ? 1 : 0;
   }
 
-  if (res.ok) return 0;
+  if (res.ok) {
+    try {
+      const b = await res.json();
+      if (Array.isArray(b?.pendingMessages) && b.pendingMessages.length) {
+        err(`daloop: 📨 ${b.pendingMessages.length} message(s) from the user — run \`daloop messages pull\``);
+      }
+    } catch { /* ignore — many stubs have no json() or no pendingMessages */ }
+    return 0;
+  }
 
   let detail = "";
   if (res.status === 400) {
@@ -106,6 +114,41 @@ export async function report(req, deps) {
   const msg = m ? m(teamId) : `HTTP ${res.status}`;
   err(`daloop: report not applied (${res.status}): ${msg}${detail ? ` — ${detail}` : ""}`);
   return strict ? 1 : 0;
+}
+
+/**
+ * Fetch JSON from a GET endpoint and print the parsed result to stdout via log.
+ * Best-effort: never throws; on failure prints a warning to err and returns 0.
+ * deps: { env, fetchImpl, log, err }.
+ */
+export async function fetchJson(req, deps) {
+  const { env = process.env, fetchImpl = fetch, log = (m) => console.log(m), err = (m) => console.error(m) } = deps;
+  const key = env.DALOOP_API_KEY;
+  if (!key) throw new UsageError("set DALOOP_API_KEY (a key minted via POST /v1/keys)");
+
+  let res;
+  try {
+    res = await fetchImpl(req.url, {
+      method: req.method,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    });
+  } catch (e) {
+    err(`daloop: messages pull failed (network): ${e.message}`);
+    return 0;
+  }
+
+  if (res.ok) {
+    try {
+      const body = await res.json();
+      log(JSON.stringify(body.messages ?? body, null, 2));
+    } catch (e) {
+      err(`daloop: messages pull failed (parse): ${e.message}`);
+    }
+    return 0;
+  }
+
+  err(`daloop: messages pull failed (${res.status})`);
+  return 0;
 }
 
 /**
@@ -427,6 +470,27 @@ export async function run(argv, deps = {}) {
           worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/documents/${id}`, body }, reportDeps));
         }
         return worst; // best-effort: 0 unless strict and some report failed
+      }
+      case "messages pull": {
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
+        return fetchJson({ method: "GET", url }, { env, fetchImpl, log, err });
+      }
+      case "messages ack": {
+        const id = positionals[2];
+        if (!id || typeof id !== "string" || id.trim() === "") throw new UsageError("messages ack requires a non-empty message id");
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages/${id}/ack`;
+        return report({ method: "POST", url, body: {} }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "messages send": {
+        if (!flags.text) throw new UsageError("messages send requires --text");
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
+        return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
       }
       // commands added in later tasks
       default:
