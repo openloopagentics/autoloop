@@ -54,3 +54,47 @@ describe("user vision write path", () => {
     expect((await db().doc("teams/t1/projects/web/goals/g1").get()).exists).toBe(false);
   });
 });
+
+describe("DELETE /v1/u/teams/:teamId/projects/:slug (recursive, owner/manager only)", () => {
+  async function seedProjectTree(role: string, uid = "alice") {
+    await db().doc(`users/${uid}`).set({ email: `${uid}@x.com`, isAllowed: true });
+    await db().doc("teams/t1").set({ name: "T", createdBy: uid });
+    await db().doc(`teams/t1/members/${uid}`).set({ uid, role });
+    await db().doc("teams/t1/projects/web").set({ slug: "web", title: "Web", status: "running" });
+    // a few subtree docs to prove the recursive delete
+    await db().doc("teams/t1/projects/web/loops/l1").set({ goal: "g", order: 1, status: "running" });
+    await db().doc("teams/t1/projects/web/loops/l1/scores/01ABC").set({ scenarioId: "s1", taskId: "t1", composite: 80 });
+    await db().doc("teams/t1/projects/web/goals/g1").set({ title: "G" });
+  }
+  async function gone(path: string) { return !(await db().doc(path).get()).exists; }
+
+  it("an owner deletes the project AND its whole subtree", async () => {
+    await seedProjectTree("owner");
+    const res = await request(app()).delete("/v1/u/teams/t1/projects/web").set(tok("alice"));
+    expect(res.status).toBe(200);
+    expect(await gone("teams/t1/projects/web")).toBe(true);
+    expect(await gone("teams/t1/projects/web/loops/l1")).toBe(true);
+    expect(await gone("teams/t1/projects/web/loops/l1/scores/01ABC")).toBe(true);
+    expect(await gone("teams/t1/projects/web/goals/g1")).toBe(true);
+  });
+  it("a manager can delete", async () => {
+    await seedProjectTree("manager");
+    expect((await request(app()).delete("/v1/u/teams/t1/projects/web").set(tok("alice"))).status).toBe(200);
+    expect(await gone("teams/t1/projects/web")).toBe(true);
+  });
+  it("a plain member cannot delete (403) and the project survives", async () => {
+    await seedProjectTree("member");
+    expect((await request(app()).delete("/v1/u/teams/t1/projects/web").set(tok("alice"))).status).toBe(403);
+    expect(await gone("teams/t1/projects/web")).toBe(false);
+  });
+  it("a non-member is rejected (403)", async () => {
+    await seedProjectTree("owner");
+    await db().doc("users/bob").set({ email: "b@x.com", isAllowed: true });
+    expect((await request(app()).delete("/v1/u/teams/t1/projects/web").set(tok("bob"))).status).toBe(403);
+    expect(await gone("teams/t1/projects/web")).toBe(false);
+  });
+  it("404 when the project does not exist", async () => {
+    await seedProjectTree("owner");
+    expect((await request(app()).delete("/v1/u/teams/t1/projects/ghost").set(tok("alice"))).status).toBe(404);
+  });
+});

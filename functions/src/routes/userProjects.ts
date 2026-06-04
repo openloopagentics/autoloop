@@ -3,7 +3,7 @@ import { db } from "../firestore.js";
 import { AppError } from "../errors.js";
 import { idPattern, projectBody, goalBody, scenarioBody, documentBody, messageBody } from "../schemas.js";
 import { assertWebEditable } from "../services/visionOwner.js";
-import { applyProjectUpsert } from "../services/projects.js";
+import { applyProjectUpsert, deleteProject } from "../services/projects.js";
 import { applyGoalUpsert, deleteGoal } from "../services/goals.js";
 import { applyScenarioUpsert, deleteScenario } from "../services/scenarios.js";
 import { applyDocumentUpsert, deleteDocument } from "../services/documents.js";
@@ -29,6 +29,21 @@ userProjectsRouter.put("/:slug", async (req, res, next) => {
       if (projSnap.exists) assertWebEditable(projSnap); // patch must not be loop-owned; create is fine
       await applyProjectUpsert(tx, teamRef, ref, slug, parsed.data, "web");
     });
+    res.status(200).json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// project: DELETE /:slug — permanent, recursive. Owners/managers only.
+userProjectsRouter.delete("/:slug", async (req, res, next) => {
+  try {
+    ids(req, ["teamId", "slug"]);
+    const { teamId, slug } = req.params as Record<string, string>;
+    const uid = (req as { uid?: string }).uid ?? "";
+    const role = (await db().doc(`teams/${teamId}/members/${uid}`).get()).data()?.role;
+    if (role !== "owner" && role !== "manager") {
+      throw new AppError(403, "forbidden", "only an owner or manager can delete a project");
+    }
+    await deleteProject(teamId, slug);
     res.status(200).json({ ok: true });
   } catch (err) { next(err); }
 });
