@@ -263,6 +263,20 @@ export async function postMessage(teamId: string, slug: string, text: string): P
 - User posts a message (web Messages tab → "Sent"); agent pulls it at the next task boundary (surfaced via the `task set` notice), acts, acks (web → "Delivered"), and can reply (agent bubble appears live). A "stop" message gracefully terminates the run.
 - No Firestore rules change; messages member-readable + client-write-denied (tested). All suites green; CLI + skill copies synced.
 
+## Follow-up E (added after review): close the two-sided UX gaps
+
+**E1 — agent-reply notification.** When the agent posts a reply (`author:"agent"`), alert the user
+via the existing notifications bell (which today only fires on scenario flips / loop_complete).
+- `functions/src/notify/notifier.ts`: add `processAgentMessage(teamId, slug, text)` → `writeNotification(teamId, { type: "agent_message", projectSlug: slug, title: "Agent replied", message: <text, truncated ~140 chars> })`.
+- `functions/src/notify/trigger.ts`: add `onMessageWritten` (`teams/{teamId}/projects/{slug}/messages/{id}`, us-central1) — fire ONLY on create (`!before && after`) AND `after.author === "agent"`; call `processAgentMessage`. Export from `functions/src/index.ts`.
+- Test (`functions/test/notifier.test.ts`): `processAgentMessage` writes one agent_message notification; (trigger-level) a user message creates none.
+- Web: the bell renders `type`/`title`/`message` generically and links to `/dashboard/{teamId}/{slug}` — **no bell code change**. Optionally add `"agent_message"` to a comment on the `Notification.type` doc. Rules unchanged (notifications match already exists).
+
+**E2 — agent-running indicator.** Near the composer, tell the user whether a run is live to pick up
+the message.
+- `web/src/dashboard/ProjectDetail.tsx`: compute `agentActive = loops.data.some((l) => l.status === "running") || (loops.data.length === 0 && project.data?.status === "running")`; pass to `<MessagesTab … agentActive={agentActive} />`.
+- `web/src/dashboard/tabs/MessagesTab.tsx`: add `agentActive?: boolean` prop; render a hint above/within the composer — active → "A loop is running — it'll see your message at its next step."; inactive → "No active run — your message will wait until a loop starts." Test both states.
+
 ## Out of scope
 
 Mid-task hard interrupt; agent reading the full thread; a resumable pause state; per-loop message scoping; real-time push.
