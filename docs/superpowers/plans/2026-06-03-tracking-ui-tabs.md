@@ -567,10 +567,11 @@ describe("LoopSnapshot", () => {
   const phases = [{ id: "p1", status: "completed" }, { id: "p2", status: "running" }] as any;
   const tasks = [{ id: "t2", title: "Wire Stripe", status: "running" }] as any;
   it("shows phases done/total, N/M met, and the in-progress task", () => {
-    render(<LoopSnapshot loop={loop} phases={phases} tasks={tasks} scenarios={scenarios} scores={scores} testRuns={testRuns} />);
-    expect(screen.getByText("1/2")).toBeInTheDocument();          // phases done/total
-    expect(screen.getByText("1/2", { selector: ".snapshot-met" })).toBeTruthy(); // see note below
-    expect(screen.getByText(/Wire Stripe/)).toBeInTheDocument();  // in-progress task
+    const { container } = render(<LoopSnapshot loop={loop} phases={phases} tasks={tasks} scenarios={scenarios} scores={scores} testRuns={testRuns} />);
+    // both metrics are "1/2" here, so query by class (not getByText, which would throw on the duplicate)
+    expect(container.querySelector(".snapshot-phases")?.textContent).toContain("1/2"); // phases done/total
+    expect(container.querySelector(".snapshot-met")?.textContent).toContain("1/2");    // N/M met
+    expect(screen.getByText(/Wire Stripe/)).toBeInTheDocument();                        // in-progress task
   });
   it("says no active task when currentTaskId is absent", () => {
     render(<LoopSnapshot loop={{ id: "l1", isMain: false }} phases={[]} tasks={[]} scenarios={[]} scores={[]} testRuns={[]} />);
@@ -579,7 +580,7 @@ describe("LoopSnapshot", () => {
 });
 ```
 
-> Note on the duplicate "1/2": both phase-progress and scenarios-met are `1/2` here. To keep the assertions unambiguous, give the two metrics distinct CSS classes (`snapshot-phases`, `snapshot-met`) and assert via `container.querySelector(".snapshot-phases")?.textContent`. Adjust the test to query by class rather than `getByText` for the numeric metrics — the implementer should make the test robust (use `container` + class selectors), not rely on a unique string.
+> Note: the two metrics share the value "1/2" in this fixture, so the test queries by the distinct CSS classes `snapshot-phases`/`snapshot-met` (added in the LoopSnapshot impl below) rather than `getByText`, which would throw on the duplicate.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1139,7 +1140,7 @@ export function ProjectDetail() {
 - [ ] **Step 3: Build + run the full dashboard test suite**
 
 Run: `cd web && npm run build && npm test`
-Expected: build clean; all tests pass. If `detail.test.tsx` (or any existing test) asserted the old "running task is live" behavior, update those specific assertions to the new `isCurrent` rule (the spec flags this as an intended change).
+Expected: build clean; all tests pass. Note: **no existing test asserts the old "running task is live" behavior.** `vision.test.tsx` is the only existing test that renders `TaskItem` (through `PlanSection`) — it uses a one-arg `renderTask={(t) => <TaskItem ... />}` with a `completed` task and asserts only text, so it stays green with the widened render-prop and no `isCurrent`. The new live rule is covered by the new `plan.test.tsx` (Task 3). If `npm test` surfaces any unexpected failure, fix it in place; don't expect a known `is-live` assertion to update.
 
 - [ ] **Step 4: Commit**
 
@@ -1196,7 +1197,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Bugs shows the selected loop's bugs (open-first, severity/status).
 - Only the loop's `currentTaskId` renders as live; other tasks render stored status.
 - Legacy project-direct projects render as a single synthesized `main` loop, content unchanged.
-- `web` build clean; all web tests pass (existing `is-live`-on-running assertions updated to the new rule).
+- `web` build clean; all web tests pass (the new live rule is covered by `plan.test.tsx`; no existing test asserted `is-live`-on-running).
+
+> Note: `buildLoopList` takes 3 args (`loops, project, hasProjectDirectData`) in this plan vs the spec's 2-arg sketch — a deliberate refinement so the synthesized `main` carries the project doc's `status`/`currentPhaseId`/`currentTaskId` (which the spec requires).
 
 ## Out of scope (separate sub-projects / deferred)
 
