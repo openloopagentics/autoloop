@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
@@ -268,6 +268,11 @@ export async function run(argv, deps = {}) {
         if (!flags.status) throw new UsageError("loop set requires --status <s>");
         validateStatus(flags.status);
         const cfg = loadConfig(cwd);
+        const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
+        if (TERMINAL_STATUSES.includes(flags.status)) {
+          cfg.currentLoopId = null;
+          saveConfig(cwd, cfg);
+        }
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}`;
         return report({ method: "PUT", url, body: { status: flags.status } },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
@@ -509,6 +514,14 @@ export async function run(argv, deps = {}) {
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
         return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "state": {
+        const cfg = loadConfig(cwd);
+        if (flags["current-loop"]) {
+          if (cfg.currentLoopId) log(cfg.currentLoopId);
+          return 0;
+        }
+        throw new UsageError("state requires --current-loop");
       }
       // commands added in later tasks
       default:
