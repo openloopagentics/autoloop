@@ -107,7 +107,7 @@ export function ProjectDetail() {
                     renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />
                 )}
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
-                {tab === "messages" && <MessagesTab messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}
+                {tab === "messages" && <MessagesTab teamId={teamId} slug={slug} loopId={loopArg} messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}
               </>
             )}
           </>

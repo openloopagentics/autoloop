@@ -28,3 +28,15 @@ export interface Bug {
   createdAt?: unknown; updatedAt?: unknown; fixedAt?: unknown;
 }
 export interface Message { id: string; text: string; author: "user" | "agent"; status?: "pending" | "delivered"; createdAt?: unknown; deliveredAt?: unknown; }
+
+export type SessionEntry =
+  | { kind: "user";      text: string; ts: number }
+  | { kind: "assistant"; text: string; ts: number }
+  | { kind: "tool";      name: string; summary: string; ok: boolean; ts: number };
+
+export interface SessionDoc {
+  sessionId: string;
+  startedAt: number;
+  endedAt: number;
+  entries: SessionEntry[];
+}

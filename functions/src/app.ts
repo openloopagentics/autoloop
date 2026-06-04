@@ -20,6 +20,7 @@ import { loopsRouter } from "./routes/loops.js";
 import { bugsRouter } from "./routes/bugs.js";
 import { messagesRouter } from "./routes/messages.js";
 import { userProjectsRouter } from "./routes/userProjects.js";
+import { sessionsRouter } from "./routes/sessions.js";
 
 export function makeApp() {
   // Initialize the Admin SDK before any handler runs, so the ID-token auth
@@ -59,6 +60,7 @@ export function makeApp() {
   teamRouter.use("/:slug/loops/:loopId/testRuns", testRunsRouter);
   teamRouter.use("/:slug/loops/:loopId/revisions", revisionsRouter);
   teamRouter.use("/:slug/loops/:loopId/bugs", bugsRouter);
+  teamRouter.use("/:slug/loops/:loopId/sessions", sessionsRouter);
   teamRouter.use("/:slug/loops", loopsRouter); // loop entity
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);

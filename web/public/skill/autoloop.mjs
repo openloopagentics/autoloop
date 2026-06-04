@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
@@ -198,6 +198,25 @@ export async function run(argv, deps = {}) {
         const apiUrl = (typeof flags.url === "string" && flags.url) || DEFAULT_API_URL;
         saveConfig(cwd, { apiUrl, teamId, projectSlug, currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
         log(`autoloop: initialized .autoloop.json (team=${teamId}, project=${projectSlug})`);
+        if (flags["session-log"]) {
+          const settingsPath = join(cwd, ".claude", "settings.json");
+          let settings = {};
+          if (existsSync(settingsPath)) {
+            try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
+          }
+          const hookCmd = `autoloop session push --loop "$(autoloop state --current-loop)" || true`;
+          const stopHooks = settings.Stop ?? [];
+          const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
+          if (!alreadyAdded) {
+            stopHooks.push({ hooks: [{ type: "command", command: hookCmd }] });
+            settings.Stop = stopHooks;
+            mkdirSync(join(cwd, ".claude"), { recursive: true });
+            writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+            log("autoloop: added session-push Stop hook to .claude/settings.json");
+          } else {
+            log("autoloop: session-push Stop hook already present");
+          }
+        }
         return 0;
       }
       case "project set": {
@@ -268,6 +287,11 @@ export async function run(argv, deps = {}) {
         if (!flags.status) throw new UsageError("loop set requires --status <s>");
         validateStatus(flags.status);
         const cfg = loadConfig(cwd);
+        const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
+        if (TERMINAL_STATUSES.includes(flags.status)) {
+          cfg.currentLoopId = null;
+          saveConfig(cwd, cfg);
+        }
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}`;
         return report({ method: "PUT", url, body: { status: flags.status } },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
@@ -509,6 +533,71 @@ export async function run(argv, deps = {}) {
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
         return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "state": {
+        const cfg = loadConfig(cwd);
+        if (flags["current-loop"]) {
+          if (cfg.currentLoopId) log(cfg.currentLoopId);
+          return 0;
+        }
+        throw new UsageError("state requires --current-loop");
+      }
+      case "session push": {
+        // Resolve transcript file
+        let transcriptPath = flags.file;
+        if (!transcriptPath) {
+          const sessionId = env.CLAUDE_CODE_SESSION_ID;
+          if (!sessionId) { err("autoloop: session push skipped — CLAUDE_CODE_SESSION_ID not set"); return 0; }
+          // Encode cwd: replace every / and . with -
+          const encodedCwd = cwd.replace(/[/.]/g, "-");
+          const home = env.HOME || env.USERPROFILE || "";
+          transcriptPath = join(home, ".claude", "projects", encodedCwd, `${sessionId}.jsonl`);
+        }
+        if (!existsSync(transcriptPath)) {
+          err(`autoloop: session transcript not found at ${transcriptPath}`);
+          return 0; // best-effort: don't fail the hook
+        }
+
+        const cfg = loadConfig(cwd);
+        const loopId = flags.loop || cfg.currentLoopId;
+        if (!loopId) { err("autoloop: session push skipped — no active loop"); return 0; }
+        validateId("loopId", loopId);
+
+        const sessionId = flags.session || basename(transcriptPath, ".jsonl");
+        const lines = readFileSync(transcriptPath, "utf8").trim().split("\n").filter(Boolean);
+        const entries = [];
+        // Maps tool_use id → index in entries array so tool_result can patch ok=false.
+        const toolIndexById = new Map();
+        let startedAt = null, endedAt = null;
+
+        for (const line of lines) {
+          let rec; try { rec = JSON.parse(line); } catch { continue; }
+          const ts = rec.timestamp ?? rec.ts ?? null;
+          if (ts) { if (!startedAt || ts < startedAt) startedAt = ts; if (!endedAt || ts > endedAt) endedAt = ts; }
+          const role = rec.type === "user" ? "user" : rec.type === "assistant" ? "assistant" : null;
+          if (!role) continue;
+          const msg = rec.message ?? rec;
+          const content = Array.isArray(msg.content) ? msg.content : [];
+          for (const block of content) {
+            if (block.type === "text" && block.text) {
+              entries.push({ kind: role, text: String(block.text).slice(0, 500), ts: ts ?? 0 });
+            }
+            if (role === "assistant" && block.type === "tool_use") {
+              const inputSummary = JSON.stringify(block.input ?? {}).slice(0, 120);
+              toolIndexById.set(block.id, entries.length);
+              entries.push({ kind: "tool", name: block.name ?? "tool", summary: inputSummary, ok: true, ts: ts ?? 0 });
+            }
+            // tool_result arrives in a subsequent user record — patch the matched tool entry's ok flag
+            if (role === "user" && block.type === "tool_result" && block.tool_use_id) {
+              const idx = toolIndexById.get(block.tool_use_id);
+              if (idx !== undefined && block.is_error) entries[idx].ok = false;
+            }
+          }
+        }
+
+        const body = { sessionId, startedAt: startedAt ?? 0, endedAt: endedAt ?? 0, entries };
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}/sessions`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: false, teamId: cfg.teamId });
       }
       // commands added in later tasks
       default:
