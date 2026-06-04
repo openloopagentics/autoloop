@@ -50,3 +50,7 @@ export async function deleteDocument(teamId: string, slug: string, id: string): 
 export async function postMessage(teamId: string, slug: string, text: string): Promise<void> {
   await ok(await fetch(u(teamId, slug, "/messages"), { method: "POST", headers: await headers(), body: JSON.stringify({ text }) }));
 }
+
+export async function deleteProject(teamId: string, slug: string): Promise<void> {
+  await ok(await fetch(u(teamId, slug), { method: "DELETE", headers: await headers() }));
+}

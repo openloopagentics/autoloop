@@ -30,3 +30,11 @@ export async function upsertProject(teamId: string, slug: string, body: ProjectB
   const ref = db().doc(`teams/${teamId}/projects/${slug}`);
   await db().runTransaction((tx) => applyProjectUpsert(tx, teamRef, ref, slug, body)); // owner undefined: bare project set doesn't stamp
 }
+
+/** Permanently delete a project AND its entire subtree (loops/phases/tasks/commits/scores/
+ *  testRuns/revisions/bugs/goals/scenarios/documents/messages) via recursiveDelete. */
+export async function deleteProject(teamId: string, slug: string): Promise<void> {
+  const ref = db().doc(`teams/${teamId}/projects/${slug}`);
+  if (!(await ref.get()).exists) throw new AppError(404, "not_found", "project does not exist");
+  await db().recursiveDelete(ref);
+}
