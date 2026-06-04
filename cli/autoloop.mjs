@@ -523,6 +523,63 @@ export async function run(argv, deps = {}) {
         }
         throw new UsageError("state requires --current-loop");
       }
+      case "session push": {
+        // Resolve transcript file
+        let transcriptPath = flags.file;
+        if (!transcriptPath) {
+          const sessionId = env.CLAUDE_CODE_SESSION_ID;
+          if (!sessionId) throw new UsageError("session push: --file required (CLAUDE_CODE_SESSION_ID not set)");
+          // Encode cwd: replace every / and . with -
+          const encodedCwd = cwd.replace(/[/.]/g, "-");
+          const home = env.HOME || env.USERPROFILE || "";
+          transcriptPath = join(home, ".claude", "projects", encodedCwd, `${sessionId}.jsonl`);
+        }
+        if (!existsSync(transcriptPath)) {
+          err(`autoloop: session transcript not found at ${transcriptPath}`);
+          return 0; // best-effort: don't fail the hook
+        }
+
+        const cfg = loadConfig(cwd);
+        const loopId = flags.loop || cfg.currentLoopId;
+        if (!loopId) { err("autoloop: session push skipped — no active loop"); return 0; }
+        validateId("loopId", loopId);
+
+        const sessionId = flags.session || basename(transcriptPath, ".jsonl");
+        const lines = readFileSync(transcriptPath, "utf8").trim().split("\n").filter(Boolean);
+        const entries = [];
+        // Maps tool_use id → index in entries array so tool_result can patch ok=false.
+        const toolIndexById = new Map();
+        let startedAt = null, endedAt = null;
+
+        for (const line of lines) {
+          let rec; try { rec = JSON.parse(line); } catch { continue; }
+          const ts = rec.timestamp ?? rec.ts ?? null;
+          if (ts) { if (!startedAt || ts < startedAt) startedAt = ts; if (!endedAt || ts > endedAt) endedAt = ts; }
+          const role = rec.type === "user" ? "user" : rec.type === "assistant" ? "assistant" : null;
+          if (!role) continue;
+          const msg = rec.message ?? rec;
+          const content = Array.isArray(msg.content) ? msg.content : [];
+          for (const block of content) {
+            if (block.type === "text" && block.text) {
+              entries.push({ kind: role, text: String(block.text).slice(0, 500), ts: ts ?? 0 });
+            }
+            if (role === "assistant" && block.type === "tool_use") {
+              const inputSummary = JSON.stringify(block.input ?? {}).slice(0, 120);
+              toolIndexById.set(block.id, entries.length);
+              entries.push({ kind: "tool", name: block.name ?? "tool", summary: inputSummary, ok: true, ts: ts ?? 0 });
+            }
+            // tool_result arrives in a subsequent user record — patch the matched tool entry's ok flag
+            if (role === "user" && block.type === "tool_result" && block.tool_use_id) {
+              const idx = toolIndexById.get(block.tool_use_id);
+              if (idx !== undefined && block.is_error) entries[idx].ok = false;
+            }
+          }
+        }
+
+        const body = { sessionId, startedAt: startedAt ?? 0, endedAt: endedAt ?? 0, entries };
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}/sessions`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: false, teamId: cfg.teamId });
+      }
       // commands added in later tasks
       default:
         throw new UsageError(`unknown command: ${argv.join(" ")}`);
