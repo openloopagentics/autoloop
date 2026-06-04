@@ -198,6 +198,25 @@ export async function run(argv, deps = {}) {
         const apiUrl = (typeof flags.url === "string" && flags.url) || DEFAULT_API_URL;
         saveConfig(cwd, { apiUrl, teamId, projectSlug, currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
         log(`autoloop: initialized .autoloop.json (team=${teamId}, project=${projectSlug})`);
+        if (flags["session-log"]) {
+          const settingsPath = join(cwd, ".claude", "settings.json");
+          let settings = {};
+          if (existsSync(settingsPath)) {
+            try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
+          }
+          const hookCmd = `autoloop session push --loop "$(autoloop state --current-loop)" || true`;
+          const stopHooks = settings.Stop ?? [];
+          const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
+          if (!alreadyAdded) {
+            stopHooks.push({ hooks: [{ type: "command", command: hookCmd }] });
+            settings.Stop = stopHooks;
+            mkdirSync(join(cwd, ".claude"), { recursive: true });
+            writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+            log("autoloop: added session-push Stop hook to .claude/settings.json");
+          } else {
+            log("autoloop: session-push Stop hook already present");
+          }
+        }
         return 0;
       }
       case "project set": {
