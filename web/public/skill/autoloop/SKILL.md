@@ -101,9 +101,9 @@ After closing the task:
 
 **Now go back to 2a for the next task.**
 
-## Step 3 — Terminate
+## Step 3 — Close the current loop, then start the next one
 
-When all scenarios are met, a cap is hit, or the user sends a stop:
+When a loop's tasks are done, close it:
 
 ```bash
 # Safety net — idempotent, re-set every task and phase to terminal:
@@ -114,8 +114,31 @@ autoloop phase set <id> --status completed  # for every finished phase
 autoloop loop set <loopId> --status completed   # or --status cancelled
 ```
 
-Finish with an **"N/M scenarios met"** summary: which met/unmet, composites,
+Print a brief **"N/M scenarios met"** summary: which met/unmet, composites,
 open bugs, revisions, and the dashboard URL (https://daloop-42b47.web.app).
+
+**Then immediately start the next loop.** Autoloop is a loop — running is the
+default, stopping is the exception. Generate 5 new improvement ideas based on
+what's already been built, open `loop start loop-YYYY-MM-DD-<n>` with the next
+order number, plan its tasks, and go back to Step 2. Do NOT ask the user
+whether to continue. Do NOT suggest the next round as an option. Just run it.
+
+**The only valid reasons to stop are:**
+1. The user sent an explicit stop message (via `autoloop messages pull`).
+2. The user gave an explicit iteration count and you've reached it (e.g. "run 3 rounds").
+3. Genuine context or token exhaustion — you physically cannot continue.
+
+Anything else — "a sensible cap", "one round is enough", "the app looks good" —
+is a rationalization. Ignore it and start the next loop.
+
+A scenario is **met** in this summary if AND ONLY IF, for that scenario, you
+submitted BOTH:
+1. a score with `composite >= threshold` (default 80), AND
+2. a test-run with `failed = 0`.
+
+If either is missing, the scenario is **unmet** — even if the composite is high.
+This matches exactly what the UI shows. Do not report a scenario as "met" based
+on the score alone.
 
 ## Rules
 
@@ -124,6 +147,8 @@ open bugs, revisions, and the dashboard URL (https://daloop-42b47.web.app).
 - **Best-effort.** If an `autoloop` command warns, note it once and continue.
 - **Honest scoring.** Don't inflate composites; an unmet scenario driving a revision is the loop working correctly.
 - **No silent truncation.** If a cap stops the loop, the summary must say which scenarios remain unmet.
+- **test-run is required.** A score alone does not make a scenario met. Always submit `autoloop test-run` before `autoloop score` for every scenario a task advances. Skipping test-run means the scenario will show as "unmet" in the UI regardless of the composite.
+- **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
 
 ## Example (two tasks)
 
