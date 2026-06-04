@@ -612,9 +612,24 @@ export async function run(argv, deps = {}) {
         dbg(`config ok: team=${cfg.teamId} project=${cfg.projectSlug} loop=${loopId} apiKey=${env.AUTOLOOP_API_KEY ? "set" : "MISSING"}`);
 
         const sessionId = flags.session || hook?.session_id || basename(transcriptPath, ".jsonl");
-        const lines = readFileSync(transcriptPath, "utf8").trim().split("\n").filter(Boolean);
+        const allLines = readFileSync(transcriptPath, "utf8").trim().split("\n").filter(Boolean);
+
+        // DELTA: only parse + send transcript lines we haven't sent yet. The cursor (line
+        // count already uploaded, per session) lives in ~/.claude/autoloop-cursors.json.
+        const home = env.HOME || env.USERPROFILE || "";
+        const cursorPath = home ? join(home, ".claude", "autoloop-cursors.json") : null;
+        let cursors = {};
+        if (cursorPath && existsSync(cursorPath)) {
+          try { cursors = JSON.parse(readFileSync(cursorPath, "utf8")); } catch { cursors = {}; }
+        }
+        const sent = Number(cursors[sessionId] || 0);
+        if (allLines.length <= sent) {
+          dbg(`no new transcript lines (have ${allLines.length}, already sent ${sent}) — skip`);
+          return 0; // nothing new — don't hit the API at all
+        }
+        const lines = allLines.slice(sent); // only the new lines
         const entries = [];
-        // Maps tool_use id → index in entries array so tool_result can patch ok=false.
+        // Maps tool_use id → index in entries array so tool_result can patch ok=false (within this delta).
         const toolIndexById = new Map();
         let startedAt = null, endedAt = null;
 
@@ -644,11 +659,24 @@ export async function run(argv, deps = {}) {
           }
         }
 
+        if (entries.length === 0) {
+          // New lines existed but produced no displayable entries (e.g. system records).
+          // Advance the cursor anyway so we don't re-scan them next time.
+          if (cursorPath) { cursors[sessionId] = allLines.length; try { writeFileSync(cursorPath, JSON.stringify(cursors)); } catch { /* best-effort */ } }
+          dbg(`no new entries from ${lines.length} new lines — cursor advanced to ${allLines.length}`);
+          return 0;
+        }
+
         const body = { sessionId, startedAt: startedAt ?? 0, endedAt: endedAt ?? 0, entries };
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}/sessions`;
-        dbg(`POST ${url} — ${entries.length} entries, session=${sessionId}`);
+        dbg(`POST ${url} — ${entries.length} new entries (lines ${sent}..${allLines.length}), session=${sessionId}`);
         const code = await report({ method: "POST", url, body }, { env, fetchImpl, err, strict: false, teamId: cfg.teamId });
         dbg(`POST result: exit code ${code}`);
+        // Advance the cursor only on success so a failed push retries the same delta next time.
+        if (code === 0 && cursorPath) {
+          cursors[sessionId] = allLines.length;
+          try { writeFileSync(cursorPath, JSON.stringify(cursors)); } catch { /* best-effort */ }
+        }
         return code;
       }
       // commands added in later tasks

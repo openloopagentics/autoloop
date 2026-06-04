@@ -70,12 +70,18 @@ describe("POST /v1/teams/:teamId/projects/:slug/loops/:loopId/sessions", () => {
     expect(res.body.ok).toBe(true);
   });
 
-  it("is idempotent — second push with same sessionId returns ok", async () => {
+  it("appends delta entries across pushes (preserving startedAt)", async () => {
     await seed();
-    const body = { sessionId: "0ee0ac9d-27e2-4439-b550-933f226aaa24", startedAt: 1000, endedAt: 2000, entries: [] };
-    await request(app).post("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader()).send(body);
-    const res = await request(app).post("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader()).send(body);
-    expect(res.status).toBe(200);
+    const id = "0ee0ac9d-27e2-4439-b550-933f226aaa24";
+    await request(app).post("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader())
+      .send({ sessionId: id, startedAt: 1000, endedAt: 1100, entries: [{ kind: "user", text: "first", ts: 1000 }] });
+    await request(app).post("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader())
+      .send({ sessionId: id, startedAt: 9999, endedAt: 1200, entries: [{ kind: "assistant", text: "second", ts: 1200 }] });
+    const res = await request(app).get("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader());
+    const session = res.body.sessions.find((s: { sessionId: string }) => s.sessionId === id);
+    expect(session.entries.map((e: { text: string }) => e.text)).toEqual(["first", "second"]);
+    expect(session.startedAt).toBe(1000); // first push's startedAt preserved
+    expect(session.endedAt).toBe(1200);   // latest push's endedAt
   });
 
   it("returns 400 on invalid body", async () => {
