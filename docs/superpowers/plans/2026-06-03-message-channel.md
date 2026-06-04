@@ -198,7 +198,7 @@ res.status(200).json({ ok: true, pendingMessages });
     ```
   - Three `case`s (two-word verbs; project-level URLs, no `loopSeg`):
     - `"messages pull"` → `fetchJson({method:"GET", url: `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`}, {env,fetchImpl,log,err,teamId:cfg.teamId})`.
-    - `"messages ack"` → `const id = positionals[2]; validateId("messageId", id);` → `report({method:"POST", url: `…/messages/${id}/ack`, body:{}}, {...})`.
+    - `"messages ack"` → `const id = positionals[2];` presence-check only (`if (!id || !id.trim()) throw new UsageError(...)`) — do NOT `validateId`/idPattern it (message ids are uppercase ULIDs that idPattern rejects) → `report({method:"POST", url: `…/messages/${id}/ack`, body:{}}, {...})`.
     - `"messages send"` → `if (!flags.text) throw new UsageError("messages send requires --text")` → `report({method:"POST", url: `…/messages`, body:{text:flags.text}}, {...})`.
 - [ ] **Step 4:** run cli.unit → pass; `cd functions && npm run build`.
 - [ ] **Step 5: Sync + verify** `bash scripts/sync-daloop-cli.sh` then `diff cli/daloop.mjs plugins/daloop-reporting/bin/daloop && diff cli/daloop.mjs web/public/skill/daloop.mjs && echo IDENTICAL`.
