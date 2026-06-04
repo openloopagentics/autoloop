@@ -157,6 +157,31 @@ export async function fetchJson(req, deps) {
   return 0;
 }
 
+/** Write the Stop hook to global ~/.claude/settings.json so session logs upload after every response. */
+function installSessionLogHook(env, log) {
+  const home = env.HOME || env.USERPROFILE || "";
+  if (!home) { log("autoloop: cannot install session-log hook — HOME not set"); return; }
+  const settingsPath = join(home, ".claude", "settings.json");
+  let settings = {};
+  if (existsSync(settingsPath)) {
+    try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
+  }
+  const cliPath = process.argv[1];
+  // No || true — let real errors surface. Expected no-ops (no session ID, no loop) exit 0 silently.
+  const hookCmd = `node "${cliPath}" session push --loop "$(node "${cliPath}" state --current-loop)"`;
+  const stopHooks = settings.Stop ?? [];
+  const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
+  if (!alreadyAdded) {
+    stopHooks.push({ hooks: [{ type: "command", command: hookCmd }] });
+    settings.Stop = stopHooks;
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    log(`autoloop: session-log hook installed → ${settingsPath}`);
+  } else {
+    log("autoloop: session-log hook already present");
+  }
+}
+
 /**
  * Run an autoloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.
@@ -198,50 +223,12 @@ export async function run(argv, deps = {}) {
         const apiUrl = (typeof flags.url === "string" && flags.url) || DEFAULT_API_URL;
         saveConfig(cwd, { apiUrl, teamId, projectSlug, currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
         log(`autoloop: initialized .autoloop.json (team=${teamId}, project=${projectSlug})`);
-        if (flags["session-log"]) {
-          const settingsPath = join(cwd, ".claude", "settings.json");
-          let settings = {};
-          if (existsSync(settingsPath)) {
-            try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
-          }
-          // Use absolute path to this CLI so the hook works regardless of PATH
-          const cliPath = process.argv[1];
-          const hookCmd = `node "${cliPath}" session push --loop "$(node "${cliPath}" state --current-loop)" || true`;
-          const stopHooks = settings.Stop ?? [];
-          const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
-          if (!alreadyAdded) {
-            stopHooks.push({ hooks: [{ type: "command", command: hookCmd }] });
-            settings.Stop = stopHooks;
-            mkdirSync(join(cwd, ".claude"), { recursive: true });
-            writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-            log("autoloop: added session-push Stop hook to .claude/settings.json");
-          } else {
-            log("autoloop: session-push Stop hook already present");
-          }
-        }
+        if (flags["session-log"]) installSessionLogHook(env, log);
         return 0;
       }
       case "init --session-log":
       case "session-log": {
-        // Standalone: write Stop hook without re-initialising the project.
-        const settingsPath = join(cwd, ".claude", "settings.json");
-        let settings = {};
-        if (existsSync(settingsPath)) {
-          try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
-        }
-        const cliPath = process.argv[1];
-        const hookCmd = `node "${cliPath}" session push --loop "$(node "${cliPath}" state --current-loop)" || true`;
-        const stopHooks = settings.Stop ?? [];
-        const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
-        if (!alreadyAdded) {
-          stopHooks.push({ hooks: [{ type: "command", command: hookCmd }] });
-          settings.Stop = stopHooks;
-          mkdirSync(join(cwd, ".claude"), { recursive: true });
-          writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-          log("autoloop: added session-push Stop hook to .claude/settings.json");
-        } else {
-          log("autoloop: session-push Stop hook already present");
-        }
+        installSessionLogHook(env, log);
         return 0;
       }
       case "project set": {
