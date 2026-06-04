@@ -547,7 +547,7 @@ export async function run(argv, deps = {}) {
         let transcriptPath = flags.file;
         if (!transcriptPath) {
           const sessionId = env.CLAUDE_CODE_SESSION_ID;
-          if (!sessionId) throw new UsageError("session push: --file required (CLAUDE_CODE_SESSION_ID not set)");
+          if (!sessionId) { err("autoloop: session push skipped — CLAUDE_CODE_SESSION_ID not set"); return 0; }
           // Encode cwd: replace every / and . with -
           const encodedCwd = cwd.replace(/[/.]/g, "-");
           const home = env.HOME || env.USERPROFILE || "";
