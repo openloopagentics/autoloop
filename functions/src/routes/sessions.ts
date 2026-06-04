@@ -21,6 +21,9 @@ sessionsRouter.post("/", json({ limit: "512kb" }), async (req, res, next) => {
 sessionsRouter.get("/", async (req, res, next) => {
   try {
     const { teamId, slug, loopId } = req.params as { teamId: string; slug: string; loopId: string };
+    if (!idPattern.test(teamId)) throw new AppError(400, "validation", "invalid teamId");
+    if (!idPattern.test(slug))   throw new AppError(400, "validation", "invalid slug");
+    if (!idPattern.test(loopId)) throw new AppError(400, "validation", "invalid loopId");
     const sessions = await listSessions(teamId, slug, loopId);
     res.status(200).json({ ok: true, sessions });
   } catch (err) { next(err); }
