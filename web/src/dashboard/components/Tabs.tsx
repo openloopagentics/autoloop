@@ -1,10 +1,11 @@
-export type TabKey = "dashboard" | "vision" | "loops" | "bugs";
+export type TabKey = "dashboard" | "vision" | "loops" | "bugs" | "messages";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "vision", label: "Vision" },
   { key: "loops", label: "Loops" },
   { key: "bugs", label: "Bugs" },
+  { key: "messages", label: "Messages" },
 ];
 
 export function Tabs({ active, onChange }: { active: TabKey; onChange: (k: TabKey) => void }) {

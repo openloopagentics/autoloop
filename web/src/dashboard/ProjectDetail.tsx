@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useMessages,
 } from "./hooks";
+import { postMessage } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor } from "./loopView";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Tabs, type TabKey } from "./components/Tabs";
@@ -17,6 +18,7 @@ import { DashboardTab } from "./tabs/DashboardTab";
 import { VisionTab } from "./tabs/VisionTab";
 import { LoopsTab } from "./tabs/LoopsTab";
 import { BugsTab } from "./tabs/BugsTab";
+import { MessagesTab } from "./tabs/MessagesTab";
 import type { Phase, Task } from "./types";
 
 function LegacyPhase({ teamId, slug, phase, loopId }: { teamId: string; slug: string; phase: Phase; loopId?: string }) {
@@ -56,6 +58,7 @@ export function ProjectDetail() {
   const testRuns = useTestRuns(teamId, slug, loopArg);
   const revisions = useRevisions(teamId, slug, loopArg);
   const bugs = useBugs(teamId, slug, loopArg);
+  const messages = useMessages(teamId, slug);
 
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
@@ -70,6 +73,7 @@ export function ProjectDetail() {
     tab === "dashboard" ? (loops.loading && loops.data.length === 0) || (phases.loading && phases.data.length === 0)
     : tab === "loops" ? (phases.loading && phases.data.length === 0)
     : tab === "bugs" ? (bugs.loading && bugs.data.length === 0)
+    : tab === "messages" ? (messages.loading && messages.data.length === 0)
     : (scenarios.loading && scenarios.data.length === 0); // vision
 
   return (
@@ -102,6 +106,7 @@ export function ProjectDetail() {
                     renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />
                 )}
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
+                {tab === "messages" && <MessagesTab messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} />}
               </>
             )}
           </>
