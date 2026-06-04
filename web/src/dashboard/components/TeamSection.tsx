@@ -6,8 +6,9 @@ import type { Project, Team } from "../types";
 
 export function TeamSection(props: {
   teamId?: string; team: Team; projects: Project[]; loading: boolean; error: string | null;
+  onDeleteProject?: (slug: string) => void;
 }) {
-  const { teamId = "", team, projects, loading, error } = props;
+  const { teamId = "", team, projects, loading, error, onDeleteProject } = props;
   return (
     <section className="team-section">
       <div className="team-section-head">
@@ -21,7 +22,12 @@ export function TeamSection(props: {
       {loading ? <Spinner />
         : error ? <ErrorNote message={error} />
         : projects.length === 0 ? <EmptyState message="No projects yet" />
-        : <div className="pgrid">{projects.map((p) => <ProjectCard key={p.slug} teamId={teamId} project={p} />)}</div>}
+        : <div className="pgrid">{projects.map((p) => (
+            <ProjectCard
+              key={p.slug} teamId={teamId} project={p}
+              onDelete={onDeleteProject ? () => onDeleteProject(p.slug) : undefined}
+            />
+          ))}</div>}
     </section>
   );
 }
