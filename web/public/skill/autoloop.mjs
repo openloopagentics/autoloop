@@ -157,6 +157,16 @@ export async function fetchJson(req, deps) {
   return 0;
 }
 
+/** Read the hook JSON payload Claude Code pipes to stdin. Returns null if not piped (TTY) or invalid. */
+function readHookStdin() {
+  if (process.stdin.isTTY) return null; // manual invocation — don't block on stdin
+  try {
+    const raw = readFileSync(0, "utf8"); // fd 0 = stdin
+    if (!raw.trim()) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
 /** Write the Stop hook to global ~/.claude/settings.json so session logs upload after every response. */
 function installSessionLogHook(env, log) {
   const home = env.HOME || env.USERPROFILE || "";
@@ -169,7 +179,8 @@ function installSessionLogHook(env, log) {
   // Settings file uses { "hooks": { "Stop": [...] } } — write to the correct nested path.
   if (!settings.hooks) settings.hooks = {};
   const cliPath = process.argv[1];
-  const hookCmd = `node "${cliPath}" session push --loop "$(node "${cliPath}" state --current-loop)"`;
+  // session push reads loop from .autoloop.json and transcript_path from the hook's stdin payload.
+  const hookCmd = `node "${cliPath}" session push`;
   const stopHooks = settings.hooks.Stop ?? [];
   const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
   if (!alreadyAdded) {
@@ -556,27 +567,25 @@ export async function run(argv, deps = {}) {
         throw new UsageError("state requires --current-loop");
       }
       case "session push": {
-        // Resolve transcript file
-        let transcriptPath = flags.file;
+        // When run as a Stop hook, Claude Code pipes a JSON payload on stdin:
+        // { session_id, transcript_path, cwd, hook_event_name, ... }
+        const hook = readHookStdin();
+        const transcriptPath = flags.file || hook?.transcript_path;
         if (!transcriptPath) {
-          const sessionId = env.CLAUDE_CODE_SESSION_ID;
-          if (!sessionId) { err("autoloop: session push skipped — CLAUDE_CODE_SESSION_ID not set"); return 0; }
-          // Encode cwd: replace every / and . with -
-          const encodedCwd = cwd.replace(/[/.]/g, "-");
-          const home = env.HOME || env.USERPROFILE || "";
-          transcriptPath = join(home, ".claude", "projects", encodedCwd, `${sessionId}.jsonl`);
+          err("autoloop: session push skipped — no transcript_path (not run as a hook? pass --file)");
+          return 0;
         }
         if (!existsSync(transcriptPath)) {
           err(`autoloop: session transcript not found at ${transcriptPath}`);
           return 0; // best-effort: don't fail the hook
         }
 
-        const cfg = loadConfig(cwd);
+        const cfg = loadConfig(hook?.cwd || cwd);
         const loopId = flags.loop || cfg.currentLoopId;
         if (!loopId) { err("autoloop: session push skipped — no active loop"); return 0; }
         validateId("loopId", loopId);
 
-        const sessionId = flags.session || basename(transcriptPath, ".jsonl");
+        const sessionId = flags.session || hook?.session_id || basename(transcriptPath, ".jsonl");
         const lines = readFileSync(transcriptPath, "utf8").trim().split("\n").filter(Boolean);
         const entries = [];
         // Maps tool_use id → index in entries array so tool_result can patch ok=false.
