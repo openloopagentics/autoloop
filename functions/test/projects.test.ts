@@ -112,7 +112,7 @@ describe("PUT /v1/teams/:teamId/projects/:slug", () => {
   it("401 for an unknown/revoked key", async () => {
     await seedTeam();
     const res = await request(app).put("/v1/teams/team1/projects/acme")
-      .set("Authorization", "Bearer dl_unknown").send({ title: "x", status: "queued" });
+      .set("Authorization", "Bearer al_unknown").send({ title: "x", status: "queued" });
     expect(res.status).toBe(401);
   });
 

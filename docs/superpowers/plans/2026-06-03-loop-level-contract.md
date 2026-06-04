@@ -6,7 +6,7 @@
 
 **Architecture:** Additive + back-compatible (mirrors #1's commit-relocation). Each existing upsert/append service gets an **optional `loopId`** → a `baseRef` (`loops/{loopId}` doc when set, else the project doc); run-data docs + per-loop derivation use `baseRef`, while **scenario reads and the `visionOwner` stamp stay on the project**. Each entity router is mounted at BOTH the legacy path and `…/loops/:loopId/…`; handlers pass `req.params.loopId` through. Firestore rules are unchanged (the recursive `match /projects/{slug}/{document=**}` already covers `loops/**`); tests only. The CLI gains `loop start/set` + routes reporting under `cfg.currentLoopId` when set.
 
-**Tech Stack:** TypeScript Cloud Function (Express + firebase-admin + zod), Vitest + Firestore emulator. CLI is `cli/daloop.mjs`. No new deps.
+**Tech Stack:** TypeScript Cloud Function (Express + firebase-admin + zod), Vitest + Firestore emulator. CLI is `cli/autoloop.mjs`. No new deps.
 
 **Reference spec:** `docs/superpowers/specs/2026-06-03-loop-level-contract-design.md`
 
@@ -38,7 +38,7 @@ The base-path refactor MUST preserve these or it regresses #1/#5 (the existing 1
 | `functions/src/services/{taskCommits,events}.ts` | base-path-aware (loopId); scenario reads stay project | 4 |
 | `functions/src/routes/{phases,tasks,taskCommits,events}.ts` | pass `req.params.loopId` to services | 5 |
 | `functions/src/app.ts` | mount loops router + loop-scoped mounts of each entity router | 5 |
-| `cli/daloop.mjs` | `loop start/set` + loop-aware URLs + init seeds | 6 |
+| `cli/autoloop.mjs` | `loop start/set` + loop-aware URLs + init seeds | 6 |
 | `functions/test-rules/rules.test.ts` | loops/** read/deny tests | 7 |
 | `functions/test/*` | loop entity, loop-scoped, regression | 2–8 |
 
@@ -262,7 +262,7 @@ export async function upsertLoop(teamId: string, slug: string, loopId: string, b
 
 ## Task 6: CLI — `loop start/set` + loop-aware reporting
 
-**Files:** Modify `cli/daloop.mjs`, `functions/test/cli.unit.test.ts`.
+**Files:** Modify `cli/autoloop.mjs`, `functions/test/cli.unit.test.ts`.
 
 - [ ] **Step 1: Failing unit tests** (`cli.unit.test.ts`):
   - `loop start <id> --goal "…" --order 1` → PUT `…/projects/web/loops/<id>` body `{goal,order,status:"running"}`; sets `cfg.currentLoopId`.
@@ -272,14 +272,14 @@ export async function upsertLoop(teamId: string, slug: string, loopId: string, b
 
 - [ ] **Step 2: Run → fail.**
 
-- [ ] **Step 3: Implement in `cli/daloop.mjs`:**
+- [ ] **Step 3: Implement in `cli/autoloop.mjs`:**
   - Add a helper `loopSeg(cfg)` → `cfg.currentLoopId ? "/loops/" + cfg.currentLoopId : ""`. Insert it into the URL builders for `phase start`, `phase set`, `task start`, `task set`, `commit`, `score`, `test-run`, `revise` (between `/projects/<slug>` and the entity path). Legacy (no currentLoopId) → empty segment → today's URLs.
   - Add `case "loop start": { id=positionals[2]; require --goal,--order; PUT /loops/<id> {goal,order,status:status||running}; cfg.currentLoopId=id; cfg.loops[id]={goal,order}; saveConfig }` and `case "loop set": { PUT /loops/<id> {status} }` (validateStatus). Add `loop` to the ONE_WORD-style dispatch? No — `loop start`/`loop set` are two-word verbs (cmd="loop", sub="start"/"set") → fit the existing `${cmd} ${sub}` switch. Good.
   - `init`: seed `currentLoopId: null, loops: {}`.
 
 - [ ] **Step 4: Run → pass** — `npm run test:run -- cli.unit` (new + existing; adjust existing commit/task tests for the now-optional loop segment — with no currentLoopId they're unchanged).
 
-- [ ] **Step 5: Sync + commit** — `bash scripts/sync-daloop-cli.sh`; `git add cli/daloop.mjs functions/test/cli.unit.test.ts web/public/skill/daloop.mjs plugins/daloop-reporting/bin/daloop && git commit -m "feat(cli): loop start/set + loop-aware reporting (currentLoopId)"`.
+- [ ] **Step 5: Sync + commit** — `bash scripts/sync-autoloop-cli.sh`; `git add cli/autoloop.mjs functions/test/cli.unit.test.ts web/public/skill/autoloop.mjs plugins/autoloop-reporting/bin/autoloop && git commit -m "feat(cli): loop start/set + loop-aware reporting (currentLoopId)"`.
 
 ---
 

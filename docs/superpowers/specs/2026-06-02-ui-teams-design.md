@@ -1,4 +1,4 @@
-# Daloop UI — Team & Membership Management (UI-C) — Design
+# Autoloop UI — Team & Membership Management (UI-C) — Design
 
 **Date:** 2026-06-02
 **Status:** Approved (design phase; decisions delegated to the implementer)

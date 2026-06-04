@@ -1,10 +1,10 @@
 {
-  "name": "daloop-web",
+  "name": "autoloop-web",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "cp ../cli/daloop.mjs public/skill/daloop.mjs",
+    "prebuild": "cp ../cli/autoloop.mjs public/skill/autoloop.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",

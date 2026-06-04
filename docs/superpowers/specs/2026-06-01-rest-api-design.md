@@ -1,11 +1,11 @@
-# Daloop REST API — Design
+# Autoloop REST API — Design
 
 **Date:** 2026-06-01
 **Status:** Approved (design phase)
 
 ## Context
 
-Daloop is a frontend that displays the status of many projects being developed
+Autoloop is a frontend that displays the status of many projects being developed
 in a loop by AI agents. Each project has a design, a set of phases, and the
 commits made during those phases. This spec covers **the REST API only** — the
 write surface that AI agents (Claude Code, Codex) call, via a skill, to report

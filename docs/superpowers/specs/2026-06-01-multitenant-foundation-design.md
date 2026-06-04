@@ -1,11 +1,11 @@
-# Daloop Multi-Tenant Foundation (Sub-project A) — Design
+# Autoloop Multi-Tenant Foundation (Sub-project A) — Design
 
 **Date:** 2026-06-01
 **Status:** Approved (design phase)
 
 ## Context
 
-Daloop is evolving from single-tenant to **multi-tenant**. The end state:
+Autoloop is evolving from single-tenant to **multi-tenant**. The end state:
 teams own projects; users belong to teams with roles; users mint user-scoped API
 keys; agent writes are authorized by team membership. This is too large for one
 spec, so it is split into two sequenced sub-projects:
@@ -36,7 +36,7 @@ single-tenant REST API (`docs/superpowers/specs/2026-06-01-rest-api-design.md`).
   Firestore directly from the UI, governed by security rules. Key minting (B)
   is a server endpoint. Agents write project status through the API.
 - **New members join via an email invite + accept flow.**
-- **`isAllowed`** (on `users/{uid}`) remains the global "allowed into Daloop at
+- **`isAllowed`** (on `users/{uid}`) remains the global "allowed into Autoloop at
   all" gate, checked at the entry points (create team, accept invite). Day-to-day
   team reads check membership only.
 

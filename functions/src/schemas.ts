@@ -117,7 +117,7 @@ export const testRunBody = z.object({
 export const revisionBody = z.object({
   trigger: z.object({ scenarioId: id, reason: z.string().min(1) }),
   // changes carry op + taskId plus optional op-specific detail (title/order/...). passthrough
-  // keeps that detail; the loop, not Daloop, defines its meaning.
+  // keeps that detail; the loop, not Autoloop, defines its meaning.
   changes: z.array(z.object({ op: z.enum(["add", "replace", "reorder", "drop"]), taskId: id }).passthrough()).min(1),
 });
 

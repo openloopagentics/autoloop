@@ -31,7 +31,7 @@ describe("/v1/keys", () => {
   it("POST mints a key (201) and returns plaintext once", async () => {
     const res = await request(appAs("alice")).post("/v1/keys").send({ label: "laptop" });
     expect(res.status).toBe(201);
-    expect(res.body.key.startsWith("dl_")).toBe(true);
+    expect(res.body.key.startsWith("al_")).toBe(true);
     expect(res.body.label).toBe("laptop");
     const doc = (await db().doc(`apiKeys/${res.body.id}`).get()).data()!;
     expect(doc.uid).toBe("alice");

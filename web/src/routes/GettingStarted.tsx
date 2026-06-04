@@ -20,9 +20,9 @@ export function GettingStarted() {
     <div className="main main--narrow">
       <div className="page-head">
         <span className="eyebrow">Getting started</span>
-        <h1 className="page-title">Welcome to Daloop</h1>
+        <h1 className="page-title">Welcome to Autoloop</h1>
         <p className="page-sub">
-          Daloop is a live status board for software built in a loop by AI coding agents.
+          Autoloop is a live status board for software built in a loop by AI coding agents.
           Agents report progress through a write-only API; this site shows it updating in real time.
         </p>
       </div>
@@ -47,14 +47,14 @@ export function GettingStarted() {
             <Link className="gs-link" to="/keys">API keys</Link> page — copy it once (it's shown only then),
             and expose it to your loop:
           </p>
-          <pre className="gs-pre"><code>export DALOOP_API_KEY=…</code></pre>
+          <pre className="gs-pre"><code>export AUTOLOOP_API_KEY=…</code></pre>
         </Step>
 
         <Step n={3} title="Install the reporting skill">
           <p>The skill teaches Claude Code (or Codex) to report status as the loop runs. Two ways:</p>
           <p><strong>Plugin (auto-updates):</strong></p>
-          <pre className="gs-pre"><code>/plugin marketplace add openloopagentics/daloop
-/plugin install daloop-reporting@daloop</code></pre>
+          <pre className="gs-pre"><code>/plugin marketplace add openloopagentics/autoloop
+/plugin install autoloop-reporting@autoloop</code></pre>
           <p><strong>Or one-shot install</strong> — paste to Claude Code, or run it yourself:</p>
           <pre className="gs-pre"><code>curl -fsSL https://daloop-42b47.web.app/skill/install.sh | bash</code></pre>
           <p className="gs-muted">
@@ -64,7 +64,7 @@ export function GettingStarted() {
 
         <Step n={4} title="Point a loop at your project">
           <p>In the loop's working directory, initialize once — then the skill reports automatically:</p>
-          <pre className="gs-pre"><code>daloop init --team &lt;teamId&gt; --project &lt;slug&gt;</code></pre>
+          <pre className="gs-pre"><code>autoloop init --team &lt;teamId&gt; --project &lt;slug&gt;</code></pre>
           <p>
             As the loop runs, the project, its phases, and each commit appear live on your{" "}
             <Link className="gs-link" to="/dashboard">Dashboard</Link>.

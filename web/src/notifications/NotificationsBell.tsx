@@ -4,7 +4,7 @@ import { useMyTeams, useTeamNotifications } from "../dashboard/hooks";
 import type { TeamRef } from "../dashboard/types";
 import type { Notification } from "./types";
 
-const LAST_SEEN_KEY = "daloop:notifs:lastSeen";
+const LAST_SEEN_KEY = "autoloop:notifs:lastSeen";
 
 /** Number of notifications newer than the last-seen id (ids are sortable ULIDs). */
 export function unreadCount(notifications: Notification[], lastSeenId: string | null): number {

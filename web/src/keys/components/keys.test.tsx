@@ -24,10 +24,10 @@ describe("NewKeyReveal", () => {
   });
   it("shows the plaintext, copies, and dismisses", async () => {
     const onDismiss = vi.fn();
-    render(<NewKeyReveal keyValue="dl_secret123" onDismiss={onDismiss} />);
-    expect(screen.getByText("dl_secret123")).toBeInTheDocument();
+    render(<NewKeyReveal keyValue="al_secret123" onDismiss={onDismiss} />);
+    expect(screen.getByText("al_secret123")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /copy/i }));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("dl_secret123");
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("al_secret123");
     await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
     expect(onDismiss).toHaveBeenCalled();
   });
@@ -36,8 +36,8 @@ describe("NewKeyReveal", () => {
 describe("KeyRow / KeyList", () => {
   it("KeyRow shows prefix+label and revokes", async () => {
     const onRevoke = vi.fn();
-    render(<KeyRow keyMeta={{ id: "h1", label: "laptop", prefix: "dl_ab12c" }} onRevoke={onRevoke} />);
-    expect(screen.getByText(/dl_ab12c/)).toBeInTheDocument();
+    render(<KeyRow keyMeta={{ id: "h1", label: "laptop", prefix: "al_ab12c" }} onRevoke={onRevoke} />);
+    expect(screen.getByText(/al_ab12c/)).toBeInTheDocument();
     expect(screen.getByText("laptop")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /revoke/i }));
     expect(onRevoke).toHaveBeenCalledWith("h1");
@@ -45,7 +45,7 @@ describe("KeyRow / KeyList", () => {
   it("KeyList renders empty state vs rows", () => {
     const { rerender } = render(<KeyList keys={[]} onRevoke={() => {}} />);
     expect(screen.getByText(/no api keys yet/i)).toBeInTheDocument();
-    rerender(<KeyList keys={[{ id: "h1", label: "laptop", prefix: "dl_ab12c" }]} onRevoke={() => {}} />);
+    rerender(<KeyList keys={[{ id: "h1", label: "laptop", prefix: "al_ab12c" }]} onRevoke={() => {}} />);
     expect(screen.getByText("laptop")).toBeInTheDocument();
   });
 });

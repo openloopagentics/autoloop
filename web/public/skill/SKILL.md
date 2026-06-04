@@ -1,54 +1,54 @@
 ---
-name: daloop-reporting
-description: Use when running a development loop that should report its status (project, phases, commits) to a Daloop dashboard. Reports via the bundled daloop CLI as the loop progresses. Requires DALOOP_API_KEY in the environment and a one-time `daloop init`.
+name: autoloop-reporting
+description: Use when running a development loop that should report its status (project, phases, commits) to an Autoloop dashboard. Reports via the bundled autoloop CLI as the loop progresses. Requires AUTOLOOP_API_KEY in the environment and a one-time `autoloop init`.
 ---
 
-# Daloop Reporting
+# Autoloop Reporting
 
-Report the loop's status to Daloop as you work, using the bundled `daloop` CLI.
+Report the loop's status to Autoloop as you work, using the bundled `autoloop` CLI.
 Reporting is **best-effort observability** — it must never block or derail the
 actual development work.
 
-In every command below, **`daloop`** is shorthand for:
+In every command below, **`autoloop`** is shorthand for:
 
 ```
-node "$HOME/.claude/skills/daloop-reporting/daloop.mjs"
+node "$HOME/.claude/skills/autoloop-reporting/autoloop.mjs"
 ```
 
 (The CLI ships next to this SKILL.md and has no dependencies — Node 22+ only.)
 
 ## Prerequisites (set up once)
 
-- **`DALOOP_API_KEY`** must be set in the environment — a per-user key minted in
-  the Daloop app under **API keys** (you must be a member of the team you report
+- **`AUTOLOOP_API_KEY`** must be set in the environment — a per-user key minted in
+  the Autoloop app under **API keys** (you must be a member of the team you report
   to). The CLI never reads the key from a file.
-- Run **`daloop init`** once in the loop's working directory to write `.daloop.json`:
+- Run **`autoloop init`** once in the loop's working directory to write `.autoloop.json`:
 
   ```
-  daloop init --team <teamId> --project <slug>
+  autoloop init --team <teamId> --project <slug>
   ```
 
-  (The CLI defaults to the hosted Daloop API; pass `--url <apiUrl>` only to point
+  (The CLI defaults to the hosted Autoloop API; pass `--url <apiUrl>` only to point
   at a different deployment.)
 
 ## When to report (lifecycle → command)
 
 | Loop moment | Command |
 |---|---|
-| Project start (once) | `daloop init …` then `daloop project set --title "<title>" --status running --design-file <plan-or-spec>` |
-| Entering a phase | `daloop phase start <phaseId> --name "<name>" --order <n>` |
-| After each git commit | `daloop commit` |
-| Leaving a phase | `daloop phase set <phaseId> --status completed` (or `failed`) |
-| Loop end | `daloop project set --status completed` (or `failed` / `cancelled`) |
+| Project start (once) | `autoloop init …` then `autoloop project set --title "<title>" --status running --design-file <plan-or-spec>` |
+| Entering a phase | `autoloop phase start <phaseId> --name "<name>" --order <n>` |
+| After each git commit | `autoloop commit` |
+| Leaving a phase | `autoloop phase set <phaseId> --status completed` (or `failed`) |
+| Loop end | `autoloop project set --status completed` (or `failed` / `cancelled`) |
 
-- `daloop commit` reads the latest git commit (sha, message, author, time) and
+- `autoloop commit` reads the latest git commit (sha, message, author, time) and
   attaches it to the current phase — just run it right after you commit.
 - A `phaseId` is yours to choose (e.g. `build`, `design`); `phase set` reuses the
   name/order you gave at `phase start`.
 
 ## Rules
 
-- **Best-effort:** if a `daloop` command prints a warning (bad key, not a team
+- **Best-effort:** if a `autoloop` command prints a warning (bad key, not a team
   member, network blip), **note it and keep going** — never abort the loop over a
   reporting failure. By default such failures exit `0`; only pass `--strict` if you
   deliberately want reporting failures to be fatal.
@@ -63,13 +63,13 @@ node "$HOME/.claude/skills/daloop-reporting/daloop.mjs"
 ## Example
 
 ```
-daloop init --team acme --project web
-daloop project set --title "Acme Web" --status running --design-file docs/plan.md
-daloop phase start build --name "Build" --order 1
+autoloop init --team acme --project web
+autoloop project set --title "Acme Web" --status running --design-file docs/plan.md
+autoloop phase start build --name "Build" --order 1
 # … do work, git commit …
-daloop commit
-daloop phase set build --status completed
-daloop project set --status completed
+autoloop commit
+autoloop phase set build --status completed
+autoloop project set --status completed
 ```
 
 See `CODEX.md` in this directory for the same commands framed for a Codex-driven loop.

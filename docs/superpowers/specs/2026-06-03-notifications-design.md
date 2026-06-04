@@ -1,4 +1,4 @@
-# Daloop — Notifications design spec
+# Autoloop — Notifications design spec
 
 **Date:** 2026-06-03
 **Status:** approved (brainstorming) — pending spec review + user review
@@ -111,7 +111,7 @@ client-write-deny.
   recent N (e.g. 50).
 - **`NotificationsBell`** in the header (`web/src/routes/AppShell.tsx`): reads the user's
   teams (`useMyTeams`) and their notifications, merges + sorts by id desc, shows an
-  unread count = number newer than the `localStorage` `daloop:notifs:lastSeen` id;
+  unread count = number newer than the `localStorage` `autoloop:notifs:lastSeen` id;
   opening the dropdown updates `lastSeen` to the newest id (clears the count). Each row
   shows the title/message + relative time; click → navigate to
   `/dashboard/{teamId}/{slug}` (and, if scenarioId, that project page). Empty state when

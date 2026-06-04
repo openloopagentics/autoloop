@@ -1,4 +1,4 @@
-# Daloop
+# Autoloop
 
 A status dashboard for software projects built in a loop by AI agents. Each
 project has a design, a sequence of phases, and the commits made during those
@@ -98,7 +98,7 @@ project/phase parent (for a member) → `404`.
   `isAllowed`. Minting returns the plaintext key once; only its SHA-256 hash is
   stored (`apiKeys/{hash}`).
 - **Agent writes** are authenticated by a **per-user API key** in
-  `Authorization: Bearer dl_…` (or the `x-api-key` header). The server hashes the
+  `Authorization: Bearer al_…` (or the `x-api-key` header). The server hashes the
   key, resolves it to its owner, and authorizes the write against the target
   team's membership.
 
@@ -120,7 +120,7 @@ by the UI writing Firestore directly, governed by `firestore.rules`:
 - Reads of a team's projects/phases/commits require membership; all client
   writes to project data are denied (only the API's Admin SDK writes it).
 
-`isAllowed` (on `users/{uid}`) is the global "allowed into Daloop at all" gate,
+`isAllowed` (on `users/{uid}`) is the global "allowed into Autoloop at all" gate,
 checked at the entry points (creating a team, accepting an invite). Provisioning
 user docs / the allowlist is handled by the admin UI (out of scope for this repo).
 
@@ -130,22 +130,22 @@ member of the team being written to (see **Authentication**).
 ## Reporting from an agent loop
 
 AI agents (Claude Code, Codex) running a dev loop report status with the
-dependency-free CLI at `cli/daloop.mjs` (Node 22+, no install). Set
-`DALOOP_API_KEY` in the environment (a per-user key minted via `POST /v1/keys`),
+dependency-free CLI at `cli/autoloop.mjs` (Node 22+, no install). Set
+`AUTOLOOP_API_KEY` in the environment (a per-user key minted via `POST /v1/keys`),
 then:
 
 ```bash
-node cli/daloop.mjs init --team <teamId> --project <slug> [--url <apiUrl>]
-node cli/daloop.mjs project set --title "Acme Web" --status running --design-file docs/plan.md
-node cli/daloop.mjs phase start build --name "Build" --order 1
-node cli/daloop.mjs commit            # reads git HEAD, attaches to the current phase
-node cli/daloop.mjs phase set build --status completed
-node cli/daloop.mjs project set --status completed
+node cli/autoloop.mjs init --team <teamId> --project <slug> [--url <apiUrl>]
+node cli/autoloop.mjs project set --title "Acme Web" --status running --design-file docs/plan.md
+node cli/autoloop.mjs phase start build --name "Build" --order 1
+node cli/autoloop.mjs commit            # reads git HEAD, attaches to the current phase
+node cli/autoloop.mjs phase set build --status completed
+node cli/autoloop.mjs project set --status completed
 ```
 
-Config (non-secret) lives in `.daloop.json`; the key stays in the env. Reporting is
+Config (non-secret) lives in `.autoloop.json`; the key stays in the env. Reporting is
 **best-effort** — failures warn and exit 0 (use `--strict` to make them fatal). The
-Claude Code skill and Codex usage note live in `skills/daloop-reporting/`.
+Claude Code skill and Codex usage note live in `skills/autoloop-reporting/`.
 
 ## Web UI
 
@@ -209,5 +209,5 @@ The API no longer uses a shared write key. After deploying the per-user-key
 change, decommission the old Functions secret:
 
 ```bash
-firebase functions:secrets:destroy DALOOP_WRITE_KEYS
+firebase functions:secrets:destroy AUTOLOOP_WRITE_KEYS
 ```

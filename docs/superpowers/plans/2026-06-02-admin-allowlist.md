@@ -1,4 +1,4 @@
-# Daloop — Admin Allowlist (UI-E) Implementation Plan
+# Autoloop — Admin Allowlist (UI-E) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use `- [ ]` checkboxes.
 

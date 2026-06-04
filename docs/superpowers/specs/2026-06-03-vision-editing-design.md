@@ -1,4 +1,4 @@
-# Daloop — Vision Editing in the Web UI design spec
+# Autoloop — Vision Editing in the Web UI design spec
 
 **Date:** 2026-06-03
 **Status:** approved (brainstorming) — pending spec review + user review
@@ -27,7 +27,7 @@ security invariant intact and reuses the existing zod validation.
 
 **Ownership arbitration via a `visionOwner` project field** (`"web" | "loop"`):
 - **Agent / API-key writes** (the existing `requireApiKeyMember` path used by the
-  `daloop` CLI) stamp `visionOwner: "loop"`.
+  `autoloop` CLI) stamp `visionOwner: "loop"`.
 - **Web / ID-token writes** (the new path) require `visionOwner !== "loop"` and stamp
   `visionOwner: "web"`.
 - **Loop wins:** if a loop reports against a web-authored project, the agent write
@@ -168,7 +168,7 @@ subscriptions (#4) to reflect the change — no manual refetch.
 
 ## Out of scope (deferred)
 
-- `/daloop-loop` "pulling" a web-authored vision into a local `vision.json` (a future
+- `/autoloop-loop` "pulling" a web-authored vision into a local `vision.json` (a future
   CLI enhancement; for now web-authored visions are consumed by readers, and a loop
   taking over simply overwrites).
 - Real-time collaborative editing / conflict UI (single-editor assumption; last write

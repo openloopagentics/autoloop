@@ -1,4 +1,4 @@
-# Daloop — Vision Tracking UI design spec
+# Autoloop — Vision Tracking UI design spec
 
 **Date:** 2026-06-02
 **Status:** approved (brainstorming) — pending spec review + user review

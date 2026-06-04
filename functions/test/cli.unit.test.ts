@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run } from "../../cli/daloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run } from "../../cli/autoloop.mjs";
 
-function tmp() { return mkdtempSync(join(tmpdir(), "daloop-")); }
+function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
 describe("parseArgs", () => {
   it("splits positionals and --flags (with values and booleans)", () => {
@@ -27,12 +27,12 @@ describe("validateStatus / validateId", () => {
 });
 
 describe("config I/O", () => {
-  it("saves and loads .daloop.json; loadConfig throws when missing", () => {
+  it("saves and loads .autoloop.json; loadConfig throws when missing", () => {
     const dir = tmp();
     expect(() => loadConfig(dir)).toThrow(/init/);
     saveConfig(dir, { apiUrl: "u", teamId: "t", projectSlug: "p", currentPhaseId: null, phases: {} });
     expect(loadConfig(dir).teamId).toBe("t");
-    expect(JSON.parse(readFileSync(join(dir, ".daloop.json"), "utf8")).projectSlug).toBe("p");
+    expect(JSON.parse(readFileSync(join(dir, ".autoloop.json"), "utf8")).projectSlug).toBe("p");
   });
 });
 
@@ -46,7 +46,7 @@ describe("run dispatch", () => {
 });
 
 describe("init", () => {
-  it("writes .daloop.json with team/project/url and empty phase state", async () => {
+  it("writes .autoloop.json with team/project/url and empty phase state", async () => {
     const dir = tmp();
     const code = await run(["init", "--team", "acme", "--project", "web", "--url", "http://x"], { cwd: dir, env: {}, log: () => {}, err: () => {} });
     expect(code).toBe(0);
@@ -66,12 +66,12 @@ describe("init", () => {
 });
 
 // @ts-ignore
-import { report, resolveApiUrl } from "../../cli/daloop.mjs";
+import { report, resolveApiUrl } from "../../cli/autoloop.mjs";
 
 describe("resolveApiUrl precedence", () => {
   it("flag > env > config", () => {
-    expect(resolveApiUrl({ apiUrl: "c" }, { DALOOP_API_URL: "e" }, "f")).toBe("f");
-    expect(resolveApiUrl({ apiUrl: "c" }, { DALOOP_API_URL: "e" }, undefined)).toBe("e");
+    expect(resolveApiUrl({ apiUrl: "c" }, { AUTOLOOP_API_URL: "e" }, "f")).toBe("f");
+    expect(resolveApiUrl({ apiUrl: "c" }, { AUTOLOOP_API_URL: "e" }, undefined)).toBe("e");
     expect(resolveApiUrl({ apiUrl: "c" }, {}, undefined)).toBe("c");
   });
 });
@@ -81,10 +81,10 @@ describe("report (exit policy)", () => {
   function failFetch(status: number, body: any) {
     return async () => ({ ok: false, status, json: async () => body, text: async () => JSON.stringify(body) });
   }
-  const base = { cwd: "/", env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {} };
+  const base = { cwd: "/", env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {} };
 
-  it("throws UsageError when DALOOP_API_KEY missing (before network)", async () => {
-    await expect(report({ method: "PUT", url: "http://x/v1", body: {} }, { ...base, env: {} })).rejects.toThrow(/DALOOP_API_KEY/);
+  it("throws UsageError when AUTOLOOP_API_KEY missing (before network)", async () => {
+    await expect(report({ method: "PUT", url: "http://x/v1", body: {} }, { ...base, env: {} })).rejects.toThrow(/AUTOLOOP_API_KEY/);
   });
 
   it("returns 0 on success and sends Bearer auth + JSON body", async () => {
@@ -93,7 +93,7 @@ describe("report (exit policy)", () => {
       { ...base, fetchImpl: async (url: string, init: any) => { captured = { url, init }; return okFetch(); } });
     expect(code).toBe(0);
     expect(captured.init.method).toBe("PUT");
-    expect(captured.init.headers.Authorization).toBe("Bearer dl_k");
+    expect(captured.init.headers.Authorization).toBe("Bearer al_k");
     expect(JSON.parse(captured.init.body).title).toBe("x");
   });
 
@@ -117,7 +117,7 @@ describe("phase start/set", () => {
   it("phase start records name/order + currentPhaseId and PUTs running", async () => {
     const dir = initDir();
     const code = await run(["phase", "start", "build", "--name", "Build", "--order", "1"],
-      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
     expect(code).toBe(0);
     expect((okFetch as any).last.url).toBe("http://api/v1/teams/acme/projects/web/phases/build");
     expect(JSON.parse((okFetch as any).last.init.body)).toMatchObject({ name: "Build", order: 1, status: "running" });
@@ -128,15 +128,15 @@ describe("phase start/set", () => {
 
   it("phase set re-sends recorded name/order + new status", async () => {
     const dir = initDir();
-    await run(["phase", "start", "build", "--name", "Build", "--order", "1"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
-    await run(["phase", "set", "build", "--status", "completed"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+    await run(["phase", "start", "build", "--name", "Build", "--order", "1"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+    await run(["phase", "set", "build", "--status", "completed"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
     expect(JSON.parse((okFetch as any).last.init.body)).toMatchObject({ name: "Build", order: 1, status: "completed" });
   });
 
   it("phase set on an unstarted id -> exit 1, no network", async () => {
     const errs: string[] = [];
     const code = await run(["phase", "set", "ghost", "--status", "completed"],
-      { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("no"); } });
+      { cwd: initDir(), env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/not started/);
   });
@@ -153,7 +153,7 @@ describe("project set", () => {
     writeFileSync(join(dir, "plan.md"), "# Plan");
     let captured: any;
     const code = await run(["project", "set", "--title", "Web", "--status", "running", "--design-file", "plan.md"],
-      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {},
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {},
         fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
     expect(code).toBe(0);
     expect(captured.url).toBe("http://api/v1/teams/acme/projects/web");
@@ -163,7 +163,7 @@ describe("project set", () => {
   it("returns 1 (no crash) when --design-file is missing", async () => {
     const errs: string[] = [];
     const code = await run(["project", "set", "--title", "Web", "--status", "running", "--design-file", "nope.md"],
-      { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+      { cwd: initDir(), env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
         fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/could not read --design-file/);
@@ -171,7 +171,7 @@ describe("project set", () => {
   it("rejects an invalid status (exit 1, no network)", async () => {
     const errs: string[] = [];
     const code = await run(["project", "set", "--title", "Web", "--status", "nope"],
-      { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+      { cwd: initDir(), env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
         fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/invalid status/);
@@ -179,7 +179,7 @@ describe("project set", () => {
 });
 
 // @ts-ignore
-import { parseGitHead } from "../../cli/daloop.mjs";
+import { parseGitHead } from "../../cli/autoloop.mjs";
 
 describe("parseGitHead", () => {
   it("parses sha / ISO committedAt / author / message", () => {
@@ -199,7 +199,7 @@ describe("commit", () => {
   it("auto-creates an implicit 'main' task then PUTs the commit under it", async () => {
     const dir = initDir(); const calls: any[] = [];
     const fetchImpl = async (url: string, init: any) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({}) }; };
-    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun, fetchImpl });
+    const code = await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, gitRun, fetchImpl });
     expect(code).toBe(0);
     expect(calls[0].url).toBe("http://api/v1/teams/acme/projects/web/tasks/main"); // implicit task created
     expect(JSON.parse(calls[0].init.body)).toMatchObject({ phaseId: "build", title: "Main", order: 0, status: "running", scenarioIds: [] });
@@ -209,7 +209,7 @@ describe("commit", () => {
 
   it("uses --task when given (no implicit task)", async () => {
     const dir = initDir(); let captured: any;
-    const code = await run(["commit", "--task", "t7"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
+    const code = await run(["commit", "--task", "t7"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, gitRun,
       fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
     expect(code).toBe(0);
     expect(captured.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t7/commits/deadbeef");
@@ -217,7 +217,7 @@ describe("commit", () => {
 
   it("uses currentTaskId when set (no implicit task)", async () => {
     const dir = initDir("t3"); const calls: any[] = [];
-    await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
+    await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, gitRun,
       fetchImpl: async (url: string, init: any) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({}) }; } });
     expect(calls).toHaveLength(1); // no implicit-task PUT
     expect(calls[0].url).toBe("http://api/v1/teams/acme/projects/web/tasks/t3/commits/deadbeef");
@@ -227,14 +227,14 @@ describe("commit", () => {
     const dir = tmp();
     saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
     const errs: string[] = [];
-    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), gitRun, fetchImpl: async () => { throw new Error("no"); } });
+    const code = await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), gitRun, fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/no current phase/i);
   });
 
   it("exits 1 when git author is empty", async () => {
     const errs: string[] = [];
-    const code = await run(["commit", "--task", "t1"], { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+    const code = await run(["commit", "--task", "t1"], { cwd: initDir(), env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
       gitRun: () => "deadbeef\n2026-06-02T01:25:49-07:00\n\nfix: thing", fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/author/);
@@ -255,7 +255,7 @@ describe("goal/scenario/task/doc verbs (request shapes)", () => {
     return dir;
   }
   const cap = () => { const c: any = {}; c.fetchImpl = async (url: string, init: any) => { c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true }) }; }; return c; };
-  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
 
   it("goal set PUTs the goal", async () => {
     const dir = initDir(); const c = cap();
@@ -303,7 +303,7 @@ describe("loop start/set + loop-aware URLs", () => {
     return dir;
   }
   const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true, id: "01XYZ" }) }; }; return c; };
-  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
 
   it("init seeds currentLoopId:null and loops:{}", async () => {
     const dir = tmp();
@@ -354,7 +354,7 @@ describe("event + vision verbs (request shapes)", () => {
     return dir;
   }
   const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true, id: "01XYZ" }) }; }; return c; };
-  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
 
   it("score POSTs criteria map + composite", async () => {
     const dir = initDir(); const c = cap();
@@ -410,7 +410,7 @@ describe("bug add/set verbs", () => {
     return dir;
   }
   const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true }) }; }; return c; };
-  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
 
   it("bug add PUTs the bug with default status open", async () => {
     const dir = initDir(); const c = cap();
@@ -435,13 +435,13 @@ describe("bug add/set verbs", () => {
 
   it("bug add rejects an unknown severity", async () => {
     const dir = initDir(); const errs: string[] = [];
-    const code = await run(["bug", "add", "b1", "--title", "X", "--severity", "blocker"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    const code = await run(["bug", "add", "b1", "--title", "X", "--severity", "blocker"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).not.toBe(0);
   });
 
   it("bug set requires at least one field", async () => {
     const dir = initDir(); const errs: string[] = [];
-    const code = await run(["bug", "set", "b1"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    const code = await run(["bug", "set", "b1"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).not.toBe(0);
   });
 });
@@ -459,7 +459,7 @@ describe("messages pull/ack/send verbs", () => {
     return c;
   };
   const base = (dir: string, c: any, logsOut: string[] = [], errsOut: string[] = []) => ({
-    cwd: dir, env: { DALOOP_API_KEY: "dl_k" },
+    cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" },
     log: (m: string) => logsOut.push(m),
     err: (m: string) => errsOut.push(m),
     fetchImpl: c.fetchImpl,
@@ -476,7 +476,7 @@ describe("messages pull/ack/send verbs", () => {
 
   it("messages send requires --text", async () => {
     const dir = initDir(); const errs: string[] = [];
-    const code = await run(["messages", "send"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    const code = await run(["messages", "send"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/--text/);
   });
@@ -491,7 +491,7 @@ describe("messages pull/ack/send verbs", () => {
 
   it("messages ack requires a non-empty id", async () => {
     const dir = initDir(); const errs: string[] = [];
-    const code = await run(["messages", "ack"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    const code = await run(["messages", "ack"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/id/i);
   });
@@ -533,7 +533,7 @@ describe("report() pendingMessages notice", () => {
       json: async () => ({ ok: true, pendingMessages: [{ id: "01JXKM8F3XABCDE12345", text: "hi" }] }),
     });
     const code = await run(["task", "set", "t1", "--status", "completed"],
-      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
     expect(code).toBe(0);
     expect(errs.join(" ")).toMatch(/📨/);
     expect(errs.join(" ")).toMatch(/message/i);
@@ -547,7 +547,7 @@ describe("report() pendingMessages notice", () => {
       json: async () => ({ ok: true, pendingMessages: [] }),
     });
     await run(["task", "set", "t1", "--status", "completed"],
-      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
     expect(errs.join(" ")).not.toMatch(/📨/);
   });
 
@@ -556,7 +556,7 @@ describe("report() pendingMessages notice", () => {
     const errs: string[] = [];
     const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) });
     const code = await run(["task", "set", "t1", "--status", "completed"],
-      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
     expect(code).toBe(0);
     expect(errs.join(" ")).not.toMatch(/📨/);
   });
@@ -567,7 +567,25 @@ describe("report() pendingMessages notice", () => {
     // minimal stub: no json() method at all
     const fetchImpl = async () => ({ ok: true, status: 200 } as any);
     const code = await run(["task", "set", "t1", "--status", "completed"],
-      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
     expect(code).toBe(0);
+  });
+});
+
+describe("back-compat: pre-rename daloop names still work", () => {
+  it("loadConfig reads a legacy .daloop.json when no .autoloop.json exists", () => {
+    const dir = tmp();
+    writeFileSync(join(dir, ".daloop.json"), JSON.stringify({ apiUrl: "http://api", teamId: "acme", projectSlug: "web" }) + "\n");
+    expect(loadConfig(dir)).toMatchObject({ teamId: "acme", projectSlug: "web" });
+  });
+  it("run authenticates with the legacy DALOOP_API_KEY env var (no AUTOLOOP_API_KEY set)", async () => {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentLoopId: null, loops: {}, currentPhaseId: "p1", currentTaskId: "t1", phases: {}, tasks: {} });
+    let auth: string | undefined;
+    const fetchImpl = async (_url: string, init: any) => { auth = init.headers.Authorization; return { ok: true, status: 200, json: async () => ({ ok: true }) } as any; };
+    const code = await run(["task", "set", "t1", "--status", "completed"],
+      { cwd: dir, env: { DALOOP_API_KEY: "dl_legacy" }, log: () => {}, err: () => {}, fetchImpl });
+    expect(code).toBe(0);
+    expect(auth).toBe("Bearer dl_legacy"); // legacy key forwarded via the AUTOLOOP_* fallback
   });
 });

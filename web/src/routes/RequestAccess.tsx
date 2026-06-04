@@ -45,7 +45,7 @@ export function RequestAccessCard({
       <div className="auth-card auth-card--access card">
         <div className="auth-lockup auth-lockup--sm">
           <LoopMark size={30} />
-          <span className="wordmark serif" style={{ fontSize: 18 }}>daloop</span>
+          <span className="wordmark serif" style={{ fontSize: 18 }}>autoloop</span>
         </div>
         <span className="eyebrow" style={{ marginTop: 6 }}>Access pending</span>
         <h2 className="access-title serif">You're in the waiting room</h2>
@@ -56,7 +56,7 @@ export function RequestAccessCard({
           <p className="access-body">Your request was denied. Contact an admin, or request access again.</p>
         ) : (
           <p className="access-body">
-            Your account isn't on the allowlist yet. Request access below and a Daloop admin will review it.
+            Your account isn't on the allowlist yet. Request access below and an Autoloop admin will review it.
           </p>
         )}
 

@@ -1,11 +1,11 @@
-# Daloop — Tracking UI: tabs, loops, bugs, summaries, rollups design spec
+# Autoloop — Tracking UI: tabs, loops, bugs, summaries, rollups design spec
 
 **Date:** 2026-06-03
 **Status:** approved (brainstorming, batch-level) — pending spec review + user review
 **Sub-project:** SP2 of the tabs/loops/bugs batch — the **web tracking UI**. Consumes the
 SP1 contract (PR #17: `bug` entity + `testRun.summary`) and the v2.1 loop contract. Read-only
 (web reads Firestore via `onSnapshot`; no new writes — vision editing via #5 is unchanged).
-SP3 (`/daloop` driver hygiene) is a separate spec.
+SP3 (`/autoloop` driver hygiene) is a separate spec.
 
 ## Goal
 
@@ -171,7 +171,7 @@ loop's** scores/testRuns), `LoopsTab.tsx` (LoopList + LoopDetail), `BugsTab.tsx`
 
 ## Out of scope (separate sub-projects / deferred)
 
-- **SP3** `/daloop` driver hygiene: marking tasks `completed`/`failed`, opening/fixing bugs,
+- **SP3** `/autoloop` driver hygiene: marking tasks `completed`/`failed`, opening/fixing bugs,
   uploading test summaries, `loop start` at run start. (SP2 only *renders* what the contract
   stores; stale "running" tasks in existing data remain until the driver re-runs — but they no
   longer render as the live task.)

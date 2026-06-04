@@ -1,4 +1,4 @@
-# Daloop — Bug entity + test-run summaries (contract) design spec
+# Autoloop — Bug entity + test-run summaries (contract) design spec
 
 **Date:** 2026-06-03
 **Status:** approved (brainstorming) — pending spec review + user review
@@ -7,7 +7,7 @@ trackable **`bug`** entity (so bugs found in testing are tracked separately with
 open/fixed lifecycle and viewable on their own tab) and an optional **`summary`** field
 on the `testRun` event (so the loop can upload a human-readable run summary). Backend +
 CLI + rules-tests + validation only. The tabbed UI (Dashboard/Vision/Loops/Bugs,
-rollups, in-progress prominence, only-current-is-live) and the `/daloop` driver hygiene
+rollups, in-progress prominence, only-current-is-live) and the `/autoloop` driver hygiene
 (task-status transitions, reporting bugs/summaries) are their own specs and consume this.
 
 ## Goal
@@ -140,27 +140,27 @@ export type BugBody = z.infer<typeof bugBody>;
 
 `bugId` is `idPattern`-checked at the route (like `taskId`/`phaseId`).
 
-## CLI (`daloop`)
+## CLI (`autoloop`)
 
 Loop-aware via the existing `loopSeg(cfg)` helper (targets the current loop when
 `cfg.currentLoopId` is set, else project-direct — the back-compat shape).
 
-- `daloop bug add <bugId> --title "<t>" [--status open] [--scenario <id>] [--task <id>]
+- `autoloop bug add <bugId> --title "<t>" [--status open] [--scenario <id>] [--task <id>]
   [--severity low|medium|high] [--description "<d>"]` — PUT the bug (default
   `--status open` on add).
-- `daloop bug set <bugId> [--status fixed] [--title …] [--severity …] [--description …]`
+- `autoloop bug set <bugId> [--status fixed] [--title …] [--severity …] [--description …]`
   — PUT the bug (partial update).
-- `daloop test-run … --summary "<text>"` **or** `--summary-file <path.md>` — adds
+- `autoloop test-run … --summary "<text>"` **or** `--summary-file <path.md>` — adds
   `summary` to the test-run POST body. `--summary-file` reads the file (UTF-8); if both
   are given, `--summary-file` wins. Reuse the file-reading approach already used by
   `doc add`/`vision import` for `--*-file` flags.
 - Dispatch: `bug` is a **two-word** verb group (`bug add`, `bug set`) — register it like
   `loop start`/`loop set` (NOT in the `ONE_WORD` set).
 - Best-effort semantics unchanged (exit 0 unless `--strict`).
-- `daloop init` config seeding is unchanged (bugs need no client config).
+- `autoloop init` config seeding is unchanged (bugs need no client config).
 
-Sync the canonical `cli/daloop.mjs` to `plugins/daloop-reporting/bin/daloop` and
-`web/public/skill/daloop.mjs` via `scripts/sync-daloop-cli.sh` (the three CLI copies).
+Sync the canonical `cli/autoloop.mjs` to `plugins/autoloop-reporting/bin/autoloop` and
+`web/public/skill/autoloop.mjs` via `scripts/sync-autoloop-cli.sh` (the three CLI copies).
 
 ## Rules
 
@@ -199,7 +199,7 @@ non-member-deny / client-write-deny on `projects/{slug}/bugs/{id}` and
   scoping, dashboard rollups (loop counts, phases done/total, status), in-progress-task
   prominence, the only-current-task-is-live render rule, the Bugs view, rendering
   `testRun.summary`. (The UI sub-project.)
-- **`/daloop` driver hygiene** — marking tasks `completed`/`failed` when done, opening/
+- **`/autoloop` driver hygiene** — marking tasks `completed`/`failed` when done, opening/
   fixing bugs, uploading test summaries, `loop start` at run start. (The driver
   sub-project.)
 - **Per-loop notifications** incl. a future "bug opened" notification (v2.3).
@@ -211,7 +211,7 @@ non-member-deny / client-write-deny on `projects/{slug}/bugs/{id}` and
   member-gated and client-writes denied (tested).
 - A client can attach a `summary` to a `testRun`; omitting it leaves the stored doc
   byte-identical to today.
-- `daloop bug add/set` and `test-run --summary/--summary-file` work, loop-aware; the
+- `autoloop bug add/set` and `test-run --summary/--summary-file` work, loop-aware; the
   three CLI copies stay in sync.
 - `functions` build clean; all existing API/rules/CLI suites stay green (the
   `resolveBase` extraction is non-regressing).

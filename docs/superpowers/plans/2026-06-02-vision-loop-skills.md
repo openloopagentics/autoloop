@@ -2,22 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the two Claude Code skills that make daloop's vision-driven loop usable without hand-driving CLI verbs: `/daloop-vision` (interview → validated `vision.json`) and `/daloop-loop` (orchestrate the self-evaluating build loop), both in the existing `daloop-reporting` plugin.
+**Goal:** Ship the two Claude Code skills that make autoloop's vision-driven loop usable without hand-driving CLI verbs: `/autoloop-vision` (interview → validated `vision.json`) and `/autoloop-loop` (orchestrate the self-evaluating build loop), both in the existing `autoloop-reporting` plugin.
 
-**Architecture:** One dependency-free validator module (`cli/vision-schema.mjs`) guards the `vision.json` interface and is the only unit-tested code. The two skills are `SKILL.md` instruction docs: `/daloop-vision` authors the vision and validates it before writing/importing; `/daloop-loop` composes `superpowers:writing-plans` + `superpowers:subagent-driven-development` as its engine and adds a thin vision layer (test → score → evaluate → revise → terminate) that reports through the daloop CLI verbs shipped in sub-project #1. All reporting is best-effort.
+**Architecture:** One dependency-free validator module (`cli/vision-schema.mjs`) guards the `vision.json` interface and is the only unit-tested code. The two skills are `SKILL.md` instruction docs: `/autoloop-vision` authors the vision and validates it before writing/importing; `/autoloop-loop` composes `superpowers:writing-plans` + `superpowers:subagent-driven-development` as its engine and adds a thin vision layer (test → score → evaluate → revise → terminate) that reports through the autoloop CLI verbs shipped in sub-project #1. All reporting is best-effort.
 
-**Tech Stack:** Node 22 ESM (validator, no deps); Vitest + the existing `functions/` harness for the validator's unit tests; Markdown skill docs discovered by Claude Code from the plugin's `skills/` dir; the daloop CLI (`cli/daloop.mjs`) verbs from sub-project #1.
+**Tech Stack:** Node 22 ESM (validator, no deps); Vitest + the existing `functions/` harness for the validator's unit tests; Markdown skill docs discovered by Claude Code from the plugin's `skills/` dir; the autoloop CLI (`cli/autoloop.mjs`) verbs from sub-project #1.
 
 **Reference spec:** `docs/superpowers/specs/2026-06-02-vision-loop-skills-design.md`
-**Consumes (unchanged):** the merged loop contract — `cli/daloop.mjs` verbs (`init`, `project set`, `vision import`, `phase start`, `task start`/`task set`, `commit [--task]`, `score`, `test-run`, `revise`) and the zod schemas in `functions/src/schemas.ts`.
+**Consumes (unchanged):** the merged loop contract — `cli/autoloop.mjs` verbs (`init`, `project set`, `vision import`, `phase start`, `task start`/`task set`, `commit [--task]`, `score`, `test-run`, `revise`) and the zod schemas in `functions/src/schemas.ts`.
 
 ---
 
 ## Background / conventions (read before Task 1)
 
-- **Plugin layout:** skills live at `plugins/daloop-reporting/skills/<skill-name>/SKILL.md` and are **auto-discovered** by Claude Code (the existing `daloop-reporting` skill is not listed in `plugin.json` — no manifest registration is needed for discovery). `${CLAUDE_PLUGIN_ROOT}` resolves to `plugins/daloop-reporting/` at runtime, so bundled binaries are referenced as `${CLAUDE_PLUGIN_ROOT}/bin/<file>`.
-- **Canonical-source + sync pattern:** the CLI's canonical source is `cli/daloop.mjs`; `scripts/sync-daloop-cli.sh` copies it to `plugins/daloop-reporting/bin/daloop` and `web/public/skill/daloop.mjs`. The new validator follows the same pattern: canonical at `cli/vision-schema.mjs`, synced to `plugins/daloop-reporting/bin/vision-schema.mjs`.
-- **SKILL.md frontmatter** (mirror the existing one at `plugins/daloop-reporting/skills/daloop-reporting/SKILL.md`):
+- **Plugin layout:** skills live at `plugins/autoloop-reporting/skills/<skill-name>/SKILL.md` and are **auto-discovered** by Claude Code (the existing `autoloop-reporting` skill is not listed in `plugin.json` — no manifest registration is needed for discovery). `${CLAUDE_PLUGIN_ROOT}` resolves to `plugins/autoloop-reporting/` at runtime, so bundled binaries are referenced as `${CLAUDE_PLUGIN_ROOT}/bin/<file>`.
+- **Canonical-source + sync pattern:** the CLI's canonical source is `cli/autoloop.mjs`; `scripts/sync-autoloop-cli.sh` copies it to `plugins/autoloop-reporting/bin/autoloop` and `web/public/skill/autoloop.mjs`. The new validator follows the same pattern: canonical at `cli/vision-schema.mjs`, synced to `plugins/autoloop-reporting/bin/vision-schema.mjs`.
+- **SKILL.md frontmatter** (mirror the existing one at `plugins/autoloop-reporting/skills/autoloop-reporting/SKILL.md`):
   ```
   ---
   name: <skill-name>
@@ -25,18 +25,18 @@
   ---
   ```
 - **CLI verb shapes the skills must emit (from sub-project #1 — exact):**
-  - `daloop init --team <t> --project <slug>`
-  - `daloop project set --title "<t>" --status running [--design-file <path>|--design-url <url>]`
-  - `daloop vision import --file vision.json`
-  - `daloop phase start <id> --name "<n>" --order <k>` (— `--name` and `--order` REQUIRED)
-  - `daloop task start <id> --phase <p> --name "<n>" --order <k> --scenarios a,b` (`--name`/`--order` REQUIRED)
-  - `daloop task set <id> --status completed`
-  - `daloop commit [--task <id>]`
-  - `daloop score <scenarioId> --task <t> --criterion id=val [--criterion ...] --composite <0..100> [--commit <sha>] [--note "..."]`
-  - `daloop test-run <scenarioId> --task <t> --passed <n> --failed <m> [--issue "..." ...]`
-  - `daloop revise --scenario <s> --reason "..." --change op:<taskId> [--change ...]` (op ∈ add|replace|reorder|drop)
+  - `autoloop init --team <t> --project <slug>`
+  - `autoloop project set --title "<t>" --status running [--design-file <path>|--design-url <url>]`
+  - `autoloop vision import --file vision.json`
+  - `autoloop phase start <id> --name "<n>" --order <k>` (— `--name` and `--order` REQUIRED)
+  - `autoloop task start <id> --phase <p> --name "<n>" --order <k> --scenarios a,b` (`--name`/`--order` REQUIRED)
+  - `autoloop task set <id> --status completed`
+  - `autoloop commit [--task <id>]`
+  - `autoloop score <scenarioId> --task <t> --criterion id=val [--criterion ...] --composite <0..100> [--commit <sha>] [--note "..."]`
+  - `autoloop test-run <scenarioId> --task <t> --passed <n> --failed <m> [--issue "..." ...]`
+  - `autoloop revise --scenario <s> --reason "..." --change op:<taskId> [--change ...]` (op ∈ add|replace|reorder|drop)
 - **Status enum:** `queued|running|blocked|paused|completed|failed|cancelled`. IDs match `^[a-z0-9._-]+$`.
-- **Best-effort:** the CLI exits 0 on a reporting failure (warns) unless `--strict`/`DALOOP_STRICT=1`. The loop notes the warning and continues — reporting never blocks dev work.
+- **Best-effort:** the CLI exits 0 on a reporting failure (warns) unless `--strict`/`AUTOLOOP_STRICT=1`. The loop notes the warning and continues — reporting never blocks dev work.
 - **Commands:** validator unit tests run standalone (no emulator): `cd functions && npm run test:run -- vision-schema`. Full suite stays green: `cd functions && npm test`. Do NOT `git add -A` (pre-existing untracked `.DS_Store`/`prototype/`).
 - Skills are Markdown instructions, not executable code — they are validated by structure (valid frontmatter, real verbs, a worked dry-run) + review, not unit tests. Only `cli/vision-schema.mjs` is unit-tested.
 
@@ -46,11 +46,11 @@
 |---|---|---|
 | `cli/vision-schema.mjs` | `validateVision(obj)` (field rules + dangling-goalId check), `stripForImport(scenario)` (drop loop-local `test`), and a CLI entry (`node vision-schema.mjs <file>`) | 1 |
 | `functions/test/vision-schema.test.ts` | Vitest unit tests for the validator (valid + each failure mode + stripForImport) | 1 |
-| `scripts/sync-daloop-cli.sh` | extend to also sync `cli/vision-schema.mjs` → plugin `bin/` | 2 |
-| `plugins/daloop-reporting/bin/vision-schema.mjs` | synced copy (generated by the sync script) | 2 |
-| `plugins/daloop-reporting/skills/daloop-vision/SKILL.md` | the vision-authoring skill | 3 |
-| `plugins/daloop-reporting/skills/daloop-loop/SKILL.md` | the loop-driver skill | 4 |
-| `plugins/daloop-reporting/README.md`, `plugins/daloop-reporting/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | register/describe the two new skills; bump plugin version | 5 |
+| `scripts/sync-autoloop-cli.sh` | extend to also sync `cli/vision-schema.mjs` → plugin `bin/` | 2 |
+| `plugins/autoloop-reporting/bin/vision-schema.mjs` | synced copy (generated by the sync script) | 2 |
+| `plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md` | the vision-authoring skill | 3 |
+| `plugins/autoloop-reporting/skills/autoloop-loop/SKILL.md` | the loop-driver skill | 4 |
+| `plugins/autoloop-reporting/README.md`, `plugins/autoloop-reporting/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | register/describe the two new skills; bump plugin version | 5 |
 | — (verification only) | validator tests + full suite + structural checks green | 6 |
 
 ---
@@ -231,56 +231,56 @@ git commit -m "feat(cli): vision.json schema validator (validateVision + stripFo
 ## Task 2: Sync the validator into the plugin
 
 **Files:**
-- Modify: `scripts/sync-daloop-cli.sh`
-- Generated: `plugins/daloop-reporting/bin/vision-schema.mjs`
+- Modify: `scripts/sync-autoloop-cli.sh`
+- Generated: `plugins/autoloop-reporting/bin/vision-schema.mjs`
 
-- [ ] **Step 1: Extend the sync script** (`scripts/sync-daloop-cli.sh`)
+- [ ] **Step 1: Extend the sync script** (`scripts/sync-autoloop-cli.sh`)
 
-Read the current script first. It copies `cli/daloop.mjs` to two destinations. Add the validator copy alongside the existing `daloop` copies (canonical → plugin bin only; the validator is not part of the curl installer per the spec). After the existing `cp cli/daloop.mjs plugins/daloop-reporting/bin/daloop` line, add:
+Read the current script first. It copies `cli/autoloop.mjs` to two destinations. Add the validator copy alongside the existing `autoloop` copies (canonical → plugin bin only; the validator is not part of the curl installer per the spec). After the existing `cp cli/autoloop.mjs plugins/autoloop-reporting/bin/autoloop` line, add:
 
 ```bash
-cp cli/vision-schema.mjs plugins/daloop-reporting/bin/vision-schema.mjs
-chmod +x plugins/daloop-reporting/bin/vision-schema.mjs
+cp cli/vision-schema.mjs plugins/autoloop-reporting/bin/vision-schema.mjs
+chmod +x plugins/autoloop-reporting/bin/vision-schema.mjs
 ```
 
 Update the script's final echo to mention the validator copy too.
 
 - [ ] **Step 2: Run the sync**
 
-Run: `bash scripts/sync-daloop-cli.sh`
-Expected: success message; `plugins/daloop-reporting/bin/vision-schema.mjs` now exists.
+Run: `bash scripts/sync-autoloop-cli.sh`
+Expected: success message; `plugins/autoloop-reporting/bin/vision-schema.mjs` now exists.
 
 - [ ] **Step 3: Verify byte-identical**
 
-Run: `diff cli/vision-schema.mjs plugins/daloop-reporting/bin/vision-schema.mjs && echo IDENTICAL`
+Run: `diff cli/vision-schema.mjs plugins/autoloop-reporting/bin/vision-schema.mjs && echo IDENTICAL`
 Expected: `IDENTICAL`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add scripts/sync-daloop-cli.sh plugins/daloop-reporting/bin/vision-schema.mjs
-git commit -m "build: sync vision-schema validator into the daloop-reporting plugin"
+git add scripts/sync-autoloop-cli.sh plugins/autoloop-reporting/bin/vision-schema.mjs
+git commit -m "build: sync vision-schema validator into the autoloop-reporting plugin"
 ```
 
 ---
 
-## Task 3: `/daloop-vision` skill
+## Task 3: `/autoloop-vision` skill
 
 **Files:**
-- Create: `plugins/daloop-reporting/skills/daloop-vision/SKILL.md`
+- Create: `plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md`
 
-- [ ] **Step 1: Write the skill** (`plugins/daloop-reporting/skills/daloop-vision/SKILL.md`)
+- [ ] **Step 1: Write the skill** (`plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md`)
 
 ```markdown
 ---
-name: daloop-vision
-description: Use to author or extend a project's Daloop vision — interview the user to produce a validated vision.json (goals, scenarios, scoring rubrics, optional per-scenario test commands). Trigger when the user wants to define what "done" means for a vision-driven loop, set up scenarios/rubrics, or says "author a vision", "/daloop-vision", or "set up the loop's goals".
+name: autoloop-vision
+description: Use to author or extend a project's Autoloop vision — interview the user to produce a validated vision.json (goals, scenarios, scoring rubrics, optional per-scenario test commands). Trigger when the user wants to define what "done" means for a vision-driven loop, set up scenarios/rubrics, or says "author a vision", "/autoloop-vision", or "set up the loop's goals".
 ---
 
-# Daloop Vision Authoring
+# Autoloop Vision Authoring
 
 Interview the user to produce a **`vision.json`** — the goals, scenarios, scoring
-rubrics, and (optional) per-scenario test commands that the `/daloop-loop` driver
+rubrics, and (optional) per-scenario test commands that the `/autoloop-loop` driver
 later builds toward and scores against.
 
 ## Output: vision.json
@@ -323,17 +323,17 @@ Write `vision.json` in the loop's working directory. Shape (validated before wri
    or your candidate first). If it reports problems, fix them with the user — **never
    write an invalid vision.json**.
 4. **Write** `vision.json` to the cwd.
-5. **Offer to push it:** `daloop vision import --file vision.json` (best-effort).
-   Requires `DALOOP_API_KEY` in the env and an initialised `.daloop.json`. If the dir
-   isn't initialised, point the user to `daloop init --team <t> --project <slug>`
+5. **Offer to push it:** `autoloop vision import --file vision.json` (best-effort).
+   Requires `AUTOLOOP_API_KEY` in the env and an initialised `.autoloop.json`. If the dir
+   isn't initialised, point the user to `autoloop init --team <t> --project <slug>`
    (and the API-keys page to mint a key). The loop-local `scenario.test` field is
    stripped automatically by import handling — it stays in your local vision.json.
 
 ## Boundaries
 
 - You author the **what** (the vision). You do NOT generate the plan, write code, run
-  tests, or score anything — that is `/daloop-loop`'s job. When the vision is ready,
-  tell the user they can run `/daloop-loop` to build toward it.
+  tests, or score anything — that is `/autoloop-loop`'s job. When the vision is ready,
+  tell the user they can run `/autoloop-loop` to build toward it.
 - Keep scenarios concrete and few; a good first vision is 1–3 goals with 1–3 scenarios
   each. Resist inventing criteria the user didn't ask for (YAGNI).
 
@@ -352,76 +352,76 @@ Produces a `vision.json` with goal `sign-in`, scenarios `login-succeeds` (test:
 
 - [ ] **Step 2: Structural self-check**
 
-Verify the file has valid frontmatter (`name`, `description`), references only real CLI verbs (`daloop vision import`, `daloop init`) and the real validator path (`${CLAUDE_PLUGIN_ROOT}/bin/vision-schema.mjs`), and contains no placeholder/TODO text. Confirm the JSON example passes the validator conceptually (ids valid, goalId references a goal, rubric non-empty).
+Verify the file has valid frontmatter (`name`, `description`), references only real CLI verbs (`autoloop vision import`, `autoloop init`) and the real validator path (`${CLAUDE_PLUGIN_ROOT}/bin/vision-schema.mjs`), and contains no placeholder/TODO text. Confirm the JSON example passes the validator conceptually (ids valid, goalId references a goal, rubric non-empty).
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add plugins/daloop-reporting/skills/daloop-vision/SKILL.md
-git commit -m "feat(skill): daloop-vision authoring skill"
+git add plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md
+git commit -m "feat(skill): autoloop-vision authoring skill"
 ```
 
 ---
 
-## Task 4: `/daloop-loop` skill
+## Task 4: `/autoloop-loop` skill
 
 **Files:**
-- Create: `plugins/daloop-reporting/skills/daloop-loop/SKILL.md`
+- Create: `plugins/autoloop-reporting/skills/autoloop-loop/SKILL.md`
 
-- [ ] **Step 1: Write the skill** (`plugins/daloop-reporting/skills/daloop-loop/SKILL.md`)
+- [ ] **Step 1: Write the skill** (`plugins/autoloop-reporting/skills/autoloop-loop/SKILL.md`)
 
 ```markdown
 ---
-name: daloop-loop
-description: Use to run a vision-driven, self-evaluating development loop from a vision.json — generate a task plan, implement each task, re-test and self-score the scenarios it advances, record revisions when quality is short, and report progress to Daloop. Trigger when the user wants to "run the loop", "build toward the vision", "/daloop-loop", or drive a scenario-scored build.
+name: autoloop-loop
+description: Use to run a vision-driven, self-evaluating development loop from a vision.json — generate a task plan, implement each task, re-test and self-score the scenarios it advances, record revisions when quality is short, and report progress to Autoloop. Trigger when the user wants to "run the loop", "build toward the vision", "/autoloop-loop", or drive a scenario-scored build.
 ---
 
-# Daloop Loop Driver
+# Autoloop Loop Driver
 
 Drive a self-evaluating build loop toward a `vision.json`. You **orchestrate skills
 you already have** — `superpowers:writing-plans` to plan, and
 `superpowers:subagent-driven-development` (or `superpowers:test-driven-development`
 for a single slice) to implement — and add the vision layer: test, score, evaluate,
-revise. Every state change is reported via the bundled `daloop` CLI. **Reporting is
-best-effort: a `daloop` warning is noted, never fatal — it must not derail the work.**
+revise. Every state change is reported via the bundled `autoloop` CLI. **Reporting is
+best-effort: a `autoloop` warning is noted, never fatal — it must not derail the work.**
 
 ## Preconditions
 
-- A **`vision.json`** in the cwd. If absent, offer to run `/daloop-vision` first.
-- An initialised **`.daloop.json`** (`daloop init --team <t> --project <slug>`) and
-  `DALOOP_API_KEY` in the env. If missing, set them up (or proceed local-only — the
+- A **`vision.json`** in the cwd. If absent, offer to run `/autoloop-vision` first.
+- An initialised **`.autoloop.json`** (`autoloop init --team <t> --project <slug>`) and
+  `AUTOLOOP_API_KEY` in the env. If missing, set them up (or proceed local-only — the
   loop still runs; reporting just warns).
 
 ## Algorithm
 
 1. **Import & plan.**
-   - `daloop vision import --file vision.json` (best-effort).
-   - `daloop project set --title "<project>" --status running`.
+   - `autoloop vision import --file vision.json` (best-effort).
+   - `autoloop project set --title "<project>" --status running`.
    - Invoke `superpowers:writing-plans` to turn the vision into a **phases → tasks**
      plan. Tag **each task with the `scenarioIds` it advances**. Keep tasks small.
-   - Report the plan: for each phase `daloop phase start <id> --name "<n>" --order <k>`;
-     for each task `daloop task start <id> --phase <p> --name "<n>" --order <k> --scenarios <id1>,<id2>`.
+   - Report the plan: for each phase `autoloop phase start <id> --name "<n>" --order <k>`;
+     for each task `autoloop task start <id> --phase <p> --name "<n>" --order <k> --scenarios <id1>,<id2>`.
      (`--name` and `--order` are REQUIRED on both — omitting them fails the call.)
 
 2. **Iterate per task** (in plan order):
    - Implement the task with `superpowers:subagent-driven-development` (or
      `superpowers:test-driven-development`).
-   - `git commit` the work, then `daloop commit --task <taskId>`.
+   - `git commit` the work, then `autoloop commit --task <taskId>`.
    - For **each scenario the task advances**:
      - **Test.** If the scenario has `test.command` in vision.json, run it; parse the
        pass/fail counts. Otherwise **AI-judge**: inspect the work against the
        scenario's description and decide pass/fail yourself. Report:
-       `daloop test-run <scenarioId> --task <taskId> --passed <n> --failed <m> [--issue "..."]`.
+       `autoloop test-run <scenarioId> --task <taskId> --passed <n> --failed <m> [--issue "..."]`.
      - **Score.** Rate **each rubric criterion** `0..max` against the work (be an
        honest judge — cite what's missing). Compute the weighted composite normalised
        to `0..100`: `composite = round(100 * Σ(value_i * weight_i) / Σ(max_i * weight_i))`.
-       Report: `daloop score <scenarioId> --task <taskId> --criterion <id>=<value> [--criterion ...] --composite <n> --commit <sha> [--note "..."]`.
+       Report: `autoloop score <scenarioId> --task <taskId> --criterion <id>=<value> [--criterion ...] --composite <n> --commit <sha> [--note "..."]`.
 
 3. **Evaluate & revise.** A scenario is **met** when its latest composite ≥ its
    threshold (default 80) AND its latest test-run `failed == 0`. After a task, if a
    scenario it targeted is **still unmet**, decide a **revision** of the remaining
    task path — add a hardening task, replace/reorder, or drop a dead end — and record
-   it: `daloop revise --scenario <s> --reason "<why>" --change <op>:<taskId> [--change ...]`
+   it: `autoloop revise --scenario <s> --reason "<why>" --change <op>:<taskId> [--change ...]`
    (op ∈ add|replace|reorder|drop). Then actually adjust your remaining plan to match.
 
 4. **Terminate** when ANY of:
@@ -436,7 +436,7 @@ best-effort: a `daloop` warning is noted, never fatal — it must not derail the
 
 ## Rules
 
-- **Best-effort reporting.** If any `daloop` command warns (bad key, non-member,
+- **Best-effort reporting.** If any `autoloop` command warns (bad key, non-member,
   network), note it once and keep building. Never abort the loop over reporting.
 - **Honest scoring.** Don't inflate composites to hit the threshold; an unmet scenario
   driving a revision is the loop working as intended.
@@ -447,17 +447,17 @@ best-effort: a `daloop` warning is noted, never fatal — it must not derail the
 ## Example (one task's cycle)
 
 \```
-daloop vision import --file vision.json
-daloop project set --title "Acme Web" --status running
+autoloop vision import --file vision.json
+autoloop project set --title "Acme Web" --status running
 # writing-plans → phase "build", task "login" advancing scenario "login-works"
-daloop phase start build --name "Build" --order 1
-daloop task start login --phase build --name "Login" --order 1 --scenarios login-works
+autoloop phase start build --name "Build" --order 1
+autoloop task start login --phase build --name "Login" --order 1 --scenarios login-works
 # …implement via subagent-driven-development, git commit…
-daloop commit --task login
-daloop test-run login-works --task login --passed 6 --failed 0
-daloop score login-works --task login --criterion correctness=4 --criterion ux=3 --composite 78 --commit <sha>
+autoloop commit --task login
+autoloop test-run login-works --task login --passed 6 --failed 0
+autoloop score login-works --task login --criterion correctness=4 --criterion ux=3 --composite 78 --commit <sha>
 # composite 78 < threshold 80 → still unmet → revise
-daloop revise --scenario login-works --reason "UX rough on error states" --change add:login-polish
+autoloop revise --scenario login-works --reason "UX rough on error states" --change add:login-polish
 \```
 ```
 
@@ -465,13 +465,13 @@ daloop revise --scenario login-works --reason "UX rough on error states" --chang
 
 - [ ] **Step 2: Structural self-check**
 
-Verify: valid frontmatter; every `daloop` verb/flag used matches the real CLI (cross-check against `cli/daloop.mjs` — especially that `phase start`/`task start` include `--name` and `--order`, `score` includes `--composite`, `revise` uses `--change op:taskId`); references `superpowers:writing-plans` and `superpowers:subagent-driven-development` by name; no TODO/placeholder; the composite formula is present; termination caps are explicit.
+Verify: valid frontmatter; every `autoloop` verb/flag used matches the real CLI (cross-check against `cli/autoloop.mjs` — especially that `phase start`/`task start` include `--name` and `--order`, `score` includes `--composite`, `revise` uses `--change op:taskId`); references `superpowers:writing-plans` and `superpowers:subagent-driven-development` by name; no TODO/placeholder; the composite formula is present; termination caps are explicit.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add plugins/daloop-reporting/skills/daloop-loop/SKILL.md
-git commit -m "feat(skill): daloop-loop driver skill"
+git add plugins/autoloop-reporting/skills/autoloop-loop/SKILL.md
+git commit -m "feat(skill): autoloop-loop driver skill"
 ```
 
 ---
@@ -479,28 +479,28 @@ git commit -m "feat(skill): daloop-loop driver skill"
 ## Task 5: Register the skills in the plugin (README, version, marketplace)
 
 **Files:**
-- Modify: `plugins/daloop-reporting/README.md`
-- Modify: `plugins/daloop-reporting/.claude-plugin/plugin.json`
+- Modify: `plugins/autoloop-reporting/README.md`
+- Modify: `plugins/autoloop-reporting/.claude-plugin/plugin.json`
 - Modify: `.claude-plugin/marketplace.json`
 
 - [ ] **Step 1: Update the plugin README**
 
-In `plugins/daloop-reporting/README.md`, update the **Layout** section to list the two new skills and the bundled validator, and add a short "Skills" section describing the three skills (`daloop-reporting` = report status; `daloop-vision` = author a vision; `daloop-loop` = drive the vision loop). No registration step is needed (skills auto-discover), but document the trio.
+In `plugins/autoloop-reporting/README.md`, update the **Layout** section to list the two new skills and the bundled validator, and add a short "Skills" section describing the three skills (`autoloop-reporting` = report status; `autoloop-vision` = author a vision; `autoloop-loop` = drive the vision loop). No registration step is needed (skills auto-discover), but document the trio.
 
 - [ ] **Step 2: Bump the plugin version + broaden the description**
 
-In `plugins/daloop-reporting/.claude-plugin/plugin.json`: bump `version` `0.1.0` → `0.2.0`, and broaden `description` to mention authoring + driving the vision loop (not only reporting). Mirror the broadened description in `.claude-plugin/marketplace.json`'s plugin entry.
+In `plugins/autoloop-reporting/.claude-plugin/plugin.json`: bump `version` `0.1.0` → `0.2.0`, and broaden `description` to mention authoring + driving the vision loop (not only reporting). Mirror the broadened description in `.claude-plugin/marketplace.json`'s plugin entry.
 
 - [ ] **Step 3: Sanity-check JSON**
 
-Run: `node -e "JSON.parse(require('fs').readFileSync('plugins/daloop-reporting/.claude-plugin/plugin.json','utf8')); JSON.parse(require('fs').readFileSync('.claude-plugin/marketplace.json','utf8')); console.log('JSON OK')"`
+Run: `node -e "JSON.parse(require('fs').readFileSync('plugins/autoloop-reporting/.claude-plugin/plugin.json','utf8')); JSON.parse(require('fs').readFileSync('.claude-plugin/marketplace.json','utf8')); console.log('JSON OK')"`
 Expected: `JSON OK`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add plugins/daloop-reporting/README.md plugins/daloop-reporting/.claude-plugin/plugin.json .claude-plugin/marketplace.json
-git commit -m "docs(plugin): register daloop-vision and daloop-loop skills; bump to 0.2.0"
+git add plugins/autoloop-reporting/README.md plugins/autoloop-reporting/.claude-plugin/plugin.json .claude-plugin/marketplace.json
+git commit -m "docs(plugin): register autoloop-vision and autoloop-loop skills; bump to 0.2.0"
 ```
 
 ---
@@ -527,12 +527,12 @@ Expected: 0 errors (the new `.mjs` and `.test.ts` are outside the `src` build, s
 - [ ] **Step 4: Structural checks for the skills**
 
 - Both `SKILL.md` files have valid frontmatter (first line `---`, `name:` + `description:`, closing `---`).
-- Validator copy is byte-identical: `diff cli/vision-schema.mjs plugins/daloop-reporting/bin/vision-schema.mjs && echo IDENTICAL`.
-- Grep the loop skill for the required-flag forms: `grep -q 'task start .*--name .*--order' plugins/daloop-reporting/skills/daloop-loop/SKILL.md && grep -q -- '--composite' plugins/daloop-reporting/skills/daloop-loop/SKILL.md && echo "verbs OK"`.
+- Validator copy is byte-identical: `diff cli/vision-schema.mjs plugins/autoloop-reporting/bin/vision-schema.mjs && echo IDENTICAL`.
+- Grep the loop skill for the required-flag forms: `grep -q 'task start .*--name .*--order' plugins/autoloop-reporting/skills/autoloop-loop/SKILL.md && grep -q -- '--composite' plugins/autoloop-reporting/skills/autoloop-loop/SKILL.md && echo "verbs OK"`.
 
 - [ ] **Step 5: Confirm success criteria**
 
-By inspection: `/daloop-vision` produces a vision that passes `validateVision` and (after `stripForImport`) is accepted by `daloop vision import`; `/daloop-loop` emits only real CLI verbs, orchestrates writing-plans + subagent-driven-development, scores via the documented composite formula, and has explicit termination caps; reporting is best-effort throughout; both skills are in the plugin and load.
+By inspection: `/autoloop-vision` produces a vision that passes `validateVision` and (after `stripForImport`) is accepted by `autoloop vision import`; `/autoloop-loop` emits only real CLI verbs, orchestrates writing-plans + subagent-driven-development, scores via the documented composite formula, and has explicit termination caps; reporting is best-effort throughout; both skills are in the plugin and load.
 
 - [ ] **Step 6: Final commit (if any verification fixes)**
 
@@ -546,7 +546,7 @@ git commit -m "chore: vision-loop skills verification (validator + suites green)
 ## Notes for the executor
 
 - **Only `cli/vision-schema.mjs` is TDD code.** The two `SKILL.md` files are Markdown instruction docs — write them carefully and run the structural self-checks; there are no unit tests for them (by design — every CLI verb they invoke is already covered by sub-project #1's 143 tests).
-- **Use real verbs only.** If you're unsure of a flag, read `cli/daloop.mjs` — do not invent flags. `phase start`/`task start` REQUIRE `--name` and `--order`; `score` REQUIRES `--composite`.
-- **Keep the validator's canonical copy at `cli/vision-schema.mjs`** and always re-run `scripts/sync-daloop-cli.sh` after editing it so the plugin copy stays byte-identical.
-- **Best-effort is sacred** — the loop skill must never tell the agent to abort real work because a `daloop` report failed.
+- **Use real verbs only.** If you're unsure of a flag, read `cli/autoloop.mjs` — do not invent flags. `phase start`/`task start` REQUIRE `--name` and `--order`; `score` REQUIRES `--composite`.
+- **Keep the validator's canonical copy at `cli/vision-schema.mjs`** and always re-run `scripts/sync-autoloop-cli.sh` after editing it so the plugin copy stays byte-identical.
+- **Best-effort is sacred** — the loop skill must never tell the agent to abort real work because a `autoloop` report failed.
 - Do NOT `git add -A` broadly (pre-existing untracked `.DS_Store`/`prototype/`); add named paths.
