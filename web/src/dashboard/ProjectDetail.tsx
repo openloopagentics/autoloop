@@ -61,6 +61,17 @@ export function ProjectDetail() {
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
   const renderTask = (t: Task, isCurrent: boolean) => <PlanTask teamId={teamId} slug={slug} task={t} loopId={loopArg} isCurrent={isCurrent} />;
 
+  // Surface (don't swallow) load errors from any of the project's data sources.
+  const dataError = loops.error || phases.error || tasks.error || scores.error || testRuns.error
+    || revisions.error || bugs.error || goals.error || scenarios.error || documents.error || null;
+  // Show a spinner only on a source's FIRST load (loading + still empty), so switching
+  // loops — which keeps prior data until the new snapshot arrives — doesn't flash.
+  const tabLoading =
+    tab === "dashboard" ? (loops.loading && loops.data.length === 0) || (phases.loading && phases.data.length === 0)
+    : tab === "loops" ? (phases.loading && phases.data.length === 0)
+    : tab === "bugs" ? (bugs.loading && bugs.data.length === 0)
+    : (scenarios.loading && scenarios.data.length === 0); // vision
+
   return (
     <div className="main main--narrow">
       <Link to="/dashboard" className="back">← back to dashboard</Link>
@@ -72,22 +83,27 @@ export function ProjectDetail() {
             {project.data && <ProjectHeader project={project.data} />}
             <Tabs active={tab} onChange={setTab} />
             {tab !== "vision" && <LoopSelector loops={loopList} selectedId={selectedId} onChange={setPicked} />}
+            {dataError && <ErrorNote message={dataError} />}
 
-            {tab === "dashboard" && (
-              <DashboardTab loops={loopList} selected={selected} status={project.data?.status}
-                phases={phases.data} tasks={tasks.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />
+            {tabLoading ? <Spinner /> : (
+              <>
+                {tab === "dashboard" && (
+                  <DashboardTab loops={loopList} selected={selected} status={project.data?.status}
+                    phases={phases.data} tasks={tasks.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />
+                )}
+                {tab === "vision" && (
+                  <VisionTab teamId={teamId} slug={slug} editable={editable}
+                    goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} documents={documents.data} />
+                )}
+                {tab === "loops" && (
+                  <LoopsTab teamId={teamId} slug={slug} loops={loopList} scenarios={scenarios.data}
+                    selectedId={selectedId} selected={selected} onSelect={setPicked}
+                    phases={phases.data} tasks={tasks.data} testRuns={testRuns.data} revisions={revisions.data}
+                    renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />
+                )}
+                {tab === "bugs" && <BugsTab bugs={bugs.data} />}
+              </>
             )}
-            {tab === "vision" && (
-              <VisionTab teamId={teamId} slug={slug} editable={editable}
-                goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} documents={documents.data} />
-            )}
-            {tab === "loops" && (
-              <LoopsTab teamId={teamId} slug={slug} loops={loopList} scenarios={scenarios.data}
-                selectedId={selectedId} selected={selected} onSelect={setPicked}
-                phases={phases.data} tasks={tasks.data} testRuns={testRuns.data} revisions={revisions.data}
-                renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />
-            )}
-            {tab === "bugs" && <BugsTab bugs={bugs.data} />}
           </>
         )}
     </div>
