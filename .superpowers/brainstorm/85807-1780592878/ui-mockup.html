@@ -1,0 +1,105 @@
+<h2>Messages tab — redesigned with Session Log sub-tab</h2>
+<p class="subtitle">Does this layout work for you?</p>
+
+<div class="mockup">
+  <div class="mockup-header">Project Detail → Messages tab</div>
+  <div class="mockup-body" style="padding:0;font-family:monospace;font-size:12px;background:#0d1117;color:#e6edf3;min-height:420px">
+
+    <!-- outer tab bar (Dashboard / Plan / Loops / Messages / ...) -->
+    <div style="display:flex;gap:0;border-bottom:1px solid #21262d;padding:0 16px">
+      <div style="padding:10px 14px;color:#7d8590;font-size:11px">Dashboard</div>
+      <div style="padding:10px 14px;color:#7d8590;font-size:11px">Plan</div>
+      <div style="padding:10px 14px;color:#7d8590;font-size:11px">Loops</div>
+      <div style="padding:10px 14px;color:#e6edf3;font-size:11px;border-bottom:2px solid #58a6ff;margin-bottom:-1px">Messages</div>
+    </div>
+
+    <div style="padding:14px 16px">
+
+      <!-- sub-tab bar -->
+      <div style="display:flex;gap:2px;margin-bottom:14px;background:#161b22;border-radius:6px;padding:3px;width:fit-content">
+        <div style="padding:5px 14px;background:#21262d;border-radius:4px;font-size:11px;color:#e6edf3">Messages</div>
+        <div style="padding:5px 14px;font-size:11px;color:#7d8590;cursor:pointer">Session Log</div>
+      </div>
+
+      <!-- messages thread -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
+          <span style="font-size:10px;color:#7d8590">you · 14m ago</span>
+          <div style="background:#21262d;border-radius:6px;padding:8px 12px;max-width:75%;font-size:11px">keep looping with 5 ideas each time</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+          <span style="font-size:10px;color:#7d8590">agent · 12m ago</span>
+          <div style="background:#1f3a5f;border-radius:6px;padding:8px 12px;max-width:75%;font-size:11px">Starting loop-2026-06-04-3. Building: TV shows, infinite scroll, keyboard shortcuts, share links, PWA offline.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+          <span style="font-size:10px;color:#7d8590">agent · 2m ago</span>
+          <div style="background:#1f3a5f;border-radius:6px;padding:8px 12px;max-width:75%;font-size:11px">Loop 3 complete — 5/5 scenarios met. Starting loop 4…</div>
+        </div>
+      </div>
+
+      <!-- agent status -->
+      <div style="font-size:10px;color:#3fb950;margin-bottom:10px">● A loop is running — it'll see your message at its next step.</div>
+
+      <!-- compose -->
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div style="flex:1;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:11px;color:#7d8590;min-height:40px">Send a message to the agent…</div>
+        <div style="background:#238636;color:#fff;border-radius:6px;padding:7px 14px;font-size:11px">Send</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:20px"></div>
+
+<div class="mockup">
+  <div class="mockup-header">Session Log sub-tab — stitched across all sessions for selected loop</div>
+  <div class="mockup-body" style="padding:0;font-family:monospace;font-size:12px;background:#0d1117;color:#e6edf3;min-height:360px">
+
+    <div style="padding:14px 16px">
+
+      <!-- sub-tab bar -->
+      <div style="display:flex;gap:2px;margin-bottom:14px;background:#161b22;border-radius:6px;padding:3px;width:fit-content">
+        <div style="padding:5px 14px;font-size:11px;color:#7d8590;cursor:pointer">Messages</div>
+        <div style="padding:5px 14px;background:#21262d;border-radius:4px;font-size:11px;color:#e6edf3">Session Log</div>
+      </div>
+
+      <!-- session 1 -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:10px;color:#7d8590;margin-bottom:6px;display:flex;align-items:center;gap:8px">
+          <span style="background:#21262d;border-radius:3px;padding:2px 6px">Session 1</span>
+          <span>Jun 4 · 09:12 – 09:58 · 46 min</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;padding-left:8px;border-left:2px solid #21262d">
+          <div style="font-size:11px"><span style="color:#7d8590">[you]</span> run the loop, keep looping with 5 ideas each time</div>
+          <div style="font-size:11px"><span style="color:#58a6ff">[claude]</span> Importing vision, starting loop-2026-06-04-1…</div>
+          <div style="font-size:10px;color:#3fb950;padding-left:10px">✓ Bash · autoloop vision import --file vision.json</div>
+          <div style="font-size:10px;color:#3fb950;padding-left:10px">✓ Bash · autoloop loop start loop-2026-06-04-1</div>
+          <div style="font-size:10px;color:#3fb950;padding-left:10px">✓ Agent · implement hero-carousel task</div>
+          <div style="font-size:10px;color:#3fb950;padding-left:10px">✓ Bash · autoloop test-run hero-carousel --passed 4 --failed 0</div>
+          <div style="font-size:10px;color:#3fb950;padding-left:10px">✓ Bash · autoloop score hero-carousel --composite 100</div>
+          <div style="font-size:11px"><span style="color:#58a6ff">[claude]</span> hero-carousel met (100). Starting category-rows…</div>
+          <div style="font-size:10px;color:#7d8590;padding-left:10px">… 18 more entries</div>
+          <div style="font-size:11px"><span style="color:#58a6ff">[claude]</span> Loop 1 complete — 5/5 met. Starting loop 2…</div>
+        </div>
+      </div>
+
+      <!-- session 2 -->
+      <div>
+        <div style="font-size:10px;color:#7d8590;margin-bottom:6px;display:flex;align-items:center;gap:8px">
+          <span style="background:#21262d;border-radius:3px;padding:2px 6px">Session 2</span>
+          <span>Jun 4 · 10:05 – 10:51 · 46 min</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;padding-left:8px;border-left:2px solid #21262d">
+          <div style="font-size:11px"><span style="color:#7d8590">[you]</span> (session resumed)</div>
+          <div style="font-size:11px"><span style="color:#58a6ff">[claude]</span> Continuing — starting loop-2026-06-04-2 with 5 improvements…</div>
+          <div style="font-size:10px;color:#3fb950;padding-left:10px">✓ Agent · implement my-list task</div>
+          <div style="font-size:10px;color:#7d8590;padding-left:10px">… 14 more entries</div>
+          <div style="font-size:11px"><span style="color:#58a6ff">[claude]</span> Loop 2 complete — 5/5 met. Starting loop 3…</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px">Open <strong>http://localhost:60795</strong> · does this look right? reply in terminal</p>

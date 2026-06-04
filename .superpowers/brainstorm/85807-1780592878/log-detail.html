@@ -1,0 +1,54 @@
+<h2>What does the Session Log show?</h2>
+<p class="subtitle">The transcript contains user prompts, Claude responses, and every tool call (Bash, Read, Agent, etc). How much do you want?</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Text turns only</h3>
+      <p>Just the human/AI conversation — what you said, what Claude replied. Tool calls are hidden. Clean reading experience, like a chat log.</p>
+      <div style="font-family:monospace;font-size:10px;background:#161b22;padding:8px;border-radius:4px;margin-top:8px;color:#e6edf3">
+        <span style="color:#7d8590">[you]</span> keep looping with 5 ideas each time<br>
+        <span style="color:#58a6ff">[claude]</span> Starting loop-2026-06-04-3. I'll build: TV shows tab, infinite scroll, keyboard shortcuts…<br>
+        <span style="color:#58a6ff">[claude]</span> Loop 3 complete — 5/5 scenarios met.
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Text + tool summary</h3>
+      <p>Conversation turns plus collapsed tool call entries (name + result). You see what Claude did without reading every file or bash output.</p>
+      <div style="font-family:monospace;font-size:10px;background:#161b22;padding:8px;border-radius:4px;margin-top:8px;color:#e6edf3">
+        <span style="color:#7d8590">[you]</span> keep looping with 5 ideas each time<br>
+        <span style="color:#58a6ff">[claude]</span> Starting loop-2026-06-04-3…<br>
+        <span style="color:#3fb950">  ✓ Bash</span> <span style="color:#7d8590">autoloop loop start loop-3</span><br>
+        <span style="color:#3fb950">  ✓ Agent</span> <span style="color:#7d8590">implement tv-shows task</span><br>
+        <span style="color:#3fb950">  ✓ Bash</span> <span style="color:#7d8590">autoloop score tv-shows --composite 91</span><br>
+        <span style="color:#58a6ff">[claude]</span> Loop 3 complete — 5/5 met.
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Full raw transcript</h3>
+      <p>Everything — every tool input/output, file content, bash output. Maximum auditability. Can be very long.</p>
+      <div style="font-family:monospace;font-size:10px;background:#161b22;padding:8px;border-radius:4px;margin-top:8px;color:#e6edf3">
+        <span style="color:#7d8590">[you]</span> keep looping…<br>
+        <span style="color:#58a6ff">[claude]</span> Starting loop-3…<br>
+        <span style="color:#3fb950">  ✓ Bash</span> autoloop loop start loop-3<br>
+        <span style="color:#7d8590">  → {"ok":true,"id":"loop-3"}</span><br>
+        <span style="color:#3fb950">  ✓ Read</span> src/App.tsx (lines 1-80)<br>
+        <span style="color:#7d8590">  → import React from 'react'…</span><br>
+        <span style="color:#3fb950">  ✓ Edit</span> src/App.tsx<br>
+        <span style="color:#7d8590">  → replaced 3 lines</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+<p class="subtitle" style="margin-top:16px">Open <strong>http://localhost:60795</strong> · click to select · reply in terminal</p>

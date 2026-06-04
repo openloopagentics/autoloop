@@ -1,0 +1,92 @@
+<h2>Messages tab — what should the conversation show?</h2>
+<p class="subtitle">The full Claude Code session transcript will be stored in Firebase and shown here. Pick the layout that makes most sense.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-family:monospace;font-size:11px;padding:10px;background:#0d1117;color:#e6edf3;border-radius:6px;height:180px;overflow:hidden">
+        <div style="color:#58a6ff;margin-bottom:8px;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Messages</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="background:#161b22;border-radius:4px;padding:6px 8px;font-size:10px">
+            <span style="color:#7d8590">you · 2m ago</span><br>
+            keep looping with 5 ideas each time
+          </div>
+          <div style="background:#1f2937;border-radius:4px;padding:6px 8px;font-size:10px;margin-left:20px">
+            <span style="color:#58a6ff">agent · 1m ago</span><br>
+            Starting loop-2026-06-04-3 with 5 improvements…
+          </div>
+        </div>
+        <div style="margin-top:12px;color:#58a6ff;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Session Log</div>
+        <div style="background:#161b22;border-radius:4px;padding:6px 8px;font-size:10px;margin-top:4px;color:#7d8590">
+          [user] keep looping with 5 ideas each time<br>
+          [assistant] Starting loop-2026-06-04-3…<br>
+          <span style="color:#3fb950">✓ Bash</span> autoloop loop start loop-2026-06-04-3<br>
+          <span style="color:#3fb950">✓ Agent</span> implement hero-carousel task<br>
+          [assistant] Task complete, scoring…
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Two sections, same tab</h3>
+      <p>Messages thread on top, session log below. One tab, full picture. Best for quick scanning.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-family:monospace;font-size:11px;padding:10px;background:#0d1117;color:#e6edf3;border-radius:6px;height:180px;overflow:hidden">
+        <div style="display:flex;gap:4px;margin-bottom:8px">
+          <div style="background:#1f6feb;border-radius:3px;padding:3px 8px;font-size:10px;color:#fff">Messages</div>
+          <div style="background:#161b22;border-radius:3px;padding:3px 8px;font-size:10px;color:#7d8590">Session Log</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="background:#161b22;border-radius:4px;padding:6px 8px;font-size:10px">
+            <span style="color:#7d8590">you · 2m ago</span><br>
+            keep looping with 5 ideas each time
+          </div>
+          <div style="background:#1f2937;border-radius:4px;padding:6px 8px;font-size:10px;margin-left:20px">
+            <span style="color:#58a6ff">agent · 1m ago</span><br>
+            Starting loop-2026-06-04-3 with 5 improvements…
+          </div>
+        </div>
+        <div style="margin-top:8px;padding:6px 8px;background:#161b22;border-radius:4px;font-size:10px;color:#7d8590">
+          ← switch to "Session Log" tab for full transcript
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Sub-tabs within Messages</h3>
+      <p>Messages and Session Log as sub-tabs. Keeps each view clean. Good if the log gets very long.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="font-family:monospace;font-size:11px;padding:10px;background:#0d1117;color:#e6edf3;border-radius:6px;height:180px;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="color:#58a6ff;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Messages</div>
+          <div style="font-size:10px;color:#7d8590;cursor:pointer">▶ show session log</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="background:#161b22;border-radius:4px;padding:6px 8px;font-size:10px">
+            <span style="color:#7d8590">you · 2m ago</span><br>keep looping with 5 ideas each time
+          </div>
+          <div style="background:#1f2937;border-radius:4px;padding:6px 8px;font-size:10px;margin-left:20px">
+            <span style="color:#58a6ff">agent · 1m ago</span><br>Starting loop-2026-06-04-3…
+          </div>
+        </div>
+        <div style="margin-top:10px;border:1px dashed #30363d;border-radius:4px;padding:6px 8px;font-size:10px;color:#7d8590">
+          Session log collapsed — click to expand
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Collapsible log below messages</h3>
+      <p>Log hidden by default, expandable inline. Messages stay the focus; log is opt-in.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px">Open <strong>http://localhost:60795</strong> · click to select · reply in terminal</p>
