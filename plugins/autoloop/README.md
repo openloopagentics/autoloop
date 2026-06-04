@@ -1,4 +1,4 @@
-# autoloop-reporting (Claude Code plugin)
+# autoloop (Claude Code plugin)
 
 A Claude Code plugin that lets you author a vision, drive a self-evaluating
 development loop, and report its status — goals, scenarios, scores, phases,
@@ -9,7 +9,7 @@ bundled `autoloop` CLI.
 
 ```
 /plugin marketplace add openloopagentics/autoloop
-/plugin install autoloop-reporting@autoloop
+/plugin install autoloop@autoloop
 ```
 
 Then enable auto-update in `/plugin` → **Marketplaces** → `autoloop`, or update
@@ -34,7 +34,7 @@ below for a description of each.
 ## Layout
 
 ```
-plugins/autoloop-reporting/
+plugins/autoloop/
 ├── .claude-plugin/plugin.json
 ├── skills/autoloop-reporting/
 │   ├── SKILL.md          # invoked by Claude Code

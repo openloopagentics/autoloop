@@ -3,8 +3,8 @@
   "owner": { "name": "OpenLoop Agentics", "email": "ravi@openloopagentics.com" },
   "plugins": [
     {
-      "name": "autoloop-reporting",
-      "source": "./plugins/autoloop-reporting",
+      "name": "autoloop",
+      "source": "./plugins/autoloop",
       "description": "Author a vision, drive a self-evaluating development loop, and report its status (goals, scenarios, scores, phases, commits) to an Autoloop dashboard via the bundled autoloop CLI."
     }
   ]
