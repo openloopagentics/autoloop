@@ -1,4 +1,4 @@
-# Daloop — Admin Allowlist (UI-E) — Design
+# Autoloop — Admin Allowlist (UI-E) — Design
 
 **Date:** 2026-06-02
 **Status:** Approved (design phase; decisions delegated to the implementer)

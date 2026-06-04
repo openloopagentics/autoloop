@@ -38,8 +38,8 @@ export function KeysPage() {
       <div className="page-head">
         <h1 className="page-title">API keys</h1>
         <p className="page-sub">
-          Mint keys for the <code className="chip">daloop</code> CLI. Set one as{" "}
-          <code className="chip">DALOOP_API_KEY</code> so your agents can report status.
+          Mint keys for the <code className="chip">autoloop</code> CLI. Set one as{" "}
+          <code className="chip">AUTOLOOP_API_KEY</code> so your agents can report status.
         </p>
       </div>
 

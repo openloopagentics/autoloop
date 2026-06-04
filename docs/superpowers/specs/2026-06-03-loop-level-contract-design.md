@@ -1,4 +1,4 @@
-# Daloop — Loop level (contract v2) design spec
+# Autoloop — Loop level (contract v2) design spec
 
 **Date:** 2026-06-03
 **Status:** approved (brainstorming) — pending spec review + user review
@@ -126,11 +126,11 @@ These remain on the **project** in both scopes:
 - Keep `appendScore`'s non-transactional `.set()` (server-generated id) as-is; loop-scoping
   doesn't change that.
 
-## CLI (`daloop`)
+## CLI (`autoloop`)
 
-- `daloop loop start <loopId> --goal "<objective>" --order <n> [--status running]` —
+- `autoloop loop start <loopId> --goal "<objective>" --order <n> [--status running]` —
   PUT the loop; record `cfg.currentLoopId = <loopId>` + `cfg.loops[id]`.
-- `daloop loop set <loopId> --status completed` — PUT loop status.
+- `autoloop loop set <loopId> --status completed` — PUT loop status.
 - **Loop-aware reporting:** `phase start`, `task start/set`, `commit`, `score`,
   `test-run`, `revise` now target the **current loop** when `cfg.currentLoopId` is set
   (URL includes `/loops/<id>`); when it is NOT set, they use today's project-direct
@@ -140,7 +140,7 @@ These remain on the **project** in both scopes:
   (loop-level): the loop prefix scopes only the event doc + its `taskId`; `scenarioId`
   resolves project-level on the server (per the Base-path boundary) — don't scope
   scenarios under the loop.
-- `daloop init` seeds `currentLoopId: null, loops: {}` alongside the existing config.
+- `autoloop init` seeds `currentLoopId: null, loops: {}` alongside the existing config.
 - Best-effort semantics unchanged (exit 0 unless `--strict`).
 
 ## Validation
@@ -172,7 +172,7 @@ matches `idPattern`. All other bodies reuse #1's schemas unchanged.
   `loops/{id}` and `loops/{id}/phases|tasks|scores|…` (no rules change — recursive match).
 - **CLI:** `loop start/set`; loop-aware `task start`/`commit`/`score` build
   `…/loops/<id>/…` URLs when `currentLoopId` is set, and project-direct URLs when not;
-  `daloop init` seeds the new config fields. Update the existing CLI tests that assume
+  `autoloop init` seeds the new config fields. Update the existing CLI tests that assume
   project-direct only where the current-loop path changes them.
 - `functions` build clean; all suites green.
 
@@ -180,7 +180,7 @@ matches `idPattern`. All other bodies reuse #1's schemas unchanged.
 
 - **v2.2** tracking UI (render loops, the `main` synthesis, per-loop state + headline).
 - **v2.3** notifications scoped per `(loop, scenario)`.
-- **v2.4** `/daloop` driver + reporting-skill updates (`loop start` at run start).
+- **v2.4** `/autoloop` driver + reporting-skill updates (`loop start` at run start).
 - Cross-loop rollups / "best across loops" (deferred; per-loop is the model).
 
 ## Success criteria
@@ -193,5 +193,5 @@ matches `idPattern`. All other bodies reuse #1's schemas unchanged.
   the `main` loop; all #1 API/rules/CLI tests stay green (no regression from the
   base-path refactor).
 - Rules unchanged; new nested paths are member-readable + client-write-denied (tested).
-- `daloop loop start` + loop-aware reporting work; legacy reporting (no loop) still
+- `autoloop loop start` + loop-aware reporting work; legacy reporting (no loop) still
   writes project-direct.

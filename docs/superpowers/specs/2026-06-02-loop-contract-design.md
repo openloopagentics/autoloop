@@ -1,4 +1,4 @@
-# Daloop — Loop Contract (domain model + reporting interface) design spec
+# Autoloop — Loop Contract (domain model + reporting interface) design spec
 
 **Date:** 2026-06-02
 **Status:** approved (brainstorming) — pending spec review + user review
@@ -8,8 +8,8 @@ the vision-authoring skill, the loop-driver skill, and the website tracking UI.
 
 ## Goal
 
-Today Daloop tracks `team → project → phase → commit` with a 7-state status, via a
-write-only API that agents call and a read-only website. We are expanding Daloop
+Today Autoloop tracks `team → project → phase → commit` with a 7-state status, via a
+write-only API that agents call and a read-only website. We are expanding Autoloop
 into a **vision-driven, self-evaluating development loop**: the user (with AI help)
 authors a **vision** (goals, scenarios, a scoring rubric, and test automation); the
 AI turns it into a **holistic plan** and iterates through a `phases → tasks →
@@ -26,10 +26,10 @@ cover the skill or the website (separate specs that consume this contract).
 ## Architecture
 
 Unchanged from today's shape: **the loop owns its canonical state locally and
-reports one-way to Daloop via the write-only API (per-user API key → team
-membership). Daloop stores it for reading + tracking; the website reads via
+reports one-way to Autoloop via the write-only API (per-user API key → team
+membership). Autoloop stores it for reading + tracking; the website reads via
 Firestore listeners.** The agent computes everything (runs tests, self-scores,
-decides revisions); **Daloop only records.** Reporting is **best-effort** — a failed
+decides revisions); **Autoloop only records.** Reporting is **best-effort** — a failed
 report never blocks the loop (exit 0 unless `--strict`).
 
 Two write shapes:
@@ -85,7 +85,7 @@ Project
 3. **Revision** — when a targeted scenario is still unmet after evaluation, the loop
    records a `Revision` event capturing the trigger (scenario + reason) and the
    task-path `changes[]` (`add` / `replace` / `reorder` / `drop`). The agent decides;
-   Daloop only records. All revisions are preserved.
+   Autoloop only records. All revisions are preserved.
 4. **Progress** — the project trends toward done as scenarios flip to *met*;
    "N/M scenarios met" is the headline health signal. Task/phase statuses use the
    existing enum.
@@ -176,20 +176,20 @@ Responses follow the existing uniform envelope (`{ ok: true }` / error
 `{ error: { code, message } }`). The server recomputes `currentPhaseId` /
 `currentTaskId` on relevant writes.
 
-## CLI (`daloop`)
+## CLI (`autoloop`)
 
 New verbs (all best-effort; exit 0 on reporting failure unless `--strict`):
 ```
-daloop vision import --file vision.json        # bulk upsert goals + scenarios (+ docs)
-daloop goal set <id> --title … --order <n>
-daloop scenario set <id> --goal <g> --title … --order <n> [--threshold 80] --rubric rubric.json
-daloop task start <id> --phase <p> --name … --order <n> --scenarios a,b
-daloop task set <id> --status completed
-daloop commit [--task <id>]                     # existing; task-aware (see back-compat)
-daloop score <scenarioId> --task <t> --criterion correctness=4 --criterion ux=3 [--commit <sha>] [--note …]
-daloop test-run <scenarioId> --task <t> --passed 8 --failed 1 [--issue "…"]…
-daloop revise --scenario <s> --reason "…" --change add:<taskId> --change drop:<taskId>…
-daloop doc add --kind vision --title "…" (--file path | --url https://…)
+autoloop vision import --file vision.json        # bulk upsert goals + scenarios (+ docs)
+autoloop goal set <id> --title … --order <n>
+autoloop scenario set <id> --goal <g> --title … --order <n> [--threshold 80] --rubric rubric.json
+autoloop task start <id> --phase <p> --name … --order <n> --scenarios a,b
+autoloop task set <id> --status completed
+autoloop commit [--task <id>]                     # existing; task-aware (see back-compat)
+autoloop score <scenarioId> --task <t> --criterion correctness=4 --criterion ux=3 [--commit <sha>] [--note …]
+autoloop test-run <scenarioId> --task <t> --passed 8 --failed 1 [--issue "…"]…
+autoloop revise --scenario <s> --reason "…" --change add:<taskId> --change drop:<taskId>…
+autoloop doc add --kind vision --title "…" (--file path | --url https://…)
 ```
 
 **Back-compat (commit relocation):** in the new model commits nest under
@@ -203,7 +203,7 @@ breaking anything:
   `commits.test.ts` and the `phases/p1/commits/abc` seed in `rules.test.ts` keep
   passing. No migration of old data.
 - **The forward path is task-scoped** (`PUT …/tasks/:taskId/commits/:sha`). The
-  updated `daloop commit` targets a task: with `--task <id>` it uses that task; with
+  updated `autoloop commit` targets a task: with `--task <id>` it uses that task; with
   no `--task` it uses `cfg.currentTaskId` if set, else **auto-creates an implicit
   default task** and uses it.
 - **Implicit default task shape** (when auto-created): id `main`, `phaseId =
@@ -259,7 +259,7 @@ zod schemas (mirroring today's style):
   404; auth failures via the existing middleware (401/403). Unhandled errors → 500
   and logged (existing behavior).
 - CLI: best-effort — reporting failures print a warning and exit 0 unless `--strict`
-  (or `DALOOP_STRICT=1`), matching the current CLI.
+  (or `AUTOLOOP_STRICT=1`), matching the current CLI.
 
 ## Testing
 

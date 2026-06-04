@@ -1203,5 +1203,5 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Out of scope (separate sub-projects / deferred)
 
-- SP3 `/daloop` driver hygiene (task-status transitions, opening/fixing bugs, uploading summaries, `loop start`).
+- SP3 `/autoloop` driver hygiene (task-status transitions, opening/fixing bugs, uploading summaries, `loop start`).
 - Cross-loop bug aggregation ("All loops" view); per-loop notifications (v2.3); URL deep-linking of tab/loop.

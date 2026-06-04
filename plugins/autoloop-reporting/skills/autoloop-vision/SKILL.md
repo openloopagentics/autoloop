@@ -1,12 +1,12 @@
 ---
-name: daloop-vision
-description: Use to author or extend a project's Daloop vision — interview the user to produce a validated vision.json (goals, scenarios, scoring rubrics, optional per-scenario test commands). Trigger when the user wants to define what "done" means for a vision-driven loop, set up scenarios/rubrics, or says "author a vision", "/daloop-vision", or "set up the loop's goals".
+name: autoloop-vision
+description: Use to author or extend a project's Autoloop vision — interview the user to produce a validated vision.json (goals, scenarios, scoring rubrics, optional per-scenario test commands). Trigger when the user wants to define what "done" means for a vision-driven loop, set up scenarios/rubrics, or says "author a vision", "/autoloop-vision", or "set up the loop's goals".
 ---
 
-# Daloop Vision Authoring
+# Autoloop Vision Authoring
 
 Interview the user to produce a **`vision.json`** — the goals, scenarios, scoring
-rubrics, and (optional) per-scenario test commands that the `/daloop` driver
+rubrics, and (optional) per-scenario test commands that the `/autoloop` driver
 later builds toward and scores against.
 
 ## Output: vision.json
@@ -55,22 +55,22 @@ Field rules:
    If it reports problems, fix them with the user and re-run — **never leave an
    invalid vision.json**.
 4. **Confirm** the written `vision.json` with the user.
-5. **Offer to push it:** `daloop vision import --file vision.json` (best-effort).
-   Requires `DALOOP_API_KEY` in the env and an initialised `.daloop.json`. If the dir
-   isn't initialised, point the user to `daloop init --team <t> --project <slug>`
-   (and the Daloop app's API-keys page to mint a key). The loop-local `scenario.test`
+5. **Offer to push it:** `autoloop vision import --file vision.json` (best-effort).
+   Requires `AUTOLOOP_API_KEY` in the env and an initialised `.autoloop.json`. If the dir
+   isn't initialised, point the user to `autoloop init --team <t> --project <slug>`
+   (and the Autoloop app's API-keys page to mint a key). The loop-local `scenario.test`
    field is dropped on import (it stays in your local `vision.json`).
 6. **Persist the test approach (optional).** When a scenario has a non-trivial test
    approach — a command or a described verification procedure — optionally persist it as
-   a Document of `kind: "test-spec"`, e.g. `daloop doc add --kind test-spec --title
+   a Document of `kind: "test-spec"`, e.g. `autoloop doc add --kind test-spec --title
    "<scenario> tests" --file <notes.md>` (or `--url <link>`), so the loop and the
    dashboard share the test definition. This is optional; the loop reads it when present.
 
 ## Boundaries
 
 - You author the **what** (the vision). You do NOT generate the plan, write code, run
-  tests, or score anything — that is `/daloop`'s job. When the vision is ready,
-  tell the user they can run `/daloop` to build toward it.
+  tests, or score anything — that is `/autoloop`'s job. When the vision is ready,
+  tell the user they can run `/autoloop` to build toward it.
 - Keep scenarios concrete and few; a good first vision is 1–3 goals with 1–3 scenarios
   each. Resist inventing criteria the user didn't ask for (YAGNI).
 

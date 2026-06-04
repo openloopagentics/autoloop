@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Daloop multi-tenant: teams own projects, the team/membership/invite model and its Firestore security rules exist, and the agent write endpoints are repointed under `/v1/teams/{teamId}/...` (shared-key auth kept as a stopgap until Sub-project B).
+**Goal:** Make Autoloop multi-tenant: teams own projects, the team/membership/invite model and its Firestore security rules exist, and the agent write endpoints are repointed under `/v1/teams/{teamId}/...` (shared-key auth kept as a stopgap until Sub-project B).
 
 **Architecture:** Projects/phases/commits move under `teams/{teamId}/projects/{slug}/...`; their transaction logic is otherwise unchanged. Team/member/invite management is done by the UI writing Firestore directly, governed by new security rules; the API (Admin SDK) keeps writing project status and bypasses those rules. The bulk of the work and risk is in `firestore.rules`, which is built up and tested block-by-block.
 
@@ -285,7 +285,7 @@ let testEnv: RulesTestEnvironment;
 
 beforeAll(async () => {
   testEnv = await initializeTestEnvironment({
-    projectId: "daloop-rules-test",
+    projectId: "autoloop-rules-test",
     firestore: { rules: readFileSync(rulesPath, "utf8") },
   });
 });
@@ -783,7 +783,7 @@ git commit -m "feat: project read rules + cross-team isolation"
 
 - Change the three endpoint paths in the table to `/v1/teams/{teamId}/projects/{slug}[/phases/{phaseId}[/commits/{sha}]]`.
 - Add a short "Teams & access" subsection: teams own projects; membership (owner/admin/member) governs access; reads gated by membership; `isAllowed` is the global entry gate; team/member/invite management happens in the UI via Firestore rules.
-- Note that per-user API keys + membership-based write authorization are coming in the next iteration (Sub-project B); today writes still use the shared `DALOOP_WRITE_KEYS`.
+- Note that per-user API keys + membership-based write authorization are coming in the next iteration (Sub-project B); today writes still use the shared `AUTOLOOP_WRITE_KEYS`.
 
 - [ ] **Step 2: Commit**
 

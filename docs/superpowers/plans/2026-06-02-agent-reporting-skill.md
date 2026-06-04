@@ -2,42 +2,42 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A dependency-free Node CLI (`cli/daloop.mjs`) plus a Claude Code skill that lets an agent report project/phase/commit status to the deployed Daloop API as it runs a dev loop in another repo.
+**Goal:** A dependency-free Node CLI (`cli/autoloop.mjs`) plus a Claude Code skill that lets an agent report project/phase/commit status to the deployed Autoloop API as it runs a dev loop in another repo.
 
-**Architecture:** One self-contained ESM script exposing a testable `run(argv, deps)` (deps inject `fetchImpl` and `gitRun` so unit tests need no network or real git; the shebang entry just calls `run` and `process.exit`s its return code). Commands map to the team-scoped REST endpoints; config is a non-secret `.daloop.json` + `DALOOP_API_KEY` in env. Reporting failures are best-effort (warn + exit 0); usage errors fail loud (exit 1, pre-network).
+**Architecture:** One self-contained ESM script exposing a testable `run(argv, deps)` (deps inject `fetchImpl` and `gitRun` so unit tests need no network or real git; the shebang entry just calls `run` and `process.exit`s its return code). Commands map to the team-scoped REST endpoints; config is a non-secret `.autoloop.json` + `AUTOLOOP_API_KEY` in env. Reporting failures are best-effort (warn + exit 0); usage errors fail loud (exit 1, pre-network).
 
 **Tech Stack:** Node 22 (global `fetch`, `node:child_process`, `node:fs`) — no npm deps, no build. Tested with the repo's existing Vitest + Firestore-emulator harness.
 
 **Reference spec:** `docs/superpowers/specs/2026-06-02-agent-reporting-skill-design.md`
-**Builds on the deployed API:** `PUT /v1/teams/{teamId}/projects/{slug}[/phases/{phaseId}[/commits/{sha}]]`, per-user key auth (`Authorization: Bearer dl_…`; unknown→401, non-member→403, missing parent→404, validation→400). Status enum: `queued|running|blocked|paused|completed|failed|cancelled`. id pattern `^[a-z0-9._-]+$`. Keys resolve by `sha256(full plaintext)`.
+**Builds on the deployed API:** `PUT /v1/teams/{teamId}/projects/{slug}[/phases/{phaseId}[/commits/{sha}]]`, per-user key auth (`Authorization: Bearer al_…`; unknown→401, non-member→403, missing parent→404, validation→400). Status enum: `queued|running|blocked|paused|completed|failed|cancelled`. id pattern `^[a-z0-9._-]+$`. Keys resolve by `sha256(full plaintext)`.
 
 ---
 
 ## Background / conventions
 
-- The CLI lives at repo-root `cli/daloop.mjs` (separate from the API in `functions/`). It's runnable as `node cli/daloop.mjs <command> …` with no install.
-- **Tests live in `functions/test/`** so they reuse the existing emulator harness (`functions/test/helpers.ts` sets `FIRESTORE_EMULATOR_HOST`, clears Firestore each test) and Vitest. They import the CLI as `../../cli/daloop.mjs`. Vitest runs `.ts` tests via esbuild (no type-check), so importing the untyped `.mjs` is fine at runtime; `npm run build` (tsc, `include: ["src"]`) never compiles `cli/` or `test/`, so there's no type-check breakage.
+- The CLI lives at repo-root `cli/autoloop.mjs` (separate from the API in `functions/`). It's runnable as `node cli/autoloop.mjs <command> …` with no install.
+- **Tests live in `functions/test/`** so they reuse the existing emulator harness (`functions/test/helpers.ts` sets `FIRESTORE_EMULATOR_HOST`, clears Firestore each test) and Vitest. They import the CLI as `../../cli/autoloop.mjs`. Vitest runs `.ts` tests via esbuild (no type-check), so importing the untyped `.mjs` is fine at runtime; `npm run build` (tsc, `include: ["src"]`) never compiles `cli/` or `test/`, so there's no type-check breakage.
 - **Testability seam:** `run(argv, { cwd, env, fetchImpl, gitRun })` returns an exit code (number). Tests call it in-process, injecting a fake `fetchImpl` (captures request / returns canned responses) and `gitRun` (returns canned `git log` output). The integration test injects the real `fetch` pointed at a locally-booted `makeApp()`.
-- **Exit codes:** `0` success; `1` usage error (bad args / missing config / missing key / invalid status or id / phase-not-started / commit guards) — thrown as `UsageError` BEFORE any network call; reporting failures (HTTP 4xx/5xx, network) print a one-line stderr warning and return `0` by default, or `1` when `--strict` (or `DALOOP_STRICT=1`).
+- **Exit codes:** `0` success; `1` usage error (bad args / missing config / missing key / invalid status or id / phase-not-started / commit guards) — thrown as `UsageError` BEFORE any network call; reporting failures (HTTP 4xx/5xx, network) print a one-line stderr warning and return `0` by default, or `1` when `--strict` (or `AUTOLOOP_STRICT=1`).
 - Run a single CLI test file with `npm run test:run -- cli` (start `npm run emulators` in the background first only for the integration test).
 
 ## File structure
 
 | File | Responsibility |
 |---|---|
-| `cli/daloop.mjs` | the whole CLI: arg parsing, config I/O, validation, git read, request layer, command dispatch, `run()` + entry guard |
+| `cli/autoloop.mjs` | the whole CLI: arg parsing, config I/O, validation, git read, request layer, command dispatch, `run()` + entry guard |
 | `functions/test/cli.unit.test.ts` | unit tests for the pure pieces (parse/config/validate/git/request-build/exit-policy) via injected deps |
 | `functions/test/cli.integration.test.ts` | end-to-end: boot `makeApp()` on a port + emulator, seed key+membership, drive `run()` |
-| `skills/daloop-reporting/SKILL.md` | Claude Code skill: when to report |
-| `skills/daloop-reporting/CODEX.md` | same CLI commands for Codex-driven loops |
+| `skills/autoloop-reporting/SKILL.md` | Claude Code skill: when to report |
+| `skills/autoloop-reporting/CODEX.md` | same CLI commands for Codex-driven loops |
 
-`cli/daloop.mjs` is built up across Tasks 1–6 (each adds a piece and stays runnable). Tasks 7–8 add the integration test and the skill docs.
+`cli/autoloop.mjs` is built up across Tasks 1–6 (each adds a piece and stays runnable). Tasks 7–8 add the integration test and the skill docs.
 
 ---
 
 ## Task 1: CLI skeleton — parse, validate, config, dispatch
 
-**Files:** Create `cli/daloop.mjs`; Test `functions/test/cli.unit.test.ts`
+**Files:** Create `cli/autoloop.mjs`; Test `functions/test/cli.unit.test.ts`
 
 - [ ] **Step 1: Write the failing test** (`functions/test/cli.unit.test.ts`)
 
@@ -47,9 +47,9 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run } from "../../cli/daloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run } from "../../cli/autoloop.mjs";
 
-function tmp() { return mkdtempSync(join(tmpdir(), "daloop-")); }
+function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
 describe("parseArgs", () => {
   it("splits positionals and --flags (with values and booleans)", () => {
@@ -71,12 +71,12 @@ describe("validateStatus / validateId", () => {
 });
 
 describe("config I/O", () => {
-  it("saves and loads .daloop.json; loadConfig throws when missing", () => {
+  it("saves and loads .autoloop.json; loadConfig throws when missing", () => {
     const dir = tmp();
     expect(() => loadConfig(dir)).toThrow(/init/);
     saveConfig(dir, { apiUrl: "u", teamId: "t", projectSlug: "p", currentPhaseId: null, phases: {} });
     expect(loadConfig(dir).teamId).toBe("t");
-    expect(JSON.parse(readFileSync(join(dir, ".daloop.json"), "utf8")).projectSlug).toBe("p");
+    expect(JSON.parse(readFileSync(join(dir, ".autoloop.json"), "utf8")).projectSlug).toBe("p");
   });
 });
 
@@ -92,7 +92,7 @@ describe("run dispatch", () => {
 
 - [ ] **Step 2: Run RED** — `npm run test:run -- cli.unit` → FAIL (no module).
 
-- [ ] **Step 3: Implement the skeleton** `cli/daloop.mjs`
+- [ ] **Step 3: Implement the skeleton** `cli/autoloop.mjs`
 
 ```javascript
 #!/usr/bin/env node
@@ -102,7 +102,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const STATUSES = ["queued", "running", "blocked", "paused", "completed", "failed", "cancelled"];
 const ID_RE = /^[a-z0-9._-]+$/;
-const CONFIG_FILE = ".daloop.json";
+const CONFIG_FILE = ".autoloop.json";
 export const DEFAULT_API_URL = "https://api-5ds5e4zsxq-uc.a.run.app";
 
 /** Thrown for caller-fixable problems; surfaced as exit code 1 BEFORE any network call. */
@@ -134,7 +134,7 @@ export function validateId(name, v) {
 
 export function loadConfig(cwd) {
   const p = join(cwd, CONFIG_FILE);
-  if (!existsSync(p)) throw new UsageError("not initialized — run `daloop init`");
+  if (!existsSync(p)) throw new UsageError("not initialized — run `autoloop init`");
   return JSON.parse(readFileSync(p, "utf8"));
 }
 export function saveConfig(cwd, cfg) {
@@ -142,7 +142,7 @@ export function saveConfig(cwd, cfg) {
 }
 
 /**
- * Run a daloop command. Returns an exit code (0 ok, 1 usage error).
+ * Run an autoloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.
  */
 export async function run(argv, deps = {}) {
@@ -165,7 +165,7 @@ export async function run(argv, deps = {}) {
         throw new UsageError(`unknown command: ${argv.join(" ")}`);
     }
   } catch (e) {
-    if (e instanceof UsageError) { err(`daloop: ${e.message}`); return 1; }
+    if (e instanceof UsageError) { err(`autoloop: ${e.message}`); return 1; }
     throw e;
   }
 }
@@ -183,21 +183,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
-git commit -m "feat(cli): daloop skeleton - parse/validate/config/dispatch"
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
+git commit -m "feat(cli): autoloop skeleton - parse/validate/config/dispatch"
 ```
 
 ---
 
 ## Task 2: `init` command
 
-**Files:** Modify `cli/daloop.mjs`; Modify `functions/test/cli.unit.test.ts`
+**Files:** Modify `cli/autoloop.mjs`; Modify `functions/test/cli.unit.test.ts`
 
 - [ ] **Step 1: Append the failing test**
 
 ```typescript
 describe("init", () => {
-  it("writes .daloop.json with team/project/url and empty phase state", async () => {
+  it("writes .autoloop.json with team/project/url and empty phase state", async () => {
     const dir = tmp();
     const code = await run(["init", "--team", "acme", "--project", "web", "--url", "http://x"], { cwd: dir, env: {}, log: () => {}, err: () => {} });
     expect(code).toBe(0);
@@ -229,7 +229,7 @@ describe("init", () => {
         validateId("projectSlug", projectSlug);
         const apiUrl = (typeof flags.url === "string" && flags.url) || DEFAULT_API_URL;
         saveConfig(cwd, { apiUrl, teamId, projectSlug, currentPhaseId: null, phases: {} });
-        log(`daloop: initialized .daloop.json (team=${teamId}, project=${projectSlug})`);
+        log(`autoloop: initialized .autoloop.json (team=${teamId}, project=${projectSlug})`);
         return 0;
       }
 ```
@@ -241,15 +241,15 @@ describe("init", () => {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
-git commit -m "feat(cli): init command writes .daloop.json"
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
+git commit -m "feat(cli): init command writes .autoloop.json"
 ```
 
 ---
 
 ## Task 3: Request layer + exit-code policy
 
-**Files:** Modify `cli/daloop.mjs`; Modify `functions/test/cli.unit.test.ts`
+**Files:** Modify `cli/autoloop.mjs`; Modify `functions/test/cli.unit.test.ts`
 
 Adds the shared helper that resolves the URL/key, sends one request via the injected `fetchImpl`, and applies the best-effort exit policy. No command uses it yet (Task 4+); test it directly via a tiny exported `report()`.
 
@@ -257,12 +257,12 @@ Adds the shared helper that resolves the URL/key, sends one request via the inje
 
 ```typescript
 // @ts-ignore
-import { report, resolveApiUrl } from "../../cli/daloop.mjs";
+import { report, resolveApiUrl } from "../../cli/autoloop.mjs";
 
 describe("resolveApiUrl precedence", () => {
   it("flag > env > config", () => {
-    expect(resolveApiUrl({ apiUrl: "c" }, { DALOOP_API_URL: "e" }, "f")).toBe("f");
-    expect(resolveApiUrl({ apiUrl: "c" }, { DALOOP_API_URL: "e" }, undefined)).toBe("e");
+    expect(resolveApiUrl({ apiUrl: "c" }, { AUTOLOOP_API_URL: "e" }, "f")).toBe("f");
+    expect(resolveApiUrl({ apiUrl: "c" }, { AUTOLOOP_API_URL: "e" }, undefined)).toBe("e");
     expect(resolveApiUrl({ apiUrl: "c" }, {}, undefined)).toBe("c");
   });
 });
@@ -272,10 +272,10 @@ describe("report (exit policy)", () => {
   function failFetch(status: number, body: any) {
     return async () => ({ ok: false, status, json: async () => body, text: async () => JSON.stringify(body) });
   }
-  const base = { cwd: "/", env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {} };
+  const base = { cwd: "/", env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {} };
 
-  it("throws UsageError when DALOOP_API_KEY missing (before network)", async () => {
-    await expect(report({ method: "PUT", url: "http://x/v1", body: {} }, { ...base, env: {} })).rejects.toThrow(/DALOOP_API_KEY/);
+  it("throws UsageError when AUTOLOOP_API_KEY missing (before network)", async () => {
+    await expect(report({ method: "PUT", url: "http://x/v1", body: {} }, { ...base, env: {} })).rejects.toThrow(/AUTOLOOP_API_KEY/);
   });
 
   it("returns 0 on success and sends Bearer auth + JSON body", async () => {
@@ -284,7 +284,7 @@ describe("report (exit policy)", () => {
       { ...base, fetchImpl: async (url: string, init: any) => { captured = { url, init }; return okFetch(); } });
     expect(code).toBe(0);
     expect(captured.init.method).toBe("PUT");
-    expect(captured.init.headers.Authorization).toBe("Bearer dl_k");
+    expect(captured.init.headers.Authorization).toBe("Bearer al_k");
     expect(JSON.parse(captured.init.body).title).toBe("x");
   });
 
@@ -300,17 +300,17 @@ describe("report (exit policy)", () => {
 
 - [ ] **Step 2: Run RED** — FAIL.
 
-- [ ] **Step 3: Implement `resolveApiUrl` and `report`** in `cli/daloop.mjs`
+- [ ] **Step 3: Implement `resolveApiUrl` and `report`** in `cli/autoloop.mjs`
 
 ```javascript
 export function resolveApiUrl(cfg, env, flagUrl) {
-  return (typeof flagUrl === "string" && flagUrl) || env.DALOOP_API_URL || cfg.apiUrl;
+  return (typeof flagUrl === "string" && flagUrl) || env.AUTOLOOP_API_URL || cfg.apiUrl;
 }
 
 const REPORT_MESSAGES = {
-  401: "invalid or expired DALOOP_API_KEY",
+  401: "invalid or expired AUTOLOOP_API_KEY",
   403: (teamId) => `your API key's user is not a member of team ${teamId ?? "(unknown)"}`,
-  404: "team/project/phase not found — run `daloop project set` first",
+  404: "team/project/phase not found — run `autoloop project set` first",
 };
 
 /**
@@ -320,8 +320,8 @@ const REPORT_MESSAGES = {
  */
 export async function report(req, deps) {
   const { env, fetchImpl = fetch, err = (m) => console.error(m), strict = false, teamId } = deps;
-  const key = env.DALOOP_API_KEY;
-  if (!key) throw new UsageError("set DALOOP_API_KEY (a key minted via POST /v1/keys)");
+  const key = env.AUTOLOOP_API_KEY;
+  if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
 
   let res;
   try {
@@ -331,7 +331,7 @@ export async function report(req, deps) {
       body: JSON.stringify(req.body),
     });
   } catch (e) {
-    err(`daloop: report failed (network): ${e.message}`);
+    err(`autoloop: report failed (network): ${e.message}`);
     return strict ? 1 : 0;
   }
 
@@ -343,7 +343,7 @@ export async function report(req, deps) {
   }
   const m = REPORT_MESSAGES[res.status];
   const msg = typeof m === "function" ? m(teamId) : (m ?? `HTTP ${res.status}`);
-  err(`daloop: report not applied (${res.status}): ${msg}${detail ? ` — ${detail}` : ""}`);
+  err(`autoloop: report not applied (${res.status}): ${msg}${detail ? ` — ${detail}` : ""}`);
   return strict ? 1 : 0;
 }
 ```
@@ -353,7 +353,7 @@ export async function report(req, deps) {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
 git commit -m "feat(cli): request layer with best-effort exit policy"
 ```
 
@@ -361,7 +361,7 @@ git commit -m "feat(cli): request layer with best-effort exit policy"
 
 ## Task 4: `project set` command
 
-**Files:** Modify `cli/daloop.mjs`; Modify `functions/test/cli.unit.test.ts`
+**Files:** Modify `cli/autoloop.mjs`; Modify `functions/test/cli.unit.test.ts`
 
 - [ ] **Step 1: Append the failing test** (drives the command via injected fetch; asserts URL + body)
 
@@ -377,7 +377,7 @@ describe("project set", () => {
     writeFileSync(join(dir, "plan.md"), "# Plan");
     let captured: any;
     const code = await run(["project", "set", "--title", "Web", "--status", "running", "--design-file", "plan.md"],
-      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {},
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {},
         fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
     expect(code).toBe(0);
     expect(captured.url).toBe("http://api/v1/teams/acme/projects/web");
@@ -387,7 +387,7 @@ describe("project set", () => {
   it("rejects an invalid status (exit 1, no network)", async () => {
     const errs: string[] = [];
     const code = await run(["project", "set", "--title", "Web", "--status", "nope"],
-      { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+      { cwd: initDir(), env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
         fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/invalid status/);
@@ -410,7 +410,7 @@ describe("project set", () => {
         if (flags["design-file"]) body.design = { format: "markdown", content: readFileSync(join(cwd, flags["design-file"]), "utf8") };
         else if (flags["design-url"]) body.design = { format: "url", content: flags["design-url"] };
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
-        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
 ```
 
@@ -419,7 +419,7 @@ describe("project set", () => {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
 git commit -m "feat(cli): project set command"
 ```
 
@@ -427,7 +427,7 @@ git commit -m "feat(cli): project set command"
 
 ## Task 5: `phase start` and `phase set`
 
-**Files:** Modify `cli/daloop.mjs`; Modify `functions/test/cli.unit.test.ts`
+**Files:** Modify `cli/autoloop.mjs`; Modify `functions/test/cli.unit.test.ts`
 
 `phase start` creates/records the phase; `phase set` re-sends the recorded name/order plus status (valid create-or-update) and guards against an unstarted id.
 
@@ -445,7 +445,7 @@ describe("phase start/set", () => {
   it("phase start records name/order + currentPhaseId and PUTs running", async () => {
     const dir = initDir();
     const code = await run(["phase", "start", "build", "--name", "Build", "--order", "1"],
-      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
     expect(code).toBe(0);
     expect((okFetch as any).last.url).toBe("http://api/v1/teams/acme/projects/web/phases/build");
     expect(JSON.parse((okFetch as any).last.init.body)).toMatchObject({ name: "Build", order: 1, status: "running" });
@@ -456,15 +456,15 @@ describe("phase start/set", () => {
 
   it("phase set re-sends recorded name/order + new status", async () => {
     const dir = initDir();
-    await run(["phase", "start", "build", "--name", "Build", "--order", "1"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
-    await run(["phase", "set", "build", "--status", "completed"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+    await run(["phase", "start", "build", "--name", "Build", "--order", "1"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
+    await run(["phase", "set", "build", "--status", "completed"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
     expect(JSON.parse((okFetch as any).last.init.body)).toMatchObject({ name: "Build", order: 1, status: "completed" });
   });
 
   it("phase set on an unstarted id -> exit 1, no network", async () => {
     const errs: string[] = [];
     const code = await run(["phase", "set", "ghost", "--status", "completed"],
-      { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("no"); } });
+      { cwd: initDir(), env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/not started/);
   });
@@ -491,7 +491,7 @@ describe("phase start/set", () => {
         saveConfig(cwd, cfg);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/phases/${phaseId}`;
         return report({ method: "PUT", url, body: { name: flags.name, order, status } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "phase set": {
         const phaseId = positionals[2];
@@ -500,10 +500,10 @@ describe("phase start/set", () => {
         validateStatus(flags.status);
         const cfg = loadConfig(cwd);
         const rec = cfg.phases?.[phaseId];
-        if (!rec) throw new UsageError(`phase ${phaseId} not started — run \`daloop phase start\` first`);
+        if (!rec) throw new UsageError(`phase ${phaseId} not started — run \`autoloop phase start\` first`);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/phases/${phaseId}`;
         return report({ method: "PUT", url, body: { name: rec.name, order: rec.order, status: flags.status } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
 ```
 
@@ -512,7 +512,7 @@ describe("phase start/set", () => {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
 git commit -m "feat(cli): phase start/set with config-tracked name/order"
 ```
 
@@ -520,15 +520,15 @@ git commit -m "feat(cli): phase start/set with config-tracked name/order"
 
 ## Task 6: `commit` command (git HEAD + guards)
 
-**Files:** Modify `cli/daloop.mjs`; Modify `functions/test/cli.unit.test.ts`
+**Files:** Modify `cli/autoloop.mjs`; Modify `functions/test/cli.unit.test.ts`
 
-`daloop commit` reads git HEAD via an injectable `gitRun` (default executes `git log -1 --format=%H%n%cI%n%an%n%s`), parses it, guards locally, and PUTs the commit under `currentPhaseId`.
+`autoloop commit` reads git HEAD via an injectable `gitRun` (default executes `git log -1 --format=%H%n%cI%n%an%n%s`), parses it, guards locally, and PUTs the commit under `currentPhaseId`.
 
 - [ ] **Step 1: Append the failing test**
 
 ```typescript
 // @ts-ignore
-import { parseGitHead } from "../../cli/daloop.mjs";
+import { parseGitHead } from "../../cli/autoloop.mjs";
 
 describe("parseGitHead", () => {
   it("parses sha / ISO committedAt / author / message", () => {
@@ -548,7 +548,7 @@ describe("commit", () => {
   it("PUTs the commit under currentPhaseId with git fields", async () => {
     const dir = initDir();
     let captured: any;
-    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
+    const code = await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, gitRun,
       fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
     expect(code).toBe(0);
     expect(captured.url).toBe("http://api/v1/teams/acme/projects/web/phases/build/commits/deadbeef");
@@ -559,14 +559,14 @@ describe("commit", () => {
     const dir = tmp();
     saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, phases: {} });
     const errs: string[] = [];
-    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), gitRun, fetchImpl: async () => { throw new Error("no"); } });
+    const code = await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), gitRun, fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/no current phase/i);
   });
 
   it("exits 1 when git author is empty", async () => {
     const errs: string[] = [];
-    const code = await run(["commit"], { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+    const code = await run(["commit"], { cwd: initDir(), env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
       gitRun: () => "deadbeef\n2026-06-02T01:25:49-07:00\n\nfix: thing", fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/author/);
@@ -597,7 +597,7 @@ In the `switch`:
 ```javascript
       case "commit": {
         const cfg = loadConfig(cwd);
-        if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `daloop phase start` first");
+        if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `autoloop phase start` first");
         let raw;
         try { raw = (gitRun ? gitRun(cwd) : defaultGitRun(cwd)).trim(); }
         catch (e) { throw new UsageError(`could not read git HEAD (is this a git repo with commits?): ${e.message}`); }
@@ -607,17 +607,17 @@ In the `switch`:
         if (!c.message) throw new UsageError("git commit message empty");
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/phases/${cfg.currentPhaseId}/commits/${c.sha}`;
         return report({ method: "PUT", url, body: { message: c.message, author: c.author, committedAt: c.committedAt } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
 ```
 Also thread `gitRun` from `run`'s deps (already destructured in Task 1's skeleton — confirm `gitRun` is in the deps destructure; if not, add it).
 
-- [ ] **Step 4: Run GREEN** — `npm run test:run -- cli.unit` → all PASS. Also confirm `daloop commit` works against a real repo manually is optional.
+- [ ] **Step 4: Run GREEN** — `npm run test:run -- cli.unit` → all PASS. Also confirm `autoloop commit` works against a real repo manually is optional.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
 git commit -m "feat(cli): commit command reads git HEAD with strict-ISO date"
 ```
 
@@ -644,9 +644,9 @@ import "./helpers.js";
 import { db } from "../src/firestore.js";
 import { makeApp } from "../src/app.js";
 // @ts-ignore
-import { run } from "../../cli/daloop.mjs";
+import { run } from "../../cli/autoloop.mjs";
 
-const PLAINTEXT = "dl_integrationkey";
+const PLAINTEXT = "al_integrationkey";
 const KEY_HASH = createHash("sha256").update(PLAINTEXT).digest("hex");
 let server: Server;
 let baseUrl: string;
@@ -659,13 +659,13 @@ beforeAll(async () => {
 afterAll(() => { server?.close(); });
 
 async function seedKeyAndMember(teamId: string, uid = "agentX") {
-  await db().doc(`apiKeys/${KEY_HASH}`).set({ uid, label: "it", prefix: "dl_integ" });
+  await db().doc(`apiKeys/${KEY_HASH}`).set({ uid, label: "it", prefix: "al_integ" });
   await db().doc(`teams/${teamId}`).set({ name: "T", createdBy: uid });
   await db().doc(`teams/${teamId}/members/${uid}`).set({ uid, role: "member" });
 }
 
-function dir() { return mkdtempSync(join(tmpdir(), "daloop-it-")); }
-const env = { DALOOP_API_KEY: PLAINTEXT };
+function dir() { return mkdtempSync(join(tmpdir(), "autoloop-it-")); }
+const env = { AUTOLOOP_API_KEY: PLAINTEXT };
 
 describe("CLI end-to-end against the real API", () => {
   it("init -> project set -> phase start -> commit lands in Firestore", async () => {
@@ -689,7 +689,7 @@ describe("CLI end-to-end against the real API", () => {
 
   it("a bad key warns and returns 0 (best-effort); strict returns 1", async () => {
     const cwd = dir();
-    const opts = { cwd, env: { DALOOP_API_KEY: "dl_wrong" }, log: () => {}, err: () => {} };
+    const opts = { cwd, env: { AUTOLOOP_API_KEY: "al_wrong" }, log: () => {}, err: () => {} };
     await run(["init", "--team", "itteam", "--project", "web", "--url", baseUrl], opts);
     expect(await run(["project", "set", "--title", "x", "--status", "running"], opts)).toBe(0);
     expect(await run(["project", "set", "--title", "x", "--status", "running", "--strict"], opts)).toBe(1);
@@ -698,7 +698,7 @@ describe("CLI end-to-end against the real API", () => {
   it("a non-member key -> 403 warning, returns 0", async () => {
     // The global beforeEach (helpers.ts) wipes Firestore before each test, so re-seed
     // the key here — but with NO membership in 'lonelyteam' so it reaches 403 (not 401).
-    await db().doc(`apiKeys/${KEY_HASH}`).set({ uid: "agentX", label: "it", prefix: "dl_integ" });
+    await db().doc(`apiKeys/${KEY_HASH}`).set({ uid: "agentX", label: "it", prefix: "al_integ" });
     await db().doc("teams/lonelyteam").set({ name: "L", createdBy: "someoneelse" });
     const cwd = dir();
     const opts = { cwd, env, log: () => {}, err: () => {} };
@@ -722,29 +722,29 @@ git commit -m "test(cli): end-to-end against the real API + emulator"
 
 ## Task 8: The skill docs (SKILL.md + Codex note)
 
-**Files:** Create `skills/daloop-reporting/SKILL.md`, `skills/daloop-reporting/CODEX.md`
+**Files:** Create `skills/autoloop-reporting/SKILL.md`, `skills/autoloop-reporting/CODEX.md`
 
-- [ ] **Step 1: Write `skills/daloop-reporting/SKILL.md`**
+- [ ] **Step 1: Write `skills/autoloop-reporting/SKILL.md`**
 
 Frontmatter + body. Must include:
-- `name: daloop-reporting` and a `description` that triggers when an agent is running a Daloop dev loop and should report status.
-- **Prerequisites:** `DALOOP_API_KEY` set in env (a key minted via `POST /v1/keys`); run `node <path>/cli/daloop.mjs init --team <id> --project <slug>` once.
+- `name: autoloop-reporting` and a `description` that triggers when an agent is running an Autoloop dev loop and should report status.
+- **Prerequisites:** `AUTOLOOP_API_KEY` set in env (a key minted via `POST /v1/keys`); run `node <path>/cli/autoloop.mjs init --team <id> --project <slug>` once.
 - **Lifecycle mapping** (the table from the spec): project start → `init` + `project set --title --status running --design-file <plan>`; entering a phase → `phase start <id> --name --order`; after each commit → `commit`; leaving a phase → `phase set <id> --status completed|failed`; loop end → `project set --status …`.
-- **Core principle:** reporting is best-effort observability — a `daloop` warning never blocks the loop; do not treat its output as fatal. (`--strict` exists but is opt-in.)
+- **Core principle:** reporting is best-effort observability — a `autoloop` warning never blocks the loop; do not treat its output as fatal. (`--strict` exists but is opt-in.)
 - The status enum and that ids must be `^[a-z0-9._-]+$`.
 
-- [ ] **Step 2: Write `skills/daloop-reporting/CODEX.md`** — the same command list and lifecycle, framed as plain instructions for a Codex-driven loop (no Claude-skill frontmatter), pointing at the same `cli/daloop.mjs`.
+- [ ] **Step 2: Write `skills/autoloop-reporting/CODEX.md`** — the same command list and lifecycle, framed as plain instructions for a Codex-driven loop (no Claude-skill frontmatter), pointing at the same `cli/autoloop.mjs`.
 
 - [ ] **Step 3: Sanity-check the CLI runs standalone**
 
-Run: `node cli/daloop.mjs init --team demo --project demo --url http://localhost:9 && cat .daloop.json && rm .daloop.json` (in a scratch dir)
-Expected: writes/echoes the config (no network for `init`). Clean up the scratch `.daloop.json`.
+Run: `node cli/autoloop.mjs init --team demo --project demo --url http://localhost:9 && cat .autoloop.json && rm .autoloop.json` (in a scratch dir)
+Expected: writes/echoes the config (no network for `init`). Clean up the scratch `.autoloop.json`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add skills/daloop-reporting/SKILL.md skills/daloop-reporting/CODEX.md
-git commit -m "docs: add daloop-reporting skill + Codex usage note"
+git add skills/autoloop-reporting/SKILL.md skills/autoloop-reporting/CODEX.md
+git commit -m "docs: add autoloop-reporting skill + Codex usage note"
 ```
 
 ---
@@ -753,7 +753,7 @@ git commit -m "docs: add daloop-reporting skill + Codex usage note"
 
 **Files:** Modify `README.md`
 
-- [ ] **Step 1:** Add a short "Reporting from an agent loop" section: the CLI path, `DALOOP_API_KEY` (minted via `POST /v1/keys`), `daloop init`, and the lifecycle commands; link to `skills/daloop-reporting/`.
+- [ ] **Step 1:** Add a short "Reporting from an agent loop" section: the CLI path, `AUTOLOOP_API_KEY` (minted via `POST /v1/keys`), `autoloop init`, and the lifecycle commands; link to `skills/autoloop-reporting/`.
 
 - [ ] **Step 2: Commit**
 
@@ -767,6 +767,6 @@ git commit -m "docs: document agent reporting CLI in README"
 ## Done criteria
 
 - `npm test` (full suite incl. CLI unit + integration) and `npm run test:rules` pass; `npm run build` clean (unchanged — `cli/` is outside the tsc `src` root).
-- `node cli/daloop.mjs` runs the five commands; reporting failures warn and exit 0 (exit 1 under `--strict`); usage errors exit 1 before any network call.
+- `node cli/autoloop.mjs` runs the five commands; reporting failures warn and exit 0 (exit 1 under `--strict`); usage errors exit 1 before any network call.
 - Integration test proves an `init → project set → phase start → commit` flow lands in Firestore through the real app, and that bad-key/non-member paths are best-effort by default.
-- The `daloop-reporting` skill + Codex note document when to call which command, emphasizing best-effort reporting.
+- The `autoloop-reporting` skill + Codex note document when to call which command, emphasizing best-effort reporting.

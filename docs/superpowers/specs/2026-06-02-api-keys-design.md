@@ -1,12 +1,12 @@
-# Daloop Per-User API Keys & Write Authorization (Sub-project B) — Design
+# Autoloop Per-User API Keys & Write Authorization (Sub-project B) — Design
 
 **Date:** 2026-06-02
 **Status:** Approved (design phase)
 
 ## Context
 
-Sub-project A made Daloop multi-tenant (teams own projects; membership-scoped
-reads) but left agent writes gated by a single shared `DALOOP_WRITE_KEYS` — any
+Sub-project A made Autoloop multi-tenant (teams own projects; membership-scoped
+reads) but left agent writes gated by a single shared `AUTOLOOP_WRITE_KEYS` — any
 holder of that key can write to any team. Sub-project B closes that gap:
 
 - Users mint **per-user API keys** (the key acts as its user).
@@ -73,11 +73,11 @@ protected by default).
 - The shared-key `requireWriteKey` middleware and the constant-time-compare machinery in
   `auth.ts` (lookup is now a hash equality on a document id, not a secret comparison). The
   key-extraction helper (`extractKey`) is **reused** by `requireApiKeyMember`.
-- `index.ts`: drop `defineSecret("DALOOP_WRITE_KEYS")` and the `secrets: [writeKeys]` option
+- `index.ts`: drop `defineSecret("AUTOLOOP_WRITE_KEYS")` and the `secrets: [writeKeys]` option
   on `onRequest`.
-- After rollout, **decommission the deployed Functions secret** (`firebase functions:secrets:destroy DALOOP_WRITE_KEYS`).
+- After rollout, **decommission the deployed Functions secret** (`firebase functions:secrets:destroy AUTOLOOP_WRITE_KEYS`).
 - `auth.test.ts` (which unit-tests the deleted `isValidKey`/`requireWriteKey`) is deleted or
-  rewritten against the new middleware; `helpers.ts` drops the `DALOOP_WRITE_KEYS` env line.
+  rewritten against the new middleware; `helpers.ts` drops the `AUTOLOOP_WRITE_KEYS` env line.
 
 ## Data model
 
@@ -85,14 +85,14 @@ protected by default).
 apiKeys/{keyHash}            // keyHash = SHA-256(plaintext) hex — the document ID
   ├─ uid:       string       // owner
   ├─ label:     string       // human name, e.g. "claude-laptop"
-  ├─ prefix:    string       // first ~8 chars of the plaintext, for display ("dl_ab12c")
+  ├─ prefix:    string       // first ~8 chars of the plaintext, for display ("al_ab12c")
   ├─ createdAt: Timestamp
 ```
 
-- **Key format:** `dl_` + 32 random bytes encoded base64url.
+- **Key format:** `al_` + 32 random bytes encoded base64url.
 - The **plaintext is returned once** at creation and never stored — only its
   SHA-256 hash (as the doc ID) and the display `prefix` are persisted. The hash
-  input is the **full plaintext including the `dl_` prefix** (so tests pin the
+  input is the **full plaintext including the `al_` prefix** (so tests pin the
   exact preimage), hex-encoded.
 - **Write-path lookup** is an O(1) `get(apiKeys/{hash})`.
 - **Listing** is `apiKeys where uid == caller` — Firestore auto-indexes single
@@ -111,7 +111,7 @@ All require a valid Firebase ID token (`Authorization: Bearer <idToken>`) and
 
 | Method & path | Behavior |
 |---|---|
-| `POST /v1/keys` | Mint. Body `{ label }` — trimmed, non-empty, **max 100 chars**; duplicate labels allowed (keys are identified by hash, not label). Generates `dl_…`, stores `apiKeys/{hash}` with `uid`/`label`/`prefix`/`createdAt`. Returns `{ id, key, label, prefix, createdAt }` — `key` (plaintext) is shown **only here**. |
+| `POST /v1/keys` | Mint. Body `{ label }` — trimmed, non-empty, **max 100 chars**; duplicate labels allowed (keys are identified by hash, not label). Generates `al_…`, stores `apiKeys/{hash}` with `uid`/`label`/`prefix`/`createdAt`. Returns `{ id, key, label, prefix, createdAt }` — `key` (plaintext) is shown **only here**. |
 | `GET /v1/keys` | List the caller's keys: `[{ id, label, prefix, createdAt }]`. Never returns the plaintext or anything reversible beyond `prefix`. |
 | `DELETE /v1/keys/{id}` | Revoke. `{id}` is the keyHash. `get` the doc, verify `uid == caller`, then `delete`; `404` if not found or not owned. The get-then-delete is not transactional and doesn't need to be — a concurrent double-revoke is harmless (the second is a no-op / 404). |
 
@@ -165,7 +165,7 @@ The current suite is built around the shared key and must be migrated:
   Admin SDK) for a test uid and return `Bearer <plaintext>`. Add a companion helper
   to seed that uid as a member of the team under test (`teams/{teamId}/members/{uid}`),
   since writes now require membership (403 otherwise). Remove the
-  `DALOOP_WRITE_KEYS ??= "test-key"` line.
+  `AUTOLOOP_WRITE_KEYS ??= "test-key"` line.
 - `test/projects.test.ts`, `phases.test.ts`, `commits.test.ts`, `integration.test.ts`:
   every write test must now seed the key's user as a team member (in addition to the
   existing `seedTeam`). The auth-related assertions still hold (401 without a key).
@@ -175,8 +175,8 @@ The current suite is built around the shared key and must be migrated:
 
 ### New tests
 
-- **Unit:** key generation + SHA-256 hashing (stable hash over the full `dl_…`
-  plaintext; plaintext never persisted); `dl_` format and `prefix` extraction;
+- **Unit:** key generation + SHA-256 hashing (stable hash over the full `al_…`
+  plaintext; plaintext never persisted); `al_` format and `prefix` extraction;
   `label` validation (trim, non-empty, max 100).
 - **`requireUser` unit tests via an injectable verifier seam (lead with this):**
   `requireUser` takes its token-verifier as an injected dependency (default =

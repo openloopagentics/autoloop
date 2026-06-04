@@ -1,4 +1,4 @@
-# Daloop — Self-serve access (request → approve) design spec
+# Autoloop — Self-serve access (request → approve) design spec
 
 **Date:** 2026-06-03
 **Status:** approved (brainstorming) — pending spec review + user review

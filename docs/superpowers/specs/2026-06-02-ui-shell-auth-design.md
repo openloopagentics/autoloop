@@ -1,11 +1,11 @@
-# Daloop UI — App Shell & Auth (UI-A) — Design
+# Autoloop UI — App Shell & Auth (UI-A) — Design
 
 **Date:** 2026-06-02
 **Status:** Approved (design phase)
 
 ## Context
 
-The Daloop backend (multi-tenant REST API + Firestore rules) is built and
+The Autoloop backend (multi-tenant REST API + Firestore rules) is built and
 deployed, and agents report via the CLI. The remaining major piece is the
 **web UI**, decomposed into sub-projects:
 
@@ -118,7 +118,7 @@ components only ever see the four-state `state`, never the raw flags).
 
 ## App shell
 
-`AppShell`: a top bar with the **Daloop** name, the signed-in user's **email**,
+`AppShell`: a top bar with the **Autoloop** name, the signed-in user's **email**,
 and a **Sign out** button (calls `useAuth().signOut`); a **nav** with
 **Dashboard · Teams · API Keys** links rendered as stubs/placeholders now (each
 lights up when its sub-project lands); and a main `<Outlet/>` for the routed page.

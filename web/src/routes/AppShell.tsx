@@ -36,7 +36,7 @@ export function AppShell() {
       <header className="hdr">
         <NavLink to="/dashboard" className="brand">
           <LoopMark size={24} />
-          <span className="wordmark">daloop</span>
+          <span className="wordmark">autoloop</span>
         </NavLink>
 
         <nav className="nav nav--desktop">

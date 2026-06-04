@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Extend Daloop's write-only reporting contract from `project → phase → commit` to the full vision-driven loop model — goals, scenarios (with rubrics), tasks (a new layer between phase and commit), task-scoped commits, documents, and append-only score/test-run/revision events — across the API, the `daloop` CLI, security-rules tests, and validation.
+**Goal:** Extend Autoloop's write-only reporting contract from `project → phase → commit` to the full vision-driven loop model — goals, scenarios (with rubrics), tasks (a new layer between phase and commit), task-scoped commits, documents, and append-only score/test-run/revision events — across the API, the `autoloop` CLI, security-rules tests, and validation.
 
-**Architecture:** Unchanged shape: the loop owns canonical state locally and reports one-way via the API (per-user API key → team membership); Daloop records and the website reads. Two write shapes: **entities** are idempotent `PUT` keyed by client-supplied id (goals, scenarios, tasks, commits, documents); **events** are append-only `POST` where the server stamps a sortable ULID-style id + `createdAt` (scores, testRuns, revisions). The server derives `currentPhaseId`/`currentTaskId` on relevant writes. `scenario.state` is derived by readers, never stored. No Firestore rules change (the recursive `match /projects/{slug}/{document=**}` already covers reads + write-deny); we only add rules tests.
+**Architecture:** Unchanged shape: the loop owns canonical state locally and reports one-way via the API (per-user API key → team membership); Autoloop records and the website reads. Two write shapes: **entities** are idempotent `PUT` keyed by client-supplied id (goals, scenarios, tasks, commits, documents); **events** are append-only `POST` where the server stamps a sortable ULID-style id + `createdAt` (scores, testRuns, revisions). The server derives `currentPhaseId`/`currentTaskId` on relevant writes. `scenario.state` is derived by readers, never stored. No Firestore rules change (the recursive `match /projects/{slug}/{document=**}` already covers reads + write-deny); we only add rules tests.
 
-**Tech Stack:** TypeScript Cloud Function (Express + firebase-admin + zod) in `functions/`; dependency-free Node ESM CLI in `cli/daloop.mjs`; Vitest + Firestore emulator (`functions/test/`) and `@firebase/rules-unit-testing` (`functions/test-rules/`). Node 22, no new dependencies (ULID uses `node:crypto.randomBytes`, already used by `apiKeys.ts`).
+**Tech Stack:** TypeScript Cloud Function (Express + firebase-admin + zod) in `functions/`; dependency-free Node ESM CLI in `cli/autoloop.mjs`; Vitest + Firestore emulator (`functions/test/`) and `@firebase/rules-unit-testing` (`functions/test-rules/`). Node 22, no new dependencies (ULID uses `node:crypto.randomBytes`, already used by `apiKeys.ts`).
 
 **Reference spec:** `docs/superpowers/specs/2026-06-02-loop-contract-design.md`
 
@@ -21,7 +21,7 @@
 - **Mounting** (`functions/src/app.ts`): all new routes mount under the existing `teamRouter` (already guarded by `requireApiKeyMember`). **Order matters** — more specific paths first (`/:slug/tasks/:taskId/commits` before `/:slug/tasks`), and `projectsRouter` (`/`) stays last.
 - **Tests** (`functions/test/*.test.ts`): Supertest against `makeApp()`; `import "./helpers.js"` registers the global `beforeEach` that clears Firestore + seeds the test API key (`TEST_KEY` → `TEST_UID`). Use `authHeader()` and `seedMember(teamId)`. Copy the `seedTeam`/`createProject` helpers from `phases.test.ts`.
 - **Rules tests** (`functions/test-rules/rules.test.ts`): `@firebase/rules-unit-testing`; seed with `withSecurityRulesDisabled`, assert with `assertSucceeds`/`assertFails`.
-- **CLI** (`cli/daloop.mjs`): one ESM file exposing `run(argv, deps)` returning an exit code; deps inject `cwd`, `env`, `fetchImpl`, `gitRun`, `log`, `err` for tests. `report({method,url,body}, deps)` is the best-effort request layer (warn + exit 0; exit 1 only with `--strict`/`DALOOP_STRICT=1`). `UsageError` → exit 1 before any network call. Config is `.daloop.json`.
+- **CLI** (`cli/autoloop.mjs`): one ESM file exposing `run(argv, deps)` returning an exit code; deps inject `cwd`, `env`, `fetchImpl`, `gitRun`, `log`, `err` for tests. `report({method,url,body}, deps)` is the best-effort request layer (warn + exit 0; exit 1 only with `--strict`/`AUTOLOOP_STRICT=1`). `UsageError` → exit 1 before any network call. Config is `.autoloop.json`.
 
 **Commands:**
 - Build (type-check, `include: ["src"]` only — never compiles `cli/` or `test/`): `cd functions && npm run build`
@@ -30,11 +30,11 @@
 - Rules suite: `cd functions && npm run test:rules`
 - A running emulator for ad-hoc `test:run`: `cd functions && npm run emulators` (separate shell)
 
-**Spec decision to honor (composite):** the spec's abbreviated CLI line for `daloop score` omits the composite, but the architecture says "the agent computes everything; Daloop only records," and `scores.composite` is a stored, zod-validated (`0..100`) field. Therefore **the client sends `composite`** and the CLI gains a `--composite <n>` flag. The server does NOT recompute it. (Service-layer validation still checks per-criterion `≤ max` and that criterion keys match the rubric ids.)
+**Spec decision to honor (composite):** the spec's abbreviated CLI line for `autoloop score` omits the composite, but the architecture says "the agent computes everything; Autoloop only records," and `scores.composite` is a stored, zod-validated (`0..100`) field. Therefore **the client sends `composite`** and the CLI gains a `--composite <n>` flag. The server does NOT recompute it. (Service-layer validation still checks per-criterion `≤ max` and that criterion keys match the rubric ids.)
 
 **Event responses** return `{ ok: true, id }` (the server-stamped ULID) so the loop can reference the event; entity responses keep `{ ok: true }`.
 
-**Existing CLI tests change:** making `daloop commit` task-scoped relocates the reported commit from `phases/{id}/commits/{sha}` to `tasks/{taskId}/commits/{sha}`. The CLI **unit** test (`describe("commit")` in `cli.unit.test.ts`) and the CLI **integration** test (`"init -> … -> commit"` in `cli.integration.test.ts`) currently assert the legacy phase path and MUST be updated in Tasks 8 and 14. The API-level legacy route test (`commits.test.ts`) stays unchanged — the legacy phase-scoped route is retained.
+**Existing CLI tests change:** making `autoloop commit` task-scoped relocates the reported commit from `phases/{id}/commits/{sha}` to `tasks/{taskId}/commits/{sha}`. The CLI **unit** test (`describe("commit")` in `cli.unit.test.ts`) and the CLI **integration** test (`"init -> … -> commit"` in `cli.integration.test.ts`) currently assert the legacy phase path and MUST be updated in Tasks 8 and 14. The API-level legacy route test (`commits.test.ts`) stays unchanged — the legacy phase-scoped route is retained.
 
 ---
 
@@ -57,9 +57,9 @@
 | `functions/test/{goals,scenarios,tasks,taskCommits,documents,events}.test.ts` | Supertest route tests | 4–11 |
 | `functions/test/ulid.test.ts`, `functions/test/derive.test.ts` | pure unit tests | 1, 2 |
 | `functions/test-rules/rules.test.ts` | add loop-contract subcollection read/deny tests | 12 |
-| `cli/daloop.mjs` | new verbs (vision/goal/scenario/task/doc + task-aware commit + score/test-run/revise) | 13, 14 |
+| `cli/autoloop.mjs` | new verbs (vision/goal/scenario/task/doc + task-aware commit + score/test-run/revise) | 13, 14 |
 | `functions/test/cli.unit.test.ts`, `functions/test/cli.integration.test.ts` | CLI tests (incl. updated commit assertions) | 13, 14 |
-| `web/public/skill/daloop.mjs`, `plugins/daloop-reporting/bin/daloop` | CLI distribution copies (via `scripts/sync-daloop-cli.sh`) | 14 |
+| `web/public/skill/autoloop.mjs`, `plugins/autoloop-reporting/bin/autoloop` | CLI distribution copies (via `scripts/sync-autoloop-cli.sh`) | 14 |
 
 ---
 
@@ -377,7 +377,7 @@ export const testRunBody = z.object({
 export const revisionBody = z.object({
   trigger: z.object({ scenarioId: id, reason: z.string().min(1) }),
   // changes carry op + taskId plus optional op-specific detail (title/order/...). passthrough
-  // keeps that detail; the loop, not Daloop, defines its meaning.
+  // keeps that detail; the loop, not Autoloop, defines its meaning.
   changes: z.array(z.object({ op: z.enum(["add", "replace", "reorder", "drop"]), taskId: id }).passthrough()).min(1),
 });
 
@@ -1383,10 +1383,10 @@ git commit -m "test(rules): assert member-read and client-write-deny for loop-co
 
 ## Task 13: CLI entity verbs + task-aware commit
 
-Extend `cli/daloop.mjs` with the entity verbs and make `commit` task-scoped (auto-creating an implicit `main` task). Update the two existing CLI commit tests to the new task-scoped behavior.
+Extend `cli/autoloop.mjs` with the entity verbs and make `commit` task-scoped (auto-creating an implicit `main` task). Update the two existing CLI commit tests to the new task-scoped behavior.
 
 **Files:**
-- Modify: `cli/daloop.mjs`
+- Modify: `cli/autoloop.mjs`
 - Modify: `functions/test/cli.unit.test.ts`
 
 - [ ] **Step 1: Add failing unit tests** (append to `functions/test/cli.unit.test.ts`)
@@ -1406,7 +1406,7 @@ describe("goal/scenario/task/doc verbs (request shapes)", () => {
     return dir;
   }
   const cap = () => { const c: any = {}; c.fetchImpl = async (url: string, init: any) => { c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true }) }; }; return c; };
-  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
 
   it("goal set PUTs the goal", async () => {
     const dir = initDir(); const c = cap();
@@ -1448,7 +1448,7 @@ describe("commit", () => {
   it("auto-creates an implicit 'main' task then PUTs the commit under it", async () => {
     const dir = initDir(); const calls: any[] = [];
     const fetchImpl = async (url: string, init: any) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({}) }; };
-    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun, fetchImpl });
+    const code = await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, gitRun, fetchImpl });
     expect(code).toBe(0);
     expect(calls[0].url).toBe("http://api/v1/teams/acme/projects/web/tasks/main"); // implicit task created
     expect(JSON.parse(calls[0].init.body)).toMatchObject({ phaseId: "build", title: "Main", order: 0, status: "running", scenarioIds: [] });
@@ -1458,7 +1458,7 @@ describe("commit", () => {
 
   it("uses --task when given (no implicit task)", async () => {
     const dir = initDir(); let captured: any;
-    const code = await run(["commit", "--task", "t7"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
+    const code = await run(["commit", "--task", "t7"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, gitRun,
       fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
     expect(code).toBe(0);
     expect(captured.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t7/commits/deadbeef");
@@ -1466,7 +1466,7 @@ describe("commit", () => {
 
   it("uses currentTaskId when set (no implicit task)", async () => {
     const dir = initDir("t3"); const calls: any[] = [];
-    await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, gitRun,
+    await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, gitRun,
       fetchImpl: async (url: string, init: any) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({}) } });
     expect(calls).toHaveLength(1); // no implicit-task PUT
     expect(calls[0].url).toBe("http://api/v1/teams/acme/projects/web/tasks/t3/commits/deadbeef");
@@ -1476,14 +1476,14 @@ describe("commit", () => {
     const dir = tmp();
     saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
     const errs: string[] = [];
-    const code = await run(["commit"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), gitRun, fetchImpl: async () => { throw new Error("no"); } });
+    const code = await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), gitRun, fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/no current phase/i);
   });
 
   it("exits 1 when git author is empty", async () => {
     const errs: string[] = [];
-    const code = await run(["commit", "--task", "t1"], { cwd: initDir(), env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m),
+    const code = await run(["commit", "--task", "t1"], { cwd: initDir(), env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
       gitRun: () => "deadbeef\n2026-06-02T01:25:49-07:00\n\nfix: thing", fetchImpl: async () => { throw new Error("no"); } });
     expect(code).toBe(1);
     expect(errs.join(" ")).toMatch(/author/);
@@ -1496,7 +1496,7 @@ describe("commit", () => {
 Run: `cd functions && npm run test:run -- cli.unit`
 Expected: FAIL — repeated-flag array, new verbs, and task-scoped commit not implemented.
 
-- [ ] **Step 4: Implement in `cli/daloop.mjs`**
+- [ ] **Step 4: Implement in `cli/autoloop.mjs`**
 
 (a) Make `parseArgs` accumulate repeated flags into arrays. Replace the flag-assignment branch:
 
@@ -1534,7 +1534,7 @@ function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
         if (flags.description) body.description = flags.description;
         if (typeof flags.order === "string") body.order = Number(flags.order);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/goals/${id}`;
-        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "scenario set": {
         const id = positionals[2]; validateId("scenarioId", id);
@@ -1550,7 +1550,7 @@ function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
           catch (e) { throw new UsageError(`could not read --rubric '${flags.rubric}': ${e.message}`); }
         }
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/scenarios/${id}`;
-        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "task start": {
         const id = positionals[2]; validateId("taskId", id);
@@ -1566,7 +1566,7 @@ function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
         saveConfig(cwd, cfg);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/tasks/${id}`;
         return report({ method: "PUT", url, body: { phaseId: flags.phase, title: flags.name, order, status: "running", scenarioIds } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "task set": {
         const id = positionals[2]; validateId("taskId", id);
@@ -1575,7 +1575,7 @@ function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/tasks/${id}`;
         return report({ method: "PUT", url, body: { status: flags.status } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "doc add": {
         if (!flags.kind || !flags.title) throw new UsageError("doc add requires --kind <k> --title <t>");
@@ -1592,7 +1592,7 @@ function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
         // so resolve the API base from cfg/env only — pass `undefined` as the flag override.
         const url = `${resolveApiUrl(cfg, env, undefined)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/documents/${docId}`;
         return report({ method: "PUT", url, body: { kind: flags.kind, title: flags.title, format, content } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
 ```
 
@@ -1602,11 +1602,11 @@ function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-")
       case "commit": {
         const cfg = loadConfig(cwd);
         const apiBase = resolveApiUrl(cfg, env, flags.url);
-        const strict = !!flags.strict || env.DALOOP_STRICT === "1";
+        const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
         let taskId = (typeof flags.task === "string" && flags.task) || cfg.currentTaskId || null;
         if (taskId) validateId("taskId", taskId);
         if (!taskId) {
-          if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `daloop phase start` (or pass --task)");
+          if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `autoloop phase start` (or pass --task)");
           taskId = "main";
           const taskUrl = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/tasks/${taskId}`;
           const tcode = await report({ method: "PUT", url: taskUrl, body: { phaseId: cfg.currentPhaseId, title: "Main", order: 0, status: "running", scenarioIds: [] } },
@@ -1636,7 +1636,7 @@ Expected: PASS — new verbs, repeated-flag arrays, and task-scoped commit all g
 - [ ] **Step 6: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
 git commit -m "feat(cli): goal/scenario/task/doc verbs and task-aware commit with implicit default task"
 ```
 
@@ -1645,9 +1645,9 @@ git commit -m "feat(cli): goal/scenario/task/doc verbs and task-aware commit wit
 ## Task 14: CLI event verbs + vision import + full e2e integration + sync copies
 
 **Files:**
-- Modify: `cli/daloop.mjs`
+- Modify: `cli/autoloop.mjs`
 - Modify: `functions/test/cli.unit.test.ts`, `functions/test/cli.integration.test.ts`
-- Sync: `web/public/skill/daloop.mjs`, `plugins/daloop-reporting/bin/daloop`
+- Sync: `web/public/skill/autoloop.mjs`, `plugins/autoloop-reporting/bin/autoloop`
 
 - [ ] **Step 1: Add failing unit tests for score/test-run/revise/vision import** (append to `functions/test/cli.unit.test.ts`)
 
@@ -1659,7 +1659,7 @@ describe("event + vision verbs (request shapes)", () => {
     return dir;
   }
   const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true, id: "01XYZ" }) }; }; return c; };
-  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
 
   it("score POSTs criteria map + composite", async () => {
     const dir = initDir(); const c = cap();
@@ -1703,7 +1703,7 @@ Expected: FAIL — event/vision verbs not implemented.
 
 - [ ] **Step 3: Fix the command dispatch for single-word verbs that take a positional**
 
-`score` and `test-run` take a positional `<scenarioId>` (e.g. `daloop score s1 --task …`), but the dispatcher keys on `` `${cmd} ${sub ?? ""}`.trim() `` (`cli/daloop.mjs:119`) — so `score s1` becomes the key `"score s1"` and never matches `case "score":` (it falls through to `default` → "unknown command"). Before the `switch`, compute the key so single-word verbs match on `cmd` alone. Replace the line:
+`score` and `test-run` take a positional `<scenarioId>` (e.g. `autoloop score s1 --task …`), but the dispatcher keys on `` `${cmd} ${sub ?? ""}`.trim() `` (`cli/autoloop.mjs:119`) — so `score s1` becomes the key `"score s1"` and never matches `case "score":` (it falls through to `default` → "unknown command"). Before the `switch`, compute the key so single-word verbs match on `cmd` alone. Replace the line:
 
 ```javascript
     switch (`${cmd} ${sub ?? ""}`.trim()) {
@@ -1721,7 +1721,7 @@ with:
 
 (This is behavior-preserving for the existing `init`/`commit` verbs — both already resolved to a single-word key since they carry no subcommand positional — and for every two-word verb.)
 
-- [ ] **Step 4: Implement the verbs in `cli/daloop.mjs`** (new `case` branches before `default`)
+- [ ] **Step 4: Implement the verbs in `cli/autoloop.mjs`** (new `case` branches before `default`)
 
 ```javascript
       case "score": {
@@ -1740,7 +1740,7 @@ with:
         if (flags.note) body.note = flags.note;
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/scores`;
-        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "test-run": {
         const scenarioId = positionals[1]; validateId("scenarioId", scenarioId);
@@ -1749,7 +1749,7 @@ with:
         const body = { scenarioId, taskId: flags.task, passed: Number(flags.passed), failed: Number(flags.failed), issues: asArray(flags.issue).map(String) };
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/testRuns`;
-        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "revise": {
         if (!flags.scenario || !flags.reason) throw new UsageError("revise requires --scenario <s> --reason <text>");
@@ -1763,7 +1763,7 @@ with:
         const body = { trigger: { scenarioId: flags.scenario, reason: flags.reason }, changes };
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/revisions`;
-        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "vision import": {
         if (!flags.file) throw new UsageError("vision import requires --file <vision.json>");
@@ -1772,7 +1772,7 @@ with:
         try { vision = JSON.parse(readFileSync(join(cwd, flags.file), "utf8")); }
         catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
         const apiBase = resolveApiUrl(cfg, env, flags.url);
-        const strict = !!flags.strict || env.DALOOP_STRICT === "1";
+        const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
         const deps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
         const proj = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
         let worst = 0;
@@ -1857,13 +1857,13 @@ Expected: PASS — updated first test + new loop e2e green.
 
 - [ ] **Step 8: Sync the CLI distribution copies**
 
-Run: `bash scripts/sync-daloop-cli.sh`
-Expected: `✓ synced cli/daloop.mjs → web/public/skill/daloop.mjs, plugins/daloop-reporting/bin/daloop`
+Run: `bash scripts/sync-autoloop-cli.sh`
+Expected: `✓ synced cli/autoloop.mjs → web/public/skill/autoloop.mjs, plugins/autoloop-reporting/bin/autoloop`
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts functions/test/cli.integration.test.ts web/public/skill/daloop.mjs plugins/daloop-reporting/bin/daloop
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts functions/test/cli.integration.test.ts web/public/skill/autoloop.mjs plugins/autoloop-reporting/bin/autoloop
 git commit -m "feat(cli): score/test-run/revise/vision-import verbs + loop e2e; sync CLI copies"
 ```
 

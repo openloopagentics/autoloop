@@ -9,7 +9,7 @@ export function SignIn() {
       <div className="auth-card">
         <div className="auth-lockup">
           <LoopMark size={52} />
-          <h1 className="auth-wordmark serif">daloop</h1>
+          <h1 className="auth-wordmark serif">autoloop</h1>
         </div>
         <p className="auth-tagline">Live status for software that builds itself —<br />watch agents ship, in a loop.</p>
 

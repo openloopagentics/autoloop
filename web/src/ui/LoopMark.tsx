@@ -1,5 +1,5 @@
 /**
- * Daloop loop monogram — a live cycle: a near-closed ring with an arrowhead
+ * Autoloop loop monogram — a live cycle: a near-closed ring with an arrowhead
  * plus a pulsing core, evoking "built in a loop" and "live".
  */
 export function LoopMark({ size = 24, live = true }: { size?: number; live?: boolean }) {

@@ -7,7 +7,7 @@ import { mintKey, listKeys, revokeKey } from "../src/services/apiKeys.js";
 describe("apiKeys service", () => {
   it("mints a key: returns plaintext once, stores only the hash + metadata", async () => {
     const r = await mintKey("alice", "laptop");
-    expect(r.key.startsWith("dl_")).toBe(true);
+    expect(r.key.startsWith("al_")).toBe(true);
     expect(r.id).toBe(hashKey(r.key));
     const doc = (await db().doc(`apiKeys/${r.id}`).get()).data()!;
     expect(doc.uid).toBe("alice");

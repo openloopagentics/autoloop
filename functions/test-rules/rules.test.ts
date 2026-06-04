@@ -16,7 +16,7 @@ let testEnv: RulesTestEnvironment;
 
 beforeAll(async () => {
   testEnv = await initializeTestEnvironment({
-    projectId: "daloop-rules-test",
+    projectId: "autoloop-rules-test",
     firestore: { rules: readFileSync(rulesPath, "utf8") },
   });
 });

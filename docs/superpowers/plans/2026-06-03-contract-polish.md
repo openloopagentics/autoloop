@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close four small, known gaps from prior reviews/specs: (A) ship `daloop-vision` + `daloop-loop` (+ the validator) via the curl `/skill` installer, not just the plugin; (B) have `/daloop-vision` persist the per-scenario test approach as a `test-spec` document; (C) reject empty-`criteria` scores; (D) document the notifier's non-transactional read-modify-write.
+**Goal:** Close four small, known gaps from prior reviews/specs: (A) ship `autoloop-vision` + `autoloop-loop` (+ the validator) via the curl `/skill` installer, not just the plugin; (B) have `/autoloop-vision` persist the per-scenario test approach as a `test-spec` document; (C) reject empty-`criteria` scores; (D) document the notifier's non-transactional read-modify-write.
 
 **Architecture:** A is shell + file-distribution (sync script, `web/public/skill/`, `install.sh`) + a context-agnostic validator-path line in the vision skill. C is a one-line zod `.refine` + a test. B and D are doc/comment edits. No new deps; bundles into the pending #6/#7 deploy (hosting carries the curl-installer files; functions carries C).
 
@@ -13,16 +13,16 @@
 ---
 
 ## Background / conventions
-- The plugin already ships `daloop-vision`/`daloop-loop` + `bin/vision-schema.mjs` (auto-updating). The **curl installer** (`web/public/skill/install.sh`, fetched from `https://daloop-42b47.web.app/skill/...`) currently ships ONLY `daloop-reporting` (SKILL.md, CODEX.md, daloop.mjs) into `~/.claude/skills/daloop-reporting/`.
-- `scripts/sync-daloop-cli.sh` copies canonical files into the plugin + `web/public/skill/`. Skill SKILL.md files are NOT synced today (they live only under `plugins/...`).
-- `daloop-vision/SKILL.md:50` hardcodes `node "${CLAUDE_PLUGIN_ROOT}/bin/vision-schema.mjs"` — `${CLAUDE_PLUGIN_ROOT}` only exists in the plugin runtime, so a curl-installed copy needs a context-agnostic instruction.
-- Commands: `cd functions && npm test` / `npm run build`; `bash scripts/sync-daloop-cli.sh`. Do NOT `git add -A`.
+- The plugin already ships `autoloop-vision`/`autoloop-loop` + `bin/vision-schema.mjs` (auto-updating). The **curl installer** (`web/public/skill/install.sh`, fetched from `https://daloop-42b47.web.app/skill/...`) currently ships ONLY `autoloop-reporting` (SKILL.md, CODEX.md, autoloop.mjs) into `~/.claude/skills/autoloop-reporting/`.
+- `scripts/sync-autoloop-cli.sh` copies canonical files into the plugin + `web/public/skill/`. Skill SKILL.md files are NOT synced today (they live only under `plugins/...`).
+- `autoloop-vision/SKILL.md:50` hardcodes `node "${CLAUDE_PLUGIN_ROOT}/bin/vision-schema.mjs"` — `${CLAUDE_PLUGIN_ROOT}` only exists in the plugin runtime, so a curl-installed copy needs a context-agnostic instruction.
+- Commands: `cd functions && npm test` / `npm run build`; `bash scripts/sync-autoloop-cli.sh`. Do NOT `git add -A`.
 
 ---
 
 ## Task A1: Make the vision skill's validator reference context-agnostic
 
-**Files:** Modify `plugins/daloop-reporting/skills/daloop-vision/SKILL.md`.
+**Files:** Modify `plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md`.
 
 - [ ] **Step 1** — replace the validator line (currently `…run the bundled validator: \`node "${CLAUDE_PLUGIN_ROOT}/bin/vision-schema.mjs" vision.json\`.`) with a context-agnostic instruction:
 
@@ -34,47 +34,47 @@
    against the rules above before writing.
 ```
 
-- [ ] **Step 2: Commit** — `git add plugins/daloop-reporting/skills/daloop-vision/SKILL.md && git commit -m "docs(skill): context-agnostic vision-schema validator path (plugin or curl install)"`.
+- [ ] **Step 2: Commit** — `git add plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md && git commit -m "docs(skill): context-agnostic vision-schema validator path (plugin or curl install)"`.
 
 ---
 
 ## Task A2: Sync the two skills + validator into web/public/skill, and extend install.sh
 
-**Files:** Modify `scripts/sync-daloop-cli.sh`, `web/public/skill/install.sh`; generated copies under `web/public/skill/`.
+**Files:** Modify `scripts/sync-autoloop-cli.sh`, `web/public/skill/install.sh`; generated copies under `web/public/skill/`.
 
-- [ ] **Step 1: Extend `scripts/sync-daloop-cli.sh`** — after the existing copies, also stage the new skills + validator for the curl installer:
+- [ ] **Step 1: Extend `scripts/sync-autoloop-cli.sh`** — after the existing copies, also stage the new skills + validator for the curl installer:
 
 ```bash
 # vision + loop skills for the curl installer (plugin already bundles them)
-mkdir -p web/public/skill/daloop-vision web/public/skill/daloop-loop
-cp plugins/daloop-reporting/skills/daloop-vision/SKILL.md web/public/skill/daloop-vision/SKILL.md
-cp plugins/daloop-reporting/skills/daloop-loop/SKILL.md   web/public/skill/daloop-loop/SKILL.md
+mkdir -p web/public/skill/autoloop-vision web/public/skill/autoloop-loop
+cp plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md web/public/skill/autoloop-vision/SKILL.md
+cp plugins/autoloop-reporting/skills/autoloop-loop/SKILL.md   web/public/skill/autoloop-loop/SKILL.md
 cp cli/vision-schema.mjs web/public/skill/vision-schema.mjs
 ```
 Update the script's echo to mention the new copies.
 
-- [ ] **Step 2: Update `web/public/skill/install.sh`** — install the two new skills + the validator alongside the reporting skill. The current script installs `daloop-reporting` (SKILL.md, CODEX.md, daloop.mjs) into `$HOME/.claude/skills/daloop-reporting/`. Extend it to also:
-  - download `daloop-vision/SKILL.md` → `$HOME/.claude/skills/daloop-vision/SKILL.md` and `vision-schema.mjs` → `$HOME/.claude/skills/daloop-vision/vision-schema.mjs` (so the context-agnostic "alongside this skill" path resolves);
-  - download `daloop-loop/SKILL.md` → `$HOME/.claude/skills/daloop-loop/SKILL.md`;
+- [ ] **Step 2: Update `web/public/skill/install.sh`** — install the two new skills + the validator alongside the reporting skill. The current script installs `autoloop-reporting` (SKILL.md, CODEX.md, autoloop.mjs) into `$HOME/.claude/skills/autoloop-reporting/`. Extend it to also:
+  - download `autoloop-vision/SKILL.md` → `$HOME/.claude/skills/autoloop-vision/SKILL.md` and `vision-schema.mjs` → `$HOME/.claude/skills/autoloop-vision/vision-schema.mjs` (so the context-agnostic "alongside this skill" path resolves);
+  - download `autoloop-loop/SKILL.md` → `$HOME/.claude/skills/autoloop-loop/SKILL.md`;
   - keep the existing reporting-skill install + the Node-version check + the final hints (add a line noting the three skills now install).
-  Keep `set -euo pipefail` and the existing `BASE`/`curl -fsSL` idiom. Base paths: `$BASE/daloop-vision/SKILL.md`, `$BASE/daloop-loop/SKILL.md`, `$BASE/vision-schema.mjs`.
+  Keep `set -euo pipefail` and the existing `BASE`/`curl -fsSL` idiom. Base paths: `$BASE/autoloop-vision/SKILL.md`, `$BASE/autoloop-loop/SKILL.md`, `$BASE/vision-schema.mjs`.
 
-- [ ] **Step 3: Run the sync** — `bash scripts/sync-daloop-cli.sh`. Verify the files exist:
-  `ls web/public/skill/daloop-vision/SKILL.md web/public/skill/daloop-loop/SKILL.md web/public/skill/vision-schema.mjs` and `diff cli/vision-schema.mjs web/public/skill/vision-schema.mjs && echo IDENTICAL`.
+- [ ] **Step 3: Run the sync** — `bash scripts/sync-autoloop-cli.sh`. Verify the files exist:
+  `ls web/public/skill/autoloop-vision/SKILL.md web/public/skill/autoloop-loop/SKILL.md web/public/skill/vision-schema.mjs` and `diff cli/vision-schema.mjs web/public/skill/vision-schema.mjs && echo IDENTICAL`.
 
-- [ ] **Step 4: Commit** — `git add scripts/sync-daloop-cli.sh web/public/skill/ && git commit -m "feat(skill): curl /skill installer ships daloop-vision + daloop-loop + validator"`.
+- [ ] **Step 4: Commit** — `git add scripts/sync-autoloop-cli.sh web/public/skill/ && git commit -m "feat(skill): curl /skill installer ships autoloop-vision + autoloop-loop + validator"`.
 
 ---
 
-## Task B: `/daloop-vision` persists a `test-spec` document
+## Task B: `/autoloop-vision` persists a `test-spec` document
 
-**Files:** Modify `plugins/daloop-reporting/skills/daloop-vision/SKILL.md` (and re-sync to web).
+**Files:** Modify `plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md` (and re-sync to web).
 
-- [ ] **Step 1** — in the Process section (after the validate/write/import steps), add a short instruction: when a scenario has a non-trivial test approach (a command or a described procedure), optionally persist it as a Document of `kind: "test-spec"` — e.g. `daloop doc add --kind test-spec --title "<scenario> tests" --file <notes.md>` (or `--url`) — so the loop and the dashboard have the test definition. Keep it one short paragraph; note it's optional and that the loop reads it.
+- [ ] **Step 1** — in the Process section (after the validate/write/import steps), add a short instruction: when a scenario has a non-trivial test approach (a command or a described procedure), optionally persist it as a Document of `kind: "test-spec"` — e.g. `autoloop doc add --kind test-spec --title "<scenario> tests" --file <notes.md>` (or `--url`) — so the loop and the dashboard have the test definition. Keep it one short paragraph; note it's optional and that the loop reads it.
 
-- [ ] **Step 2: Re-sync** (so the curl copy matches) — `bash scripts/sync-daloop-cli.sh`.
+- [ ] **Step 2: Re-sync** (so the curl copy matches) — `bash scripts/sync-autoloop-cli.sh`.
 
-- [ ] **Step 3: Commit** — `git add plugins/daloop-reporting/skills/daloop-vision/SKILL.md web/public/skill/daloop-vision/SKILL.md && git commit -m "docs(skill): daloop-vision can persist a test-spec document"`.
+- [ ] **Step 3: Commit** — `git add plugins/autoloop-reporting/skills/autoloop-vision/SKILL.md web/public/skill/autoloop-vision/SKILL.md && git commit -m "docs(skill): autoloop-vision can persist a test-spec document"`.
 
 ---
 
@@ -127,13 +127,13 @@ Update the script's echo to mention the new copies.
 
 - [ ] `cd functions && npm test` (green, incl. the new empty-criteria test) ; `npm run build` clean ; `npm run test:rules` green.
 - [ ] `cd web && npm run build` clean (the curl-installer files are static assets; no web tests touch them).
-- [ ] Confirm: `web/public/skill/` contains daloop-vision/SKILL.md, daloop-loop/SKILL.md, vision-schema.mjs; install.sh fetches all three skills; `cli/vision-schema.mjs` == `web/public/skill/vision-schema.mjs`; scoreBody rejects empty criteria; notifier has the concurrency note.
+- [ ] Confirm: `web/public/skill/` contains autoloop-vision/SKILL.md, autoloop-loop/SKILL.md, vision-schema.mjs; install.sh fetches all three skills; `cli/vision-schema.mjs` == `web/public/skill/vision-schema.mjs`; scoreBody rejects empty criteria; notifier has the concurrency note.
 - [ ] **Deploy (bundled with #6/#7): functions + firestore:rules + hosting.**
 
 ---
 
 ## Notes for the executor
 - Item A's value is curl-installer parity; the plugin remains the primary auto-updating channel. The validator-path line MUST work in both contexts (don't hardcode `${CLAUDE_PLUGIN_ROOT}` as the only path).
-- Re-run `scripts/sync-daloop-cli.sh` after ANY edit to a skill SKILL.md so the plugin and web/public/skill copies stay in step (Task B especially).
+- Re-run `scripts/sync-autoloop-cli.sh` after ANY edit to a skill SKILL.md so the plugin and web/public/skill copies stay in step (Task B especially).
 - Item C: confirm no existing score test sends empty criteria (they don't) before/after adding the refine.
 - No new deps. Do NOT `git add -A`.

@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 
 describe("harness", () => {
   it("renders with RTL + jsdom", () => {
-    render(<p>hello daloop</p>);
-    expect(screen.getByText("hello daloop")).toBeInTheDocument();
+    render(<p>hello autoloop</p>);
+    expect(screen.getByText("hello autoloop")).toBeInTheDocument();
   });
 });

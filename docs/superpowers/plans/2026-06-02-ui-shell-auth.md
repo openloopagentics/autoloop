@@ -1,4 +1,4 @@
-# Daloop UI — App Shell & Auth (UI-A) Implementation Plan
+# Autoloop UI — App Shell & Auth (UI-A) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -42,7 +42,7 @@
 
 ```json
 {
-  "name": "daloop-web",
+  "name": "autoloop-web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -131,7 +131,7 @@ export default defineConfig({
 ```html
 <!doctype html>
 <html lang="en">
-  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Daloop</title></head>
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Autoloop</title></head>
   <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
 </html>
 ```
@@ -163,8 +163,8 @@ import { render, screen } from "@testing-library/react";
 
 describe("harness", () => {
   it("renders with RTL + jsdom", () => {
-    render(<p>hello daloop</p>);
-    expect(screen.getByText("hello daloop")).toBeInTheDocument();
+    render(<p>hello autoloop</p>);
+    expect(screen.getByText("hello autoloop")).toBeInTheDocument();
   });
 });
 ```
@@ -386,7 +386,7 @@ export function SignIn() {
   const { signIn, signInError } = useAuth();
   return (
     <main>
-      <h1>Daloop</h1>
+      <h1>Autoloop</h1>
       <button onClick={() => void signIn()}>Sign in with Google</button>
       {signInError && <p role="alert">{signInError}</p>}
     </main>
@@ -402,7 +402,7 @@ export function RequestAccess() {
   return (
     <main>
       <h1>Access pending</h1>
-      <p>Ask an admin to grant Daloop access to your account:</p>
+      <p>Ask an admin to grant Autoloop access to your account:</p>
       <p>Email: <code>{user?.email}</code></p>
       <p>User ID: <code>{user?.uid}</code></p>
       <button onClick={() => void signOut()}>Sign out</button>
@@ -420,7 +420,7 @@ export function AppShell() {
   return (
     <div>
       <header>
-        <span>Daloop</span>
+        <span>Autoloop</span>
         <nav>
           <NavLink to="/">Home</NavLink>
           <NavLink to="/dashboard">Dashboard</NavLink>
@@ -438,7 +438,7 @@ export function AppShell() {
 `web/src/routes/Home.tsx`:
 ```tsx
 export function Home() {
-  return <p>Daloop — pick a section.</p>;
+  return <p>Autoloop — pick a section.</p>;
 }
 ```
 

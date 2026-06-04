@@ -6,7 +6,7 @@
 
 **Architecture:** Purely additive, mirroring the loop-level contract (v2.1). The `bug` entity is an idempotent `PUT` with a client-supplied id, made base-path-aware (project-direct OR under `loops/{loopId}`) by reusing the `resolveBase` helper extracted from `events.ts`. A bug is run data — no derived `currentX`, no `visionOwner` stamp, no transaction. `testRun.summary` is an optional capped string added conditionally so the omitted case stays byte-identical.
 
-**Tech Stack:** Firebase Cloud Functions v2 (TypeScript, Firestore Admin SDK), Express routers, zod validation, Vitest + Firestore emulator, dependency-free Node CLI (`cli/daloop.mjs`).
+**Tech Stack:** Firebase Cloud Functions v2 (TypeScript, Firestore Admin SDK), Express routers, zod validation, Vitest + Firestore emulator, dependency-free Node CLI (`cli/autoloop.mjs`).
 
 **Spec:** `docs/superpowers/specs/2026-06-03-bugs-and-testrun-summary-design.md`
 
@@ -562,7 +562,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 7: CLI `bug add` / `bug set`
 
 **Files:**
-- Modify: `cli/daloop.mjs` (add two cases in the dispatch switch ~after the `doc add` case at line 268; `bug add`/`bug set` are two-word verbs — do NOT add to `ONE_WORD`)
+- Modify: `cli/autoloop.mjs` (add two cases in the dispatch switch ~after the `doc add` case at line 268; `bug add`/`bug set` are two-word verbs — do NOT add to `ONE_WORD`)
 - Test: `functions/test/cli.unit.test.ts` (new describe block)
 
 - [ ] **Step 1: Write the failing tests**
@@ -577,7 +577,7 @@ describe("bug add/set verbs", () => {
     return dir;
   }
   const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true }) }; }; return c; };
-  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
 
   it("bug add PUTs the bug with default status open", async () => {
     const dir = initDir(); const c = cap();
@@ -602,13 +602,13 @@ describe("bug add/set verbs", () => {
 
   it("bug add rejects an unknown severity", async () => {
     const dir = initDir(); const errs: string[] = [];
-    const code = await run(["bug", "add", "b1", "--title", "X", "--severity", "blocker"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    const code = await run(["bug", "add", "b1", "--title", "X", "--severity", "blocker"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).not.toBe(0);
   });
 
   it("bug set requires at least one field", async () => {
     const dir = initDir(); const errs: string[] = [];
-    const code = await run(["bug", "set", "b1"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    const code = await run(["bug", "set", "b1"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
     expect(code).not.toBe(0);
   });
 });
@@ -623,7 +623,7 @@ Expected: FAIL (no `bug add`/`bug set` cases — dispatch throws "unknown comman
 
 - [ ] **Step 3: Implement the two cases**
 
-In `cli/daloop.mjs`, add after the `doc add` case (ends ~line 284), before `case "commit"`:
+In `cli/autoloop.mjs`, add after the `doc add` case (ends ~line 284), before `case "commit"`:
 
 ```js
       case "bug add": {
@@ -642,7 +642,7 @@ In `cli/daloop.mjs`, add after the `doc add` case (ends ~line 284), before `case
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
         return report({ method: "PUT", url, body },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "bug set": {
         const id = positionals[2]; validateId("bugId", id);
@@ -661,11 +661,11 @@ In `cli/daloop.mjs`, add after the `doc add` case (ends ~line 284), before `case
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
         return report({ method: "PUT", url, body },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
 ```
 
-If there is a `--help`/usage string listing verbs in `cli/daloop.mjs`, add `bug add`/`bug set` to it (grep for `doc add` in the usage text; if present, mirror it).
+If there is a `--help`/usage string listing verbs in `cli/autoloop.mjs`, add `bug add`/`bug set` to it (grep for `doc add` in the usage text; if present, mirror it).
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -675,7 +675,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
 git commit -m "feat(cli): bug add/set verbs (loop-aware, open/fixed)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -686,7 +686,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 8: CLI `test-run --summary` / `--summary-file`
 
 **Files:**
-- Modify: `cli/daloop.mjs` (`test-run` case ~lines 332-341)
+- Modify: `cli/autoloop.mjs` (`test-run` case ~lines 332-341)
 - Test: `functions/test/cli.unit.test.ts` (extend the "event + vision verbs" block)
 
 - [ ] **Step 1: Write the failing tests**
@@ -717,7 +717,7 @@ Expected: FAIL (`summary` absent from the body).
 
 - [ ] **Step 3: Implement**
 
-In `cli/daloop.mjs`, in the `test-run` case, after the `const body = { … issues: … };` line and before `const cfg = loadConfig(cwd);`, add:
+In `cli/autoloop.mjs`, in the `test-run` case, after the `const body = { … issues: … };` line and before `const cfg = loadConfig(cwd);`, add:
 
 ```js
         if (flags["summary-file"]) {
@@ -728,7 +728,7 @@ In `cli/daloop.mjs`, in the `test-run` case, after the `const body = { … issue
         }
 ```
 
-(`readFileSync` and `join` are already imported at the top of `cli/daloop.mjs`.)
+(`readFileSync` and `join` are already imported at the top of `cli/autoloop.mjs`.)
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -738,7 +738,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cli/daloop.mjs functions/test/cli.unit.test.ts
+git add cli/autoloop.mjs functions/test/cli.unit.test.ts
 git commit -m "feat(cli): test-run --summary / --summary-file
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -749,16 +749,16 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 9: Sync CLI copies + full green
 
 **Files:**
-- Modify (generated): `plugins/daloop-reporting/bin/daloop`, `web/public/skill/daloop.mjs` (via the sync script)
+- Modify (generated): `plugins/autoloop-reporting/bin/autoloop`, `web/public/skill/autoloop.mjs` (via the sync script)
 
 - [ ] **Step 1: Sync the CLI copies**
 
-Run: `bash scripts/sync-daloop-cli.sh`
+Run: `bash scripts/sync-autoloop-cli.sh`
 Expected: prints the `✓ synced …` lines.
 
 - [ ] **Step 2: Verify the three copies are identical**
 
-Run: `diff cli/daloop.mjs plugins/daloop-reporting/bin/daloop && diff cli/daloop.mjs web/public/skill/daloop.mjs && echo IDENTICAL`
+Run: `diff cli/autoloop.mjs plugins/autoloop-reporting/bin/autoloop && diff cli/autoloop.mjs web/public/skill/autoloop.mjs && echo IDENTICAL`
 Expected: `IDENTICAL` (no diff output).
 
 - [ ] **Step 3: Build + full suite**
@@ -769,8 +769,8 @@ Expected: build clean; ALL suites green (main + rules), including the pre-existi
 - [ ] **Step 4: Commit**
 
 ```bash
-git add plugins/daloop-reporting/bin/daloop web/public/skill/daloop.mjs
-git commit -m "chore(cli): sync daloop CLI copies (bug verbs + test-run summary)
+git add plugins/autoloop-reporting/bin/autoloop web/public/skill/autoloop.mjs
+git commit -m "chore(cli): sync autoloop CLI copies (bug verbs + test-run summary)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -781,12 +781,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 - `bug` entity reportable via `PUT …/bugs/:bugId` and `PUT …/loops/:loopId/bugs/:bugId`, idempotent, required-on-create (title+status), `fixedAt` stamped once and stable.
 - `testRun.summary` stored when provided, byte-identical when omitted.
-- `daloop bug add/set` (loop-aware, open/fixed, severity validated) and `daloop test-run --summary/--summary-file` work; the three CLI copies are identical.
+- `autoloop bug add/set` (loop-aware, open/fixed, severity validated) and `autoloop test-run --summary/--summary-file` work; the three CLI copies are identical.
 - Rules unchanged; the bug subtree is member-readable and client-write-denied (tested).
 - `functions` build clean; the full main + rules suites pass with zero regression.
 
 ## Out of scope (separate sub-projects)
 
 - The tabbed tracking UI (Dashboard/Vision/Loops/Bugs, loop selector + per-loop scoping, rollups, in-progress prominence, only-current-is-live, the Bugs view, rendering `testRun.summary`).
-- `/daloop` driver hygiene (task-status transitions, opening/fixing bugs, uploading summaries, `loop start` at run start).
+- `/autoloop` driver hygiene (task-status transitions, opening/fixing bugs, uploading summaries, `loop start` at run start).
 - Per-loop notifications (incl. a future "bug opened" notification).

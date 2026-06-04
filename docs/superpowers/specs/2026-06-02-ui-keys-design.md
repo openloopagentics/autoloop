@@ -1,4 +1,4 @@
-# Daloop UI — API-Key Management (UI-D) — Design
+# Autoloop UI — API-Key Management (UI-D) — Design
 
 **Date:** 2026-06-02
 **Status:** Approved (design phase; decisions delegated to the implementer)

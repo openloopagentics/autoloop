@@ -1,4 +1,4 @@
-# Daloop UI — Status Dashboard (UI-B) Implementation Plan
+# Autoloop UI — Status Dashboard (UI-B) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use `- [ ]` checkboxes.
 

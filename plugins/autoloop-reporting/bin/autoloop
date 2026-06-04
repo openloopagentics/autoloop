@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 
 export const STATUSES = ["queued", "running", "blocked", "paused", "completed", "failed", "cancelled"];
 const ID_RE = /^[a-z0-9._-]+$/;
-const CONFIG_FILE = ".daloop.json";
+const CONFIG_FILE = ".autoloop.json";
+const LEGACY_CONFIG_FILE = ".daloop.json"; // back-compat: pre-rename config name
 export const DEFAULT_API_URL = "https://api-5ds5e4zsxq-uc.a.run.app";
 
 /** Thrown for caller-fixable problems; surfaced as exit code 1 BEFORE any network call. */
@@ -42,8 +43,13 @@ export function validateId(name, v) {
 }
 
 export function loadConfig(cwd) {
-  const p = join(cwd, CONFIG_FILE);
-  if (!existsSync(p)) throw new UsageError("not initialized — run `daloop init`");
+  // Prefer the new config; fall back to the legacy .daloop.json so pre-rename setups keep working.
+  let p = join(cwd, CONFIG_FILE);
+  if (!existsSync(p)) {
+    const legacy = join(cwd, LEGACY_CONFIG_FILE);
+    if (existsSync(legacy)) p = legacy;
+    else throw new UsageError("not initialized — run `autoloop init`");
+  }
   return JSON.parse(readFileSync(p, "utf8"));
 }
 export function saveConfig(cwd, cfg) {
@@ -60,7 +66,7 @@ function defaultGitRun(cwd) {
 }
 
 export function resolveApiUrl(cfg, env, flagUrl) {
-  return (typeof flagUrl === "string" && flagUrl) || env.DALOOP_API_URL || cfg.apiUrl;
+  return (typeof flagUrl === "string" && flagUrl) || env.AUTOLOOP_API_URL || cfg.apiUrl;
 }
 
 /** Loop path segment for run-data URLs: "/loops/<id>" when a loop is current, else "" (legacy). */
@@ -69,9 +75,9 @@ export function loopSeg(cfg) {
 }
 
 const REPORT_MESSAGES = {
-  401: () => "invalid or expired DALOOP_API_KEY",
+  401: () => "invalid or expired AUTOLOOP_API_KEY",
   403: (teamId) => `your API key's user is not a member of team ${teamId ?? "(unknown)"}`,
-  404: () => "team/project/phase not found — run `daloop project set` first",
+  404: () => "team/project/phase not found — run `autoloop project set` first",
 };
 
 /**
@@ -81,8 +87,8 @@ const REPORT_MESSAGES = {
  */
 export async function report(req, deps) {
   const { env = process.env, fetchImpl = fetch, err = (m) => console.error(m), strict = false, teamId } = deps;
-  const key = env.DALOOP_API_KEY;
-  if (!key) throw new UsageError("set DALOOP_API_KEY (a key minted via POST /v1/keys)");
+  const key = env.AUTOLOOP_API_KEY;
+  if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
 
   let res;
   try {
@@ -92,7 +98,7 @@ export async function report(req, deps) {
       body: JSON.stringify(req.body),
     });
   } catch (e) {
-    err(`daloop: report failed (network): ${e.message}`);
+    err(`autoloop: report failed (network): ${e.message}`);
     return strict ? 1 : 0;
   }
 
@@ -100,7 +106,7 @@ export async function report(req, deps) {
     try {
       const b = await res.json();
       if (Array.isArray(b?.pendingMessages) && b.pendingMessages.length) {
-        err(`daloop: 📨 ${b.pendingMessages.length} message(s) from the user — run \`daloop messages pull\``);
+        err(`autoloop: 📨 ${b.pendingMessages.length} message(s) from the user — run \`autoloop messages pull\``);
       }
     } catch { /* ignore — many stubs have no json() or no pendingMessages */ }
     return 0;
@@ -112,7 +118,7 @@ export async function report(req, deps) {
   }
   const m = REPORT_MESSAGES[res.status];
   const msg = m ? m(teamId) : `HTTP ${res.status}`;
-  err(`daloop: report not applied (${res.status}): ${msg}${detail ? ` — ${detail}` : ""}`);
+  err(`autoloop: report not applied (${res.status}): ${msg}${detail ? ` — ${detail}` : ""}`);
   return strict ? 1 : 0;
 }
 
@@ -123,8 +129,8 @@ export async function report(req, deps) {
  */
 export async function fetchJson(req, deps) {
   const { env = process.env, fetchImpl = fetch, log = (m) => console.log(m), err = (m) => console.error(m) } = deps;
-  const key = env.DALOOP_API_KEY;
-  if (!key) throw new UsageError("set DALOOP_API_KEY (a key minted via POST /v1/keys)");
+  const key = env.AUTOLOOP_API_KEY;
+  if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
 
   let res;
   try {
@@ -133,7 +139,7 @@ export async function fetchJson(req, deps) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     });
   } catch (e) {
-    err(`daloop: messages pull failed (network): ${e.message}`);
+    err(`autoloop: messages pull failed (network): ${e.message}`);
     return 0;
   }
 
@@ -142,28 +148,38 @@ export async function fetchJson(req, deps) {
       const body = await res.json();
       log(JSON.stringify(body.messages ?? body, null, 2));
     } catch (e) {
-      err(`daloop: messages pull failed (parse): ${e.message}`);
+      err(`autoloop: messages pull failed (parse): ${e.message}`);
     }
     return 0;
   }
 
-  err(`daloop: messages pull failed (${res.status})`);
+  err(`autoloop: messages pull failed (${res.status})`);
   return 0;
 }
 
 /**
- * Run a daloop command. Returns an exit code (0 ok, 1 usage error).
+ * Run an autoloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.
  */
 export async function run(argv, deps = {}) {
   const {
     cwd = process.cwd(),
-    env = process.env,
     fetchImpl = fetch,
     gitRun,
     log = (m) => console.log(m),
     err = (m) => console.error(m),
   } = deps;
+
+  // Back-compat: accept the pre-rename DALOOP_* env vars as fallbacks for AUTOLOOP_*.
+  // Normalizing here means every downstream `env.AUTOLOOP_*` read (report/fetchJson/
+  // resolveApiUrl/strict checks) transparently picks up the legacy value.
+  const rawEnv = deps.env ?? process.env;
+  const env = {
+    ...rawEnv,
+    AUTOLOOP_API_KEY: rawEnv.AUTOLOOP_API_KEY ?? rawEnv.DALOOP_API_KEY,
+    AUTOLOOP_API_URL: rawEnv.AUTOLOOP_API_URL ?? rawEnv.DALOOP_API_URL,
+    AUTOLOOP_STRICT: rawEnv.AUTOLOOP_STRICT ?? rawEnv.DALOOP_STRICT,
+  };
 
   const { positionals, flags } = parseArgs(argv);
   const [cmd, sub] = positionals;
@@ -181,7 +197,7 @@ export async function run(argv, deps = {}) {
         validateId("projectSlug", projectSlug);
         const apiUrl = (typeof flags.url === "string" && flags.url) || DEFAULT_API_URL;
         saveConfig(cwd, { apiUrl, teamId, projectSlug, currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
-        log(`daloop: initialized .daloop.json (team=${teamId}, project=${projectSlug})`);
+        log(`autoloop: initialized .autoloop.json (team=${teamId}, project=${projectSlug})`);
         return 0;
       }
       case "project set": {
@@ -200,7 +216,7 @@ export async function run(argv, deps = {}) {
           body.design = { format: "url", content: flags["design-url"] };
         }
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
-        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "phase start": {
         const phaseId = positionals[2];
@@ -217,7 +233,7 @@ export async function run(argv, deps = {}) {
         saveConfig(cwd, cfg);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/phases/${phaseId}`;
         return report({ method: "PUT", url, body: { name: flags.name, order, status } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "phase set": {
         const phaseId = positionals[2];
@@ -226,10 +242,10 @@ export async function run(argv, deps = {}) {
         validateStatus(flags.status);
         const cfg = loadConfig(cwd);
         const rec = cfg.phases?.[phaseId];
-        if (!rec) throw new UsageError(`phase ${phaseId} not started — run \`daloop phase start\` first`);
+        if (!rec) throw new UsageError(`phase ${phaseId} not started — run \`autoloop phase start\` first`);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/phases/${phaseId}`;
         return report({ method: "PUT", url, body: { name: rec.name, order: rec.order, status: flags.status } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "loop start": {
         const loopId = positionals[2]; validateId("loopId", loopId);
@@ -245,7 +261,7 @@ export async function run(argv, deps = {}) {
         saveConfig(cwd, cfg);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}`;
         return report({ method: "PUT", url, body: { goal: flags.goal, order, status } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "loop set": {
         const loopId = positionals[2]; validateId("loopId", loopId);
@@ -254,7 +270,7 @@ export async function run(argv, deps = {}) {
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}`;
         return report({ method: "PUT", url, body: { status: flags.status } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "goal set": {
         const id = positionals[2]; validateId("goalId", id);
@@ -264,7 +280,7 @@ export async function run(argv, deps = {}) {
         if (flags.description) body.description = flags.description;
         if (typeof flags.order === "string") body.order = Number(flags.order);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/goals/${id}`;
-        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "scenario set": {
         const id = positionals[2]; validateId("scenarioId", id);
@@ -281,7 +297,7 @@ export async function run(argv, deps = {}) {
           catch (e) { throw new UsageError(`could not read --rubric '${flags.rubric}': ${e.message}`); }
         }
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/scenarios/${id}`;
-        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "PUT", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "task start": {
         const id = positionals[2]; validateId("taskId", id);
@@ -297,7 +313,7 @@ export async function run(argv, deps = {}) {
         saveConfig(cwd, cfg);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/tasks/${id}`;
         return report({ method: "PUT", url, body: { phaseId: flags.phase, title: flags.name, order, status: "running", scenarioIds } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "task set": {
         const id = positionals[2]; validateId("taskId", id);
@@ -306,7 +322,7 @@ export async function run(argv, deps = {}) {
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/tasks/${id}`;
         return report({ method: "PUT", url, body: { status: flags.status } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "doc add": {
         if (!flags.kind || !flags.title) throw new UsageError("doc add requires --kind <k> --title <t>");
@@ -323,7 +339,7 @@ export async function run(argv, deps = {}) {
         // so resolve the API base from cfg/env only — pass `undefined` as the flag override.
         const url = `${resolveApiUrl(cfg, env, undefined)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/documents/${docId}`;
         return report({ method: "PUT", url, body: { kind: flags.kind, title: flags.title, format, content } },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "bug add": {
         const id = positionals[2]; validateId("bugId", id);
@@ -341,7 +357,7 @@ export async function run(argv, deps = {}) {
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
         return report({ method: "PUT", url, body },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "bug set": {
         const id = positionals[2]; validateId("bugId", id);
@@ -360,17 +376,17 @@ export async function run(argv, deps = {}) {
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
         return report({ method: "PUT", url, body },
-          { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "commit": {
         oneFlag("task", flags.task);
         const cfg = loadConfig(cwd);
         const apiBase = resolveApiUrl(cfg, env, flags.url);
-        const strict = !!flags.strict || env.DALOOP_STRICT === "1";
+        const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
         let taskId = (typeof flags.task === "string" && flags.task) || cfg.currentTaskId || null;
         if (taskId) validateId("taskId", taskId);
         if (!taskId) {
-          if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `daloop phase start` (or pass --task)");
+          if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `autoloop phase start` (or pass --task)");
           taskId = "main";
           const taskUrl = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/tasks/${taskId}`;
           const tcode = await report({ method: "PUT", url: taskUrl, body: { phaseId: cfg.currentPhaseId, title: "Main", order: 0, status: "running", scenarioIds: [] } },
@@ -407,7 +423,7 @@ export async function run(argv, deps = {}) {
         if (flags.note) body.note = flags.note;
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/scores`;
-        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "test-run": {
         oneFlag("task", flags.task);
@@ -423,7 +439,7 @@ export async function run(argv, deps = {}) {
         }
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/testRuns`;
-        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "revise": {
         oneFlag("scenario", flags.scenario);
@@ -438,7 +454,7 @@ export async function run(argv, deps = {}) {
         const body = { trigger: { scenarioId: flags.scenario, reason: flags.reason }, changes };
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/revisions`;
-        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "vision import": {
         oneFlag("file", flags.file);
@@ -448,7 +464,7 @@ export async function run(argv, deps = {}) {
         try { vision = JSON.parse(readFileSync(join(cwd, flags.file), "utf8")); }
         catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
         const apiBase = resolveApiUrl(cfg, env, flags.url);
-        const strict = !!flags.strict || env.DALOOP_STRICT === "1";
+        const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
         const reportDeps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
         const proj = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
         let worst = 0;
@@ -459,7 +475,7 @@ export async function run(argv, deps = {}) {
         }
         for (const s of vision.scenarios ?? []) {
           validateId("scenarioId", s.id);
-          // `test` is a loop-local hint (how /daloop-loop tests the scenario), not part
+          // `test` is a loop-local hint (how /autoloop-loop tests the scenario), not part
           // of the contract — strip it client-side so the import body never carries it.
           const { id, test, ...body } = s;
           worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
@@ -483,21 +499,21 @@ export async function run(argv, deps = {}) {
         const cfg = loadConfig(cwd);
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages/${id}/ack`;
-        return report({ method: "POST", url, body: {} }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "POST", url, body: {} }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "messages send": {
         if (!flags.text) throw new UsageError("messages send requires --text");
         const cfg = loadConfig(cwd);
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
-        return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.DALOOP_STRICT === "1", teamId: cfg.teamId });
+        return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       // commands added in later tasks
       default:
         throw new UsageError(`unknown command: ${argv.join(" ")}`);
     }
   } catch (e) {
-    if (e instanceof UsageError) { err(`daloop: ${e.message}`); return 1; }
+    if (e instanceof UsageError) { err(`autoloop: ${e.message}`); return 1; }
     throw e;
   }
 }
@@ -506,5 +522,5 @@ export async function run(argv, deps = {}) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   run(process.argv.slice(2))
     .then((code) => process.exit(code))
-    .catch((e) => { console.error(`daloop: unexpected error: ${e.message}`); process.exit(1); });
+    .catch((e) => { console.error(`autoloop: unexpected error: ${e.message}`); process.exit(1); });
 }

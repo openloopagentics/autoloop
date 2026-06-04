@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`).
 
-**Goal:** A user→agent message channel: the user posts from the web; the running `/daloop` agent pulls pending messages at each task boundary (surfaced via a piggyback on its own `task set` report), acts, acks, and can reply in-thread. Stop messages gracefully terminate the run.
+**Goal:** A user→agent message channel: the user posts from the web; the running `/autoloop` agent pulls pending messages at each task boundary (surfaced via a piggyback on its own `task set` report), acts, acks, and can reply in-thread. Stop messages gracefully terminate the run.
 
-**Architecture:** Project-level `messages` docs at `teams/{teamId}/projects/{slug}/messages/{ulid}`. Server-mediated writes (no Firestore rules change — recursive member-read already covers reads). Agent reads via a new API-key `GET` (the first agent read endpoint) + a `pendingMessages` preview piggybacked on the `task set` response so the agent notices messages reliably without a separate poll. CLI gains `messages pull/ack/send`; web gains a Messages tab; the `/daloop` skill gains a check-messages step.
+**Architecture:** Project-level `messages` docs at `teams/{teamId}/projects/{slug}/messages/{ulid}`. Server-mediated writes (no Firestore rules change — recursive member-read already covers reads). Agent reads via a new API-key `GET` (the first agent read endpoint) + a `pendingMessages` preview piggybacked on the `task set` response so the agent notices messages reliably without a separate poll. CLI gains `messages pull/ack/send`; web gains a Messages tab; the `/autoloop` skill gains a check-messages step.
 
 **Tech Stack:** Firebase Functions v2 (TS, zod, Vitest+emulator), dependency-free Node CLI, React+Firestore web, Markdown skill.
 
@@ -179,7 +179,7 @@ res.status(200).json({ ok: true, pendingMessages });
 
 ### Task B1: CLI `messages` verbs + report() notice + sync
 
-**Files:** Modify `cli/daloop.mjs`; Test `functions/test/cli.unit.test.ts`; then `scripts/sync-daloop-cli.sh`.
+**Files:** Modify `cli/autoloop.mjs`; Test `functions/test/cli.unit.test.ts`; then `scripts/sync-autoloop-cli.sh`.
 
 - [ ] **Step 1: Write failing CLI unit tests** (model on the existing cap()/base() pattern):
   - `messages send --text "hi"` → POST `…/projects/web/messages`, body `{text:"hi"}` (NO loopSeg even when currentLoopId set).
@@ -187,12 +187,12 @@ res.status(200).json({ ok: true, pendingMessages });
   - `messages pull` → GET `…/messages`; given a stubbed fetch returning `{messages:[{id:"m1",text:"hi"}]}`, the verb prints JSON containing `m1` to the captured `log` (stdout).
   - report() notice: a stubbed `task set` fetch returning `{ok:true,pendingMessages:[{id:"m1",text:"hi"}]}` causes a `📨`/"message" notice on the captured `err`.
 - [ ] **Step 2:** run `cd functions && npm run test:run -- cli.unit` → fail.
-- [ ] **Step 3: Implement** in `cli/daloop.mjs`:
+- [ ] **Step 3: Implement** in `cli/autoloop.mjs`:
   - A `fetchJson(req, deps)` helper (mirror `report()` auth; on `res.ok` parse JSON and `log(JSON.stringify(body.messages ?? body, null, 2))`, return 0; on failure `err(...)` + return 0; never throw).
   - Extend `report()`: after `if (res.ok)`, before `return 0`, read the body best-effort and notify:
     ```js
     if (res.ok) {
-      try { const b = await res.json(); if (Array.isArray(b?.pendingMessages) && b.pendingMessages.length) err(`daloop: 📨 ${b.pendingMessages.length} message(s) from the user — run \`daloop messages pull\``); } catch { /* ignore */ }
+      try { const b = await res.json(); if (Array.isArray(b?.pendingMessages) && b.pendingMessages.length) err(`autoloop: 📨 ${b.pendingMessages.length} message(s) from the user — run \`autoloop messages pull\``); } catch { /* ignore */ }
       return 0;
     }
     ```
@@ -201,7 +201,7 @@ res.status(200).json({ ok: true, pendingMessages });
     - `"messages ack"` → `const id = positionals[2];` presence-check only (`if (!id || !id.trim()) throw new UsageError(...)`) — do NOT `validateId`/idPattern it (message ids are uppercase ULIDs that idPattern rejects) → `report({method:"POST", url: `…/messages/${id}/ack`, body:{}}, {...})`.
     - `"messages send"` → `if (!flags.text) throw new UsageError("messages send requires --text")` → `report({method:"POST", url: `…/messages`, body:{text:flags.text}}, {...})`.
 - [ ] **Step 4:** run cli.unit → pass; `cd functions && npm run build`.
-- [ ] **Step 5: Sync + verify** `bash scripts/sync-daloop-cli.sh` then `diff cli/daloop.mjs plugins/daloop-reporting/bin/daloop && diff cli/daloop.mjs web/public/skill/daloop.mjs && echo IDENTICAL`.
+- [ ] **Step 5: Sync + verify** `bash scripts/sync-autoloop-cli.sh` then `diff cli/autoloop.mjs plugins/autoloop-reporting/bin/autoloop && diff cli/autoloop.mjs web/public/skill/autoloop.mjs && echo IDENTICAL`.
 - [ ] **Step 6: Commit** `feat(cli): messages pull/ack/send + pendingMessages notice (synced)`.
 
 ---
@@ -240,16 +240,16 @@ export async function postMessage(teamId: string, slug: string, text: string): P
 
 ---
 
-### Task D1: `/daloop` skill + plugin 0.4.0
+### Task D1: `/autoloop` skill + plugin 0.4.0
 
-**Files:** Modify `plugins/daloop-reporting/skills/daloop/SKILL.md`, `plugins/daloop-reporting/.claude-plugin/plugin.json`; sync.
+**Files:** Modify `plugins/autoloop-reporting/skills/autoloop/SKILL.md`, `plugins/autoloop-reporting/.claude-plugin/plugin.json`; sync.
 
-- [ ] **Step 1:** In SKILL.md, in step 2 after "Close the task", add a **Check for user messages** sub-step: the `task set --status completed` call surfaces a `📨` notice when messages are pending; on it (or proactively each task) run `daloop messages pull`; for each message oldest-first, interpret — answer via `daloop messages send --text "…"`; reprioritize/add/drop via the existing `daloop revise` flow; **stop/pause → graceful terminate**; ambiguous → reply asking — then `daloop messages ack <id>`. Reply at discretion.
-- [ ] **Step 2:** In step 4 (Terminate), make "user interrupts" explicit: a pulled stop/pause message → reply, ack, `daloop loop set <loopId> --status cancelled`, emit the "N/M scenarios met" summary noting the user stop.
+- [ ] **Step 1:** In SKILL.md, in step 2 after "Close the task", add a **Check for user messages** sub-step: the `task set --status completed` call surfaces a `📨` notice when messages are pending; on it (or proactively each task) run `autoloop messages pull`; for each message oldest-first, interpret — answer via `autoloop messages send --text "…"`; reprioritize/add/drop via the existing `autoloop revise` flow; **stop/pause → graceful terminate**; ambiguous → reply asking — then `autoloop messages ack <id>`. Reply at discretion.
+- [ ] **Step 2:** In step 4 (Terminate), make "user interrupts" explicit: a pulled stop/pause message → reply, ack, `autoloop loop set <loopId> --status cancelled`, emit the "N/M scenarios met" summary noting the user stop.
 - [ ] **Step 3:** Add a **Rules** bullet: "A `messages pull` error is noted once and skipped — never block or abort the build on the channel." Update the worked Example to show pull→act→ack and a reply. Update the frontmatter `description` to mention "receive user messages".
-- [ ] **Step 4:** Bump `plugin.json` 0.3.0 → 0.4.0. Run `bash scripts/sync-daloop-cli.sh`; `diff plugins/daloop-reporting/skills/daloop/SKILL.md web/public/skill/daloop/SKILL.md && echo IDENTICAL`.
-- [ ] **Step 5:** Verify every `daloop messages …` command in SKILL.md matches `cli/daloop.mjs`.
-- [ ] **Step 6: Commit** `feat(skill): /daloop checks user messages + stop path (plugin 0.4.0)`.
+- [ ] **Step 4:** Bump `plugin.json` 0.3.0 → 0.4.0. Run `bash scripts/sync-autoloop-cli.sh`; `diff plugins/autoloop-reporting/skills/autoloop/SKILL.md web/public/skill/autoloop/SKILL.md && echo IDENTICAL`.
+- [ ] **Step 5:** Verify every `autoloop messages …` command in SKILL.md matches `cli/autoloop.mjs`.
+- [ ] **Step 6: Commit** `feat(skill): /autoloop checks user messages + stop path (plugin 0.4.0)`.
 
 ---
 

@@ -1,4 +1,4 @@
-# Daloop UI — Status Dashboard (UI-B) — Design
+# Autoloop UI — Status Dashboard (UI-B) — Design
 
 **Date:** 2026-06-02
 **Status:** Approved (design phase; decisions delegated to the implementer)
@@ -7,7 +7,7 @@
 
 UI-A shipped the SPA shell + auth (the `AuthProvider`/`useAuth` seam, four-state
 gate, `AppShell` with nav placeholders). UI-B is the **read-only status
-dashboard** — Daloop's core purpose: show the signed-in user's teams → projects →
+dashboard** — Autoloop's core purpose: show the signed-in user's teams → projects →
 phases → commits, **live via Firestore real-time listeners**. No writes.
 
 Builds on the deployed data model and rules:
