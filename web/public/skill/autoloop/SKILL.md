@@ -5,13 +5,18 @@ description: Use to run a vision-driven, self-evaluating development loop from a
 
 # Autoloop Loop Driver
 
-Drive a self-evaluating build loop toward a `vision.json`. You **orchestrate skills
-you already have** — `superpowers:writing-plans` to plan, and
-`superpowers:subagent-driven-development` (or `superpowers:test-driven-development`
-for a single slice) to implement — and add the vision layer: test, score, track bugs,
-evaluate, revise. Every state change is reported via the bundled `autoloop` CLI.
-**Reporting is best-effort: a `autoloop` warning is noted, never fatal — it must not
-derail the work.**
+Drive a self-evaluating build loop toward a `vision.json`. You are the **sole
+orchestrator**: you implement one task at a time yourself (using your coding tools or a
+single-task subagent), and you report status to the Autoloop dashboard after **each
+task** before moving to the next. Do NOT hand the whole plan to another orchestrator
+(`superpowers:subagent-driven-development` implements many tasks at once and bypasses
+per-task reporting — only use it scoped to **one task** at a time). The per-task cycle
+is an unbreakable atomic unit:
+
+  **mark running → implement → commit → test → score → mark completed**
+
+Every state change is reported via the bundled `autoloop` CLI immediately as it happens.
+**Reporting is best-effort: an `autoloop` warning is noted, never fatal.**
 
 ## Preconditions
 
@@ -43,12 +48,14 @@ derail the work.**
      (`--name` and `--order` are REQUIRED on both verbs — omitting them fails the call.)
 
 2. **Iterate per task** (in plan order):
-   - **Mark it running** before you start:
+   - **Mark it running** before you start (report immediately — this is what makes the
+     dashboard flip from queued to running in real time):
      `autoloop task set <taskId> --status running`
-     (Tasks are registered as `queued`; exactly one task should be `running` at any
-     time — the one you are actively implementing right now.)
-   - Implement the task with `superpowers:subagent-driven-development` (or
-     `superpowers:test-driven-development`).
+   - **Implement this one task.** Use your coding tools (Read/Edit/Write/Bash) directly,
+     or invoke `superpowers:test-driven-development` scoped to **this single task only**.
+     Do NOT use `superpowers:subagent-driven-development` for the whole plan — it
+     implements all tasks at once and prevents per-task status reporting. Implement, then
+     immediately continue to the reporting steps below before touching the next task.
    - `git commit` the work, then `autoloop commit --task <taskId>`.
    - For **each scenario the task advances**:
      - **Test.** If the scenario has a `test.command` in `vision.json`, run it and
@@ -174,8 +181,8 @@ autoloop loop start loop-2026-06-03 --goal "Ship login + payments" --order 1
 # writing-plans → phase "build", task "login" advancing scenario "login-works"
 autoloop phase start build --name "Build" --order 1      # queued
 autoloop task start login --phase build --name "Login" --order 1 --scenarios login-works  # queued
-autoloop task set login --status running                  # mark running before implementing
-# …implement via subagent-driven-development, git commit…
+autoloop task set login --status running                  # mark running → visible on dashboard NOW
+# …implement this one task (direct coding or /test-driven-development for this task only), git commit…
 autoloop commit --task login
 autoloop test-run login-works --task login --passed 5 --failed 1 --summary "Ran login e2e; happy path passes, password reset 500s on an expired token."
 autoloop bug add login-reset-500 --title "Password reset 500s on expired token" --scenario login-works --task login --severity high
