@@ -1,6 +1,6 @@
 ---
 name: daloop
-description: Use to run a vision-driven, self-evaluating development loop from a vision.json — generate a task plan, implement each task, re-test and self-score the scenarios it advances, track bugs, record revisions when quality is short, and report progress to Daloop. Trigger when the user wants to "run the loop", "build toward the vision", "/daloop", or drive a scenario-scored build.
+description: Use to run a vision-driven, self-evaluating development loop from a vision.json — generate a task plan, implement each task, re-test and self-score the scenarios it advances, track bugs, record revisions when quality is short, report progress to Daloop, and receive user messages mid-run. Trigger when the user wants to "run the loop", "build toward the vision", "/daloop", or drive a scenario-scored build.
 ---
 
 # Daloop Loop Driver
@@ -79,6 +79,21 @@ derail the work.**
      complete — even if its scenario is still unmet (that drives a revision or a new
      task in step 3, not a task left `running`). **Never leave a finished task
      `running`.**
+   - **Check for user messages.** The `task set` response surfaces a `📨 N message(s)
+     from the user` notice when messages are pending; on seeing it (or proactively at
+     each task boundary), run:
+     `daloop messages pull`
+     Process each message oldest-first:
+     - **Question / info request** → answer in-thread:
+       `daloop messages send --text "…"`, then `daloop messages ack <id>`.
+     - **Reprioritise / add / drop tasks** → act via the existing `daloop revise`
+       flow (step 3), then `daloop messages ack <id>`.
+     - **Stop or pause** → graceful terminate (see step 4), then
+       `daloop messages ack <id>`.
+     - **Ambiguous** → ask for clarification:
+       `daloop messages send --text "…"`, then `daloop messages ack <id>`.
+     Reply at your discretion for questions, stop signals, or plan changes; routine
+     status messages that need no reply can be acked immediately.
 
 3. **Evaluate & revise.** A scenario is **met** when its latest composite ≥ its
    threshold (default 80) AND its latest test-run `failed == 0`. After a task:
@@ -97,10 +112,15 @@ derail the work.**
    - **A cap is hit** — stop after a sensible max number of total iterations, or after
      **3 revisions on a single scenario** without it becoming met (it's stuck —
      escalate to the user rather than thrash), or an explicit token/budget limit.
-   - **The user interrupts.**
+   - **The user sends a stop or pause message.** When a pulled message signals a stop
+     or pause: reply confirming the stop (`daloop messages send --text "Stopping the
+     loop as requested."`), ack the message (`daloop messages ack <id>`), then close
+     the loop with `daloop loop set <loopId> --status cancelled`. Finish with the
+     standard "N/M scenarios met" summary (below), explicitly noting the user-requested
+     stop.
 
    **Close the loop:** `daloop loop set <loopId> --status completed` on success, or
-   `--status cancelled` if a cap truncated the run.
+   `--status cancelled` if a cap or user stop truncated the run.
 
    Always finish with a **"N/M scenarios met"** summary: which scenarios are
    met/unmet, the latest composite per scenario, open bugs, revisions made, and the
@@ -111,6 +131,8 @@ derail the work.**
 
 - **Best-effort reporting.** If any `daloop` command warns (bad key, non-member,
   network), note it once and keep building. Never abort the loop over reporting.
+- **Message channel is best-effort.** A `daloop messages pull` error is noted once
+  and skipped — never block or abort the build on the message channel.
 - **Close what you open.** A finished task gets `task set --status completed/failed`; a
   phase whose tasks are all terminal gets `phase set --status completed`; the loop gets
   `loop set --status` at the end. Don't leave work `running`.
@@ -138,6 +160,13 @@ daloop test-run login-works --task login --passed 5 --failed 1 --summary "Ran lo
 daloop bug add login-reset-500 --title "Password reset 500s on expired token" --scenario login-works --task login --severity high
 daloop score login-works --task login --criterion correctness=4 --criterion ux=3 --composite 78 --commit <sha>
 daloop task set login --status completed
+# ↑ response shows: 📨 1 message(s) from the user — run `daloop messages pull`
+daloop messages pull
+# → [{ id: "01JWXYZ...", text: "Can you also add Google OAuth?" }]
+# interpret: new requirement → record a revision, reply, ack
+daloop revise --scenario login-works --reason "user requested Google OAuth" --change add:login-google-oauth
+daloop messages send --text "Got it — added a Google OAuth task to the plan. It will run after the current fix."
+daloop messages ack 01JWXYZ...
 # composite 78 < 80 and a high bug open → still unmet → revise
 daloop revise --scenario login-works --reason "reset path 500s" --change add:login-reset-fix
 # …later task fixes it, re-test passes…
