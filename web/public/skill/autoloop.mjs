@@ -570,23 +570,40 @@ export async function run(argv, deps = {}) {
         throw new UsageError("state requires --current-loop");
       }
       case "session push": {
+        // Debug log — every hook firing appends here so failures are diagnosable.
+        // Inspect with:  cat ~/.claude/autoloop-session.log
+        const dbg = (m) => {
+          try {
+            const home = env.HOME || env.USERPROFILE || "";
+            if (home) writeFileSync(join(home, ".claude", "autoloop-session.log"),
+              `[${new Date().toISOString()}] ${m}\n`, { flag: "a" });
+          } catch { /* never fail the hook over logging */ }
+        };
+        dbg(`session push invoked (argv: ${argv.join(" ")})`);
+
         // When run as a Stop hook, Claude Code pipes a JSON payload on stdin:
         // { session_id, transcript_path, cwd, hook_event_name, ... }
         const hook = readHookStdin();
+        dbg(`stdin payload: ${hook ? JSON.stringify({ session_id: hook.session_id, transcript_path: hook.transcript_path, cwd: hook.cwd }) : "none (TTY or empty)"}`);
         const transcriptPath = flags.file || hook?.transcript_path;
         if (!transcriptPath) {
+          dbg("ABORT: no transcript_path");
           err("autoloop: session push skipped — no transcript_path (not run as a hook? pass --file)");
           return 0;
         }
         if (!existsSync(transcriptPath)) {
+          dbg(`ABORT: transcript not found at ${transcriptPath}`);
           err(`autoloop: session transcript not found at ${transcriptPath}`);
           return 0; // best-effort: don't fail the hook
         }
 
-        const cfg = loadConfig(hook?.cwd || cwd);
+        let cfg;
+        try { cfg = loadConfig(hook?.cwd || cwd); }
+        catch (e) { dbg(`ABORT: loadConfig failed (cwd=${hook?.cwd || cwd}): ${e.message}`); err(`autoloop: ${e.message}`); return 0; }
         const loopId = flags.loop || cfg.currentLoopId;
-        if (!loopId) { err("autoloop: session push skipped — no active loop"); return 0; }
+        if (!loopId) { dbg("ABORT: no active loop in .autoloop.json"); err("autoloop: session push skipped — no active loop"); return 0; }
         validateId("loopId", loopId);
+        dbg(`config ok: team=${cfg.teamId} project=${cfg.projectSlug} loop=${loopId} apiKey=${env.AUTOLOOP_API_KEY ? "set" : "MISSING"}`);
 
         const sessionId = flags.session || hook?.session_id || basename(transcriptPath, ".jsonl");
         const lines = readFileSync(transcriptPath, "utf8").trim().split("\n").filter(Boolean);
@@ -623,7 +640,10 @@ export async function run(argv, deps = {}) {
 
         const body = { sessionId, startedAt: startedAt ?? 0, endedAt: endedAt ?? 0, entries };
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}/sessions`;
-        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: false, teamId: cfg.teamId });
+        dbg(`POST ${url} — ${entries.length} entries, session=${sessionId}`);
+        const code = await report({ method: "POST", url, body }, { env, fetchImpl, err, strict: false, teamId: cfg.teamId });
+        dbg(`POST result: exit code ${code}`);
+        return code;
       }
       // commands added in later tasks
       default:
