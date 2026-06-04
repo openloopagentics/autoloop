@@ -26,7 +26,7 @@ describe("sessionBody schema", () => {
 
   it("rejects text longer than 500 chars", () => {
     const r = sessionBody.safeParse({
-      sessionId: "abc123",
+      sessionId: "abc123de",
       startedAt: 1000, endedAt: 2000,
       entries: [{ kind: "user", text: "x".repeat(501), ts: 1000 }],
     });
@@ -35,7 +35,7 @@ describe("sessionBody schema", () => {
 
   it("rejects more than 2000 entries", () => {
     const entries = Array.from({ length: 2001 }, (_, i) => ({ kind: "user" as const, text: "hi", ts: i }));
-    const r = sessionBody.safeParse({ sessionId: "abc123", startedAt: 0, endedAt: 1, entries });
+    const r = sessionBody.safeParse({ sessionId: "abc123de", startedAt: 0, endedAt: 1, entries });
     expect(r.success).toBe(false);
   });
 });
