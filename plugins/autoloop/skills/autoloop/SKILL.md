@@ -90,14 +90,26 @@ autoloop score <scenarioId> --task <taskId> \
 autoloop task set <taskId> --status completed
 ```
 
-### 2e. Evaluate, revise, check messages
+### 2e. Evaluate, revise, drain messages
 
 After closing the task:
 - If a phase is fully done: `autoloop phase set <phaseId> --status completed`
 - If a scenario is unmet: `autoloop revise --scenario <s> --reason "<why>" --change <op>:<id>`
-- Check for user messages (the `task set` response shows `📨` if any are pending):
-  `autoloop messages pull` → act → `autoloop messages ack <id>`
-- If a stop message: reply, ack, then go to Step 3.
+- **Poll for messages** — run the pull/ack loop below. The subagent may have run for
+  several minutes; messages that arrived during that window are waiting here.
+
+```bash
+# Drain messages after each task (3 polls × 15 s ≈ 45 s window)
+for i in 1 2 3; do
+  autoloop messages pull   # prints any pending messages
+  # for each message returned: act on it, then:
+  autoloop messages ack <id>
+  sleep 15
+done
+```
+
+- If any message is a **stop**: reply, ack, then go to Step 3.
+- If any message changes scope or direction: adjust the remaining task plan accordingly.
 
 **Now go back to 2a for the next task.**
 
@@ -117,10 +129,22 @@ autoloop loop set <loopId> --status completed   # or --status cancelled
 Print a brief **"N/M scenarios met"** summary: which met/unmet, composites,
 open bugs, revisions, and the dashboard URL (https://daloop-42b47.web.app).
 
-**Then immediately start the next loop.** Autoloop is a loop — running is the
-default, stopping is the exception. Generate 5 new improvement ideas based on
-what's already been built, open `loop start loop-YYYY-MM-DD-<n>` with the next
-order number, plan its tasks, and go back to Step 2. Do NOT ask the user
+**Drain messages before starting the next loop** — this is the longest idle
+window; poll generously:
+
+```bash
+# Message drain between loops (6 polls × 30 s = 3 min window)
+for i in 1 2 3 4 5 6; do
+  autoloop messages pull   # act on any messages returned, ack each
+  sleep 30
+done
+```
+
+If a stop message arrives during the drain, go to the stopping path above.
+Otherwise, **immediately start the next loop.** Autoloop is a loop — running is
+the default, stopping is the exception. Generate 5 new improvement ideas based
+on what's already been built, open `loop start loop-YYYY-MM-DD-<n>` with the
+next order number, plan its tasks, and go back to Step 2. Do NOT ask the user
 whether to continue. Do NOT suggest the next round as an option. Just run it.
 
 **The only valid reasons to stop are:**
