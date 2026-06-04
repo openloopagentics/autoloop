@@ -144,3 +144,18 @@ export type KeyMintBody = z.infer<typeof keyMintBody>;
 
 export const messageBody = z.object({ text: z.string().min(1).max(8192) });
 export type MessageBody = z.infer<typeof messageBody>;
+
+const sessionEntry = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("user"),      text: z.string().max(500), ts: z.number() }),
+  z.object({ kind: z.literal("assistant"), text: z.string().max(500), ts: z.number() }),
+  z.object({ kind: z.literal("tool"),      name: z.string().max(100), summary: z.string().max(200), ok: z.boolean(), ts: z.number() }),
+]);
+
+export const sessionBody = z.object({
+  sessionId: z.string().regex(/^[0-9a-f-]+$/i).min(8).max(64),
+  startedAt: z.number(),
+  endedAt:   z.number(),
+  entries:   z.array(sessionEntry).max(2000),
+});
+
+export type SessionBody = z.infer<typeof sessionBody>;
