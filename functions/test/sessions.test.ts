@@ -39,3 +39,63 @@ describe("sessionBody schema", () => {
     expect(r.success).toBe(false);
   });
 });
+
+import request from "supertest";
+import "./helpers.js";
+import { authHeader, seedMember } from "./helpers.js";
+import { makeApp } from "../src/app.js";
+import { db } from "../src/firestore.js";
+
+const app = makeApp();
+
+async function seed() {
+  await db().doc("teams/team1").set({ name: "T", createdBy: "u1" });
+  await seedMember("team1");
+  await request(app).put("/v1/teams/team1/projects/proj").set(authHeader()).send({ title: "P", status: "running" });
+  await request(app).put("/v1/teams/team1/projects/proj/loops/loop1").set(authHeader()).send({ goal: "g", order: 1, status: "running" });
+}
+
+describe("POST /v1/teams/:teamId/projects/:slug/loops/:loopId/sessions", () => {
+  it("creates a session and returns ok", async () => {
+    await seed();
+    const body = {
+      sessionId: "0ee0ac9d-27e2-4439-b550-933f226aaa24",
+      startedAt: 1000, endedAt: 2000,
+      entries: [{ kind: "user", text: "hi", ts: 1000 }],
+    };
+    const res = await request(app)
+      .post("/v1/teams/team1/projects/proj/loops/loop1/sessions")
+      .set(authHeader()).send(body);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it("is idempotent — second push with same sessionId returns ok", async () => {
+    await seed();
+    const body = { sessionId: "0ee0ac9d-27e2-4439-b550-933f226aaa24", startedAt: 1000, endedAt: 2000, entries: [] };
+    await request(app).post("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader()).send(body);
+    const res = await request(app).post("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader()).send(body);
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 400 on invalid body", async () => {
+    await seed();
+    const res = await request(app)
+      .post("/v1/teams/team1/projects/proj/loops/loop1/sessions")
+      .set(authHeader()).send({ sessionId: "x", startedAt: "bad" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /v1/teams/:teamId/projects/:slug/loops/:loopId/sessions", () => {
+  it("lists sessions ordered by startedAt", async () => {
+    await seed();
+    const base = { endedAt: 2000, entries: [] };
+    await request(app).post("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader()).send({ sessionId: "2a3b4c5d-6e7f-8901-bcde-f12345678902", startedAt: 2000, ...base });
+    await request(app).post("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader()).send({ sessionId: "1a2b3c4d-5e6f-7890-abcd-ef1234567891", startedAt: 1000, ...base });
+    const res = await request(app).get("/v1/teams/team1/projects/proj/loops/loop1/sessions").set(authHeader());
+    expect(res.status).toBe(200);
+    expect(res.body.sessions[0].sessionId).toBe("1a2b3c4d-5e6f-7890-abcd-ef1234567891");
+    expect(res.body.sessions[1].sessionId).toBe("2a3b4c5d-6e7f-8901-bcde-f12345678902");
+  });
+});
