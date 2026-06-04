@@ -10,8 +10,8 @@ export interface SelectableLoop {
 }
 
 /** Firestore path segments for a (loop-scoped or project-direct) collection root. */
-export function basePath(teamId: string, slug: string, loopId?: string): string[] {
-  const base = ["teams", teamId, "projects", slug];
+export function basePath(teamId: string, slug: string, loopId?: string): [string, ...string[]] {
+  const base: [string, ...string[]] = ["teams", teamId, "projects", slug];
   return loopId ? [...base, "loops", loopId] : base;
 }
 
