@@ -141,3 +141,6 @@ export const keyMintBody = z.object({
   label: z.string().trim().min(1).max(100),
 });
 export type KeyMintBody = z.infer<typeof keyMintBody>;
+
+export const messageBody = z.object({ text: z.string().min(1).max(8192) });
+export type MessageBody = z.infer<typeof messageBody>;
