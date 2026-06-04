@@ -43,6 +43,10 @@ derail the work.**
      (`--name` and `--order` are REQUIRED on both verbs — omitting them fails the call.)
 
 2. **Iterate per task** (in plan order):
+   - **Mark it running** before you start:
+     `autoloop task set <taskId> --status running`
+     (Tasks are registered as `queued`; exactly one task should be `running` at any
+     time — the one you are actively implementing right now.)
    - Implement the task with `superpowers:subagent-driven-development` (or
      `superpowers:test-driven-development`).
    - `git commit` the work, then `autoloop commit --task <taskId>`.
@@ -168,8 +172,9 @@ autoloop vision import --file vision.json
 autoloop project set --title "Acme Web" --status running
 autoloop loop start loop-2026-06-03 --goal "Ship login + payments" --order 1
 # writing-plans → phase "build", task "login" advancing scenario "login-works"
-autoloop phase start build --name "Build" --order 1
-autoloop task start login --phase build --name "Login" --order 1 --scenarios login-works
+autoloop phase start build --name "Build" --order 1      # queued
+autoloop task start login --phase build --name "Login" --order 1 --scenarios login-works  # queued
+autoloop task set login --status running                  # mark running before implementing
 # …implement via subagent-driven-development, git commit…
 autoloop commit --task login
 autoloop test-run login-works --task login --passed 5 --failed 1 --summary "Ran login e2e; happy path passes, password reset 500s on an expired token."
