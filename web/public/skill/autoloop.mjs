@@ -574,8 +574,9 @@ export async function run(argv, deps = {}) {
 
         for (const line of lines) {
           let rec; try { rec = JSON.parse(line); } catch { continue; }
-          const ts = rec.timestamp ?? rec.ts ?? null;
-          if (ts) { if (!startedAt || ts < startedAt) startedAt = ts; if (!endedAt || ts > endedAt) endedAt = ts; }
+          const rawTs = rec.timestamp ?? rec.ts ?? null;
+          const ts = typeof rawTs === "string" ? Date.parse(rawTs) : (typeof rawTs === "number" ? rawTs : null);
+          if (ts && !isNaN(ts)) { if (!startedAt || ts < startedAt) startedAt = ts; if (!endedAt || ts > endedAt) endedAt = ts; }
           const role = rec.type === "user" ? "user" : rec.type === "assistant" ? "assistant" : null;
           if (!role) continue;
           const msg = rec.message ?? rec;
