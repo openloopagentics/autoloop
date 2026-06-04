@@ -5,7 +5,7 @@ import {
 import { auth, db } from "../firebase";
 import type { Notification } from "../notifications/types";
 import { basePath } from "./loopView";
-import type { Bug, Commit, DocumentRec, Goal, Loop, Phase, Project, Revision, Scenario, Score, Task, Team, TeamRef, TestRun } from "./types";
+import type { Bug, Commit, DocumentRec, Goal, Loop, Message, Phase, Project, Revision, Scenario, Score, Task, Team, TeamRef, TestRun } from "./types";
 
 interface Result<T> { data: T; loading: boolean; error: string | null; }
 
@@ -245,5 +245,19 @@ export function useBugs(teamId: string, slug: string, loopId?: string): Result<B
       (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Bug[]); setLoading(false); },
       (e) => { setError(e.message); setLoading(false); });
   }, [teamId, slug, loopId]);
+  return { data, loading, error };
+}
+
+export function useMessages(teamId: string, slug: string): Result<Message[]> {
+  const [data, setData] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "messages"), orderBy(documentId()));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Message[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
   return { data, loading, error };
 }

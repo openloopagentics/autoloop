@@ -27,3 +27,4 @@ export interface Bug {
   severity?: "low" | "medium" | "high"; status?: "open" | "fixed";
   createdAt?: unknown; updatedAt?: unknown; fixedAt?: unknown;
 }
+export interface Message { id: string; text: string; author: "user" | "agent"; status?: "pending" | "delivered"; createdAt?: unknown; deliveredAt?: unknown; }
