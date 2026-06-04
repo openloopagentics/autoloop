@@ -221,6 +221,29 @@ export async function run(argv, deps = {}) {
         }
         return 0;
       }
+      case "init --session-log":
+      case "session-log": {
+        // Standalone: write Stop hook without re-initialising the project.
+        const settingsPath = join(cwd, ".claude", "settings.json");
+        let settings = {};
+        if (existsSync(settingsPath)) {
+          try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
+        }
+        const cliPath = process.argv[1];
+        const hookCmd = `node "${cliPath}" session push --loop "$(node "${cliPath}" state --current-loop)" || true`;
+        const stopHooks = settings.Stop ?? [];
+        const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
+        if (!alreadyAdded) {
+          stopHooks.push({ hooks: [{ type: "command", command: hookCmd }] });
+          settings.Stop = stopHooks;
+          mkdirSync(join(cwd, ".claude"), { recursive: true });
+          writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+          log("autoloop: added session-push Stop hook to .claude/settings.json");
+        } else {
+          log("autoloop: session-push Stop hook already present");
+        }
+        return 0;
+      }
       case "project set": {
         const cfg = loadConfig(cwd);
         validateId("teamId", cfg.teamId);

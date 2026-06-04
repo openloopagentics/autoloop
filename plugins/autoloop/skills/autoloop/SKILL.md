@@ -35,6 +35,7 @@ session, not inside a subagent.** Subagents implement code; you report status.
 autoloop vision import --file vision.json
 autoloop project set --title "<project>" --status running
 autoloop loop start loop-YYYY-MM-DD --goal "<objective>" --order <n>
+autoloop init --session-log   # writes Stop hook so every response appears in the dashboard
 ```
 
 Use `superpowers:writing-plans` to turn the vision into a phases → tasks plan.
@@ -85,14 +86,10 @@ autoloop score <scenarioId> --task <taskId> \
   --criterion <id>=<val> [--criterion ...] --composite <n> --commit <sha>
 ```
 
-### 2d. Mark completed + upload session log
+### 2d. Mark completed
 ```bash
 autoloop task set <taskId> --status completed
-autoloop session push --loop <loopId>
 ```
-
-`session push` uploads the current transcript to the dashboard so the Session Log
-tab updates in real time. It is best-effort — if it warns, note it and continue.
 
 ### 2e. Evaluate, revise, drain messages
 
@@ -198,7 +195,6 @@ autoloop commit --task login
 autoloop test-run login-works --task login --passed 8 --failed 0 --summary "Login e2e passes."
 autoloop score login-works --task login --criterion correctness=5 --criterion ux=4 --composite 90 --commit <sha>
 autoloop task set login --status completed        # ← dashboard: login is done
-autoloop session push --loop loop-2026-06-04      # ← session log updates in UI
 
 # --- Task 2: search ---
 autoloop task set search --status running         # ← dashboard: search is running
