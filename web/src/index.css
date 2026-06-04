@@ -1082,19 +1082,19 @@ a.docrow-title:hover { color: var(--accent); }
 
 /* Sub-tab bar */
 .msgtabs { display: flex; gap: 2px; padding: 0 0 12px; }
-.msgtab { background: none; border: none; padding: 6px 14px; border-radius: 5px; cursor: pointer; font-size: 13px; color: var(--text-muted); }
-.msgtab--active { background: var(--surface-2); color: var(--text); }
+.msgtab { background: none; border: none; padding: 6px 14px; border-radius: 5px; cursor: pointer; font-size: 13px; color: var(--fg-soft); }
+.msgtab--active { background: var(--surface-raised); color: var(--fg); }
 
 /* Session log */
 .slog-wrap { display: flex; flex-direction: column; gap: 16px; }
 .slog-session { display: flex; flex-direction: column; gap: 4px; }
 .slog-session-header { font-size: 11px; padding: 0 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .slog-entry { display: flex; gap: 8px; font-size: 12px; padding: 2px 0; }
-.slog-entry--user .slog-role { color: var(--text-muted); min-width: 40px; }
+.slog-entry--user .slog-role { color: var(--fg-soft); min-width: 40px; }
 .slog-entry--assistant .slog-role { color: var(--accent); min-width: 40px; }
 .slog-entry--tool { font-family: monospace; font-size: 11px; padding-left: 16px; }
-.slog-tool-icon { color: var(--success); min-width: 12px; }
-.slog-entry--tool-err .slog-tool-icon { color: var(--error); }
-.slog-tool-name { color: var(--text-muted); min-width: 60px; }
-.slog-tool-summary { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+.slog-tool-icon { color: var(--st-completed); min-width: 12px; }
+.slog-entry--tool-err .slog-tool-icon { color: var(--st-failed); }
+.slog-tool-name { color: var(--fg-soft); min-width: 60px; }
+.slog-tool-summary { color: var(--fg-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
 .slog-more { font-size: 11px; padding-left: 16px; cursor: pointer; }
