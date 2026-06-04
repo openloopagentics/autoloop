@@ -187,20 +187,24 @@ function installSessionLogHook(env, log) {
   catch (e) { log(`autoloop: could not copy CLI to stable path: ${e.message}`); return; }
 
   if (!settings.hooks) settings.hooks = {};
-  // session push reads the loop from .autoloop.json and transcript_path from the hook stdin payload.
+  // session push reads the loop from .autoloop.json and the transcript path from the hook stdin payload.
+  // It auto-detects main vs subagent (SubagentStop payload carries agent_transcript_path).
   const hookCmd = `node "${stableCli}" session push`;
-  const newEntry = { matcher: "*", hooks: [{ type: "command", command: hookCmd }] };
 
-  // Remove any prior autoloop session-push hook (from Stop or PostToolUse, possibly stale path).
-  for (const ev of ["Stop", "PostToolUse"]) {
+  // Remove any prior autoloop session-push hook (from Stop/PostToolUse/SubagentStop, possibly stale path).
+  for (const ev of ["Stop", "PostToolUse", "SubagentStop"]) {
     if (Array.isArray(settings.hooks[ev])) {
       settings.hooks[ev] = settings.hooks[ev].filter((h) => !h.hooks?.some((hh) => hh.command?.includes("session push")));
     }
   }
+  // PostToolUse → main-session activity (orchestration), real-time per tool call.
   settings.hooks.PostToolUse = settings.hooks.PostToolUse ?? [];
-  settings.hooks.PostToolUse.push(newEntry);
+  settings.hooks.PostToolUse.push({ matcher: "*", hooks: [{ type: "command", command: hookCmd }] });
+  // SubagentStop → each subagent's full transcript when it finishes (the actual implementation work).
+  settings.hooks.SubagentStop = settings.hooks.SubagentStop ?? [];
+  settings.hooks.SubagentStop.push({ hooks: [{ type: "command", command: hookCmd }] });
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-  log(`autoloop: real-time session-log hook (PostToolUse) installed → ${settingsPath} (CLI: ${stableCli})`);
+  log(`autoloop: real-time session-log hooks (PostToolUse + SubagentStop) installed → ${settingsPath} (CLI: ${stableCli})`);
 }
 
 /**
@@ -587,11 +591,15 @@ export async function run(argv, deps = {}) {
         };
         dbg(`session push invoked (argv: ${argv.join(" ")})`);
 
-        // When run as a hook (PostToolUse), Claude Code pipes a JSON payload on stdin:
-        // { session_id, transcript_path, cwd, hook_event_name, tool_name, ... }
+        // Hook payloads on stdin:
+        //   PostToolUse  → { session_id, transcript_path, cwd, tool_name, ... }   (main session)
+        //   SubagentStop → { session_id, transcript_path, cwd, agent_id, agent_transcript_path, ... }
+        // A subagent event carries agent_transcript_path — we read THAT transcript but still append
+        // to the MAIN session's doc (session_id) so it merges into one timeline.
         const hook = readHookStdin();
-        dbg(`stdin payload: ${hook ? JSON.stringify({ session_id: hook.session_id, transcript_path: hook.transcript_path, cwd: hook.cwd }) : "none (TTY or empty)"}`);
-        const transcriptPath = flags.file || hook?.transcript_path;
+        const isSubagent = !!hook?.agent_transcript_path;
+        dbg(`stdin payload: ${hook ? JSON.stringify({ session_id: hook.session_id, subagent: isSubagent, agent_id: hook.agent_id, transcript: hook.agent_transcript_path || hook.transcript_path, cwd: hook.cwd }) : "none (TTY or empty)"}`);
+        const transcriptPath = flags.file || (isSubagent ? hook.agent_transcript_path : hook?.transcript_path);
         if (!transcriptPath) {
           dbg("ABORT: no transcript_path");
           err("autoloop: session push skipped — no transcript_path (not run as a hook? pass --file)");
@@ -611,18 +619,21 @@ export async function run(argv, deps = {}) {
         validateId("loopId", loopId);
         dbg(`config ok: team=${cfg.teamId} project=${cfg.projectSlug} loop=${loopId} apiKey=${env.AUTOLOOP_API_KEY ? "set" : "MISSING"}`);
 
+        // The DOC we append to is keyed by the MAIN session id (merges subagent work in).
         const sessionId = flags.session || hook?.session_id || basename(transcriptPath, ".jsonl");
+        // The CURSOR is per-transcript-file: a subagent has its own high-water mark (keyed by agent_id).
+        const cursorKey = flags.session ? sessionId : (isSubagent ? `${hook.session_id}:${hook.agent_id}` : (hook?.session_id || basename(transcriptPath, ".jsonl")));
         const allLines = readFileSync(transcriptPath, "utf8").trim().split("\n").filter(Boolean);
 
         // DELTA: only parse + send transcript lines we haven't sent yet. The cursor (line
-        // count already uploaded, per session) lives in ~/.claude/autoloop-cursors.json.
+        // count already uploaded, per cursorKey) lives in ~/.claude/autoloop-cursors.json.
         const home = env.HOME || env.USERPROFILE || "";
         const cursorPath = home ? join(home, ".claude", "autoloop-cursors.json") : null;
         let cursors = {};
         if (cursorPath && existsSync(cursorPath)) {
           try { cursors = JSON.parse(readFileSync(cursorPath, "utf8")); } catch { cursors = {}; }
         }
-        const sent = Number(cursors[sessionId] || 0);
+        const sent = Number(cursors[cursorKey] || 0);
         if (allLines.length <= sent) {
           dbg(`no new transcript lines (have ${allLines.length}, already sent ${sent}) — skip`);
           return 0; // nothing new — don't hit the API at all
@@ -662,7 +673,7 @@ export async function run(argv, deps = {}) {
         if (entries.length === 0) {
           // New lines existed but produced no displayable entries (e.g. system records).
           // Advance the cursor anyway so we don't re-scan them next time.
-          if (cursorPath) { cursors[sessionId] = allLines.length; try { writeFileSync(cursorPath, JSON.stringify(cursors)); } catch { /* best-effort */ } }
+          if (cursorPath) { cursors[cursorKey] = allLines.length; try { writeFileSync(cursorPath, JSON.stringify(cursors)); } catch { /* best-effort */ } }
           dbg(`no new entries from ${lines.length} new lines — cursor advanced to ${allLines.length}`);
           return 0;
         }
@@ -670,14 +681,15 @@ export async function run(argv, deps = {}) {
         const body = { sessionId, startedAt: startedAt ?? 0, endedAt: endedAt ?? 0, entries };
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}/sessions`;
         dbg(`POST ${url} — ${entries.length} new entries (lines ${sent}..${allLines.length}), session=${sessionId}`);
-        const code = await report({ method: "POST", url, body }, { env, fetchImpl, err, strict: false, teamId: cfg.teamId });
-        dbg(`POST result: exit code ${code}`);
-        // Advance the cursor only on success so a failed push retries the same delta next time.
+        // strict:true so `code` reflects a GENUINE 200 (network blips / 4xx → 1). We use that only
+        // to decide cursor advancement — a failed push keeps the cursor so the same delta retries.
+        const code = await report({ method: "POST", url, body }, { env, fetchImpl, err, strict: true, teamId: cfg.teamId });
+        dbg(`POST result: ${code === 0 ? "success (200)" : "failed — cursor not advanced, will retry"}`);
         if (code === 0 && cursorPath) {
-          cursors[sessionId] = allLines.length;
+          cursors[cursorKey] = allLines.length;
           try { writeFileSync(cursorPath, JSON.stringify(cursors)); } catch { /* best-effort */ }
         }
-        return code;
+        return 0; // always exit 0 from the hook — never surface a transient push failure to the user
       }
       // commands added in later tasks
       default:
