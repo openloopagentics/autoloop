@@ -1,0 +1,219 @@
+/* ==========================================================================
+   Ravikant Cherukuri — Design System
+   Color + Type Foundations
+   ========================================================================== */
+
+/* Webfonts (Google Fonts — substitutions for original project's runtime
+   font stack: Inter / Lora / Playfair Display / EB Garamond). If local
+   .ttf/.woff2 files arrive, swap these for @font-face declarations. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+:root {
+  /* --------------------------------------------------------------------
+     COLORS — BLOG / PORTFOLIO MODE (light, monochromatic)
+     Tailwind gray ramp is the source of truth in the codebase.
+     -------------------------------------------------------------------- */
+  --bg:          #ffffff;           /* page */
+  --bg-subtle:   #f9fafb;           /* gray-50  — Work section background */
+  --bg-hover:    #f3f4f6;           /* gray-100 — tag pill background */
+
+  --border:      #e5e7eb;           /* gray-200 — card borders */
+  --border-soft: #f3f4f6;           /* gray-100 — hairlines, dividers */
+
+  --fg:          #111827;           /* gray-900 — primary text, name */
+  --fg-muted:    #4b5563;           /* gray-600 — body copy */
+  --fg-soft:     #6b7280;           /* gray-500 — secondary text */
+  --fg-dim:      #9ca3af;           /* gray-400 — dates, metadata, empty states */
+  --fg-faint:    #d1d5db;           /* gray-300 — impression counts, soft labels */
+
+  --link-hover:  #2563eb;           /* blue-600 — hover state on titles */
+
+  /* Status colors (used sparingly, in admin chrome) */
+  --status-draft:   #f59e0b;        /* amber-500 */
+  --status-live:    #16a34a;        /* green-600 */
+  --status-danger:  #ef4444;        /* red-500 */
+
+  /* --------------------------------------------------------------------
+     COLORS — MAGAZINE MODE (dark, warm, editorial)
+     Used only on /magazine/:slug reading view.
+     -------------------------------------------------------------------- */
+  --mag-bg:         #1c1912;        /* deep espresso page */
+  --mag-bg-deep:    #141210;        /* code block fill */
+  --mag-bg-raised:  #2a2518;        /* inline code chip */
+  --mag-border:     #3a3428;        /* hairlines, pre borders */
+  --mag-border-dim: #4a4035;        /* em-dash tone */
+
+  --mag-fg:         #f2ece0;        /* headlines, strong */
+  --mag-fg-body:    #d4c9b4;        /* body text */
+  --mag-fg-soft:    #9a8f7a;        /* italic lede */
+  --mag-fg-mute:    #8a7f6a;        /* blockquote */
+  --mag-fg-meta:    #6a6055;        /* byline, date meta */
+  --mag-fg-nav:     #4a4540;        /* nav link rest */
+
+  --mag-accent:     #b89058;        /* warm gold — links, drop cap, rule dot */
+  --mag-accent-dim: #4a3820;        /* link underline rest */
+  --mag-code:       #c4a96a;        /* code token */
+
+  /* --------------------------------------------------------------------
+     TYPE — FAMILIES
+     -------------------------------------------------------------------- */
+  --font-sans:    'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-serif:   'Lora', Georgia, 'Times New Roman', serif;
+  --font-display: 'Playfair Display', Georgia, serif;  /* magazine headlines */
+  --font-reading: 'EB Garamond', Georgia, serif;       /* magazine body */
+  --font-mono:    ui-monospace, 'SF Mono', Menlo, 'Courier New', monospace;
+
+  /* --------------------------------------------------------------------
+     TYPE — SIZES (derived from component usage in frontend/src)
+     -------------------------------------------------------------------- */
+  --text-xs:   12px;   /* dates, tag pills, admin chrome */
+  --text-sm:   14px;   /* body copy, post titles in list, nav */
+  --text-base: 16px;   /* default */
+  --text-lg:   18px;   /* hero subline */
+  --text-xl:   20px;   /* hero subline (tailwind text-xl) */
+  --text-2xl:  24px;   /* section h2, post-detail h1 */
+  --text-3xl:  30px;   /* magazine h1 small */
+  --text-5xl:  48px;   /* hero name */
+
+  /* Magazine fluid headline */
+  --text-mag-h1: clamp(38px, 5vw, 54px);
+
+  /* --------------------------------------------------------------------
+     SPACING / RADII / ELEVATION
+     -------------------------------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;    /* section vertical padding (py-24) */
+
+  --radius-xs: 3px;    /* inline code */
+  --radius-sm: 4px;    /* tag pill, pre block */
+  --radius-md: 8px;    /* buttons */
+  --radius-lg: 12px;   /* ProjectCard */
+  --radius-full: 999px;
+
+  /* No drop shadows in this system. Depth comes from borders + hairlines.
+     The single exception is the blurred navbar — opacity + backdrop only. */
+  --elev-navbar: 0 1px 0 0 var(--border-soft);
+
+  /* Magazine reading progress bar */
+  --mag-progress-h: 2px;
+
+  /* Container widths */
+  --container-reading: 768px;   /* max-w-3xl — blog list, post detail */
+  --container-wide:    896px;   /* max-w-4xl — about, work, magazine index */
+  --container-mag:     900px;   /* magazine reading view */
+}
+
+/* ==========================================================================
+   SEMANTIC TYPE PRESETS
+   Use these class names inside mocks so type tokens don't leak into components.
+   ========================================================================== */
+
+.ds-body {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+.ds-eyebrow {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.ds-h1 {
+  font-family: var(--font-serif);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+}
+
+.ds-h2 {
+  font-family: var(--font-sans);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--fg);
+  line-height: 1.3;
+}
+
+.ds-name {
+  font-family: var(--font-serif);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.ds-post-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.ds-meta {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-nav {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.ds-nav--active {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.ds-code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* Magazine reading presets */
+.ds-mag-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--mag-accent);
+}
+
+.ds-mag-h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-mag-h1);
+  color: var(--mag-fg);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.ds-mag-lede {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 20px;
+  color: var(--mag-fg-soft);
+  line-height: 1.6;
+}
+
+.ds-mag-body {
+  font-family: var(--font-reading);
+  font-size: 20px;
+  line-height: 1.9;
+  color: var(--mag-fg-body);
+}
