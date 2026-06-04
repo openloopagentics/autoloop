@@ -86,7 +86,7 @@ export function ProjectDetail() {
           <>
             {project.data && <ProjectHeader project={project.data} />}
             <Tabs active={tab} onChange={setTab} />
-            {tab !== "vision" && <LoopSelector loops={loopList} selectedId={selectedId} onChange={setPicked} />}
+            {tab !== "vision" && tab !== "messages" && <LoopSelector loops={loopList} selectedId={selectedId} onChange={setPicked} />}
             {dataError && <ErrorNote message={dataError} />}
 
             {tabLoading ? <Spinner /> : (
