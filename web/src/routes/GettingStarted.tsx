@@ -54,7 +54,7 @@ export function GettingStarted() {
           <p>The skill teaches Claude Code (or Codex) to report status as the loop runs. Two ways:</p>
           <p><strong>Plugin (auto-updates):</strong></p>
           <pre className="gs-pre"><code>/plugin marketplace add openloopagentics/autoloop
-/plugin install autoloop-reporting@autoloop</code></pre>
+/plugin install autoloop@autoloop</code></pre>
           <p><strong>Or one-shot install</strong> — paste to Claude Code, or run it yourself:</p>
           <pre className="gs-pre"><code>curl -fsSL https://daloop-42b47.web.app/skill/install.sh | bash</code></pre>
           <p className="gs-muted">
