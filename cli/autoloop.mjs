@@ -166,14 +166,15 @@ function installSessionLogHook(env, log) {
   if (existsSync(settingsPath)) {
     try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
   }
+  // Settings file uses { "hooks": { "Stop": [...] } } — write to the correct nested path.
+  if (!settings.hooks) settings.hooks = {};
   const cliPath = process.argv[1];
-  // No || true — let real errors surface. Expected no-ops (no session ID, no loop) exit 0 silently.
   const hookCmd = `node "${cliPath}" session push --loop "$(node "${cliPath}" state --current-loop)"`;
-  const stopHooks = settings.Stop ?? [];
+  const stopHooks = settings.hooks.Stop ?? [];
   const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
   if (!alreadyAdded) {
     stopHooks.push({ hooks: [{ type: "command", command: hookCmd }] });
-    settings.Stop = stopHooks;
+    settings.hooks.Stop = stopHooks;
     mkdirSync(join(home, ".claude"), { recursive: true });
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
     log(`autoloop: session-log hook installed → ${settingsPath}`);
