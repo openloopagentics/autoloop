@@ -18,6 +18,7 @@ import { documentsRouter } from "./routes/documents.js";
 import { scoresRouter, testRunsRouter, revisionsRouter } from "./routes/events.js";
 import { loopsRouter } from "./routes/loops.js";
 import { bugsRouter } from "./routes/bugs.js";
+import { messagesRouter } from "./routes/messages.js";
 import { userProjectsRouter } from "./routes/userProjects.js";
 
 export function makeApp() {
@@ -48,6 +49,7 @@ export function makeApp() {
   teamRouter.use("/:slug/testRuns", testRunsRouter);
   teamRouter.use("/:slug/revisions", revisionsRouter);
   teamRouter.use("/:slug/bugs", bugsRouter);
+  teamRouter.use("/:slug/messages", messagesRouter);
   // Loop-scoped variants reuse the SAME routers (mergeParams propagates :loopId).
   // Order: more-specific mounts before the /:slug/loops entity mount.
   teamRouter.use("/:slug/loops/:loopId/tasks/:taskId/commits", taskCommitsRouter);

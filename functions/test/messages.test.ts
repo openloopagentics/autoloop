@@ -1,9 +1,14 @@
 import { describe, it, expect } from "vitest";
+import express from "express";
 import request from "supertest";
 import "./helpers.js";
 import { authHeader, seedMember } from "./helpers.js";
 import { makeApp } from "../src/app.js";
 import { db } from "../src/firestore.js";
+import { makeRequireUser } from "../src/requireUser.js";
+import { requireMember } from "../src/requireMember.js";
+import { userProjectsRouter } from "../src/routes/userProjects.js";
+import { errorHandler } from "../src/errors.js";
 import { createMessage, listPendingUserMessages, ackMessage } from "../src/services/messages.js";
 
 const app = makeApp();
@@ -143,5 +148,139 @@ describe("ackMessage", () => {
     await seedTeam();
     await expect(ackMessage("team1", "ghost", "some-id", "agent1"))
       .rejects.toMatchObject({ httpStatus: 404 });
+  });
+});
+
+// ─── API route tests ───────────────────────────────────────────────────────────
+
+// User-auth mini-app (mirrors userProjects.test.ts pattern)
+const stubVerify = async (t: string) => {
+  const m = t.match(/^good-(.+)$/);
+  if (!m) throw new Error("x");
+  return { uid: m[1] };
+};
+function userApp() {
+  const a = express();
+  a.use(express.json());
+  a.use("/v1/u/teams/:teamId/projects", makeRequireUser(stubVerify), requireMember, userProjectsRouter);
+  a.use(errorHandler);
+  return a;
+}
+const tok = (uid: string) => ({ Authorization: `Bearer good-${uid}` });
+
+async function seedUserMember(uid = "alice") {
+  await db().doc(`users/${uid}`).set({ email: `${uid}@x.com`, isAllowed: true });
+  await db().doc("teams/team1").set({ name: "Team", createdBy: uid });
+  await db().doc(`teams/team1/members/${uid}`).set({ uid, role: "member" });
+  // also seed the agent member so agentApp (requireApiKeyMember) can create the project
+  await seedMember("team1");
+}
+
+// Agent-auth app (full makeApp + authHeader)
+const agentApp = makeApp();
+
+describe("POST /v1/u/teams/:teamId/projects/:slug/messages — user-send", () => {
+  it("returns 200 {ok, id} and stores a pending user message", async () => {
+    await seedUserMember();
+    // create project via agent app first
+    await request(agentApp)
+      .put("/v1/teams/team1/projects/acme")
+      .set(authHeader())
+      .send({ title: "Acme", status: "running" });
+    const res = await request(userApp())
+      .post("/v1/u/teams/team1/projects/acme/messages")
+      .set(tok("alice"))
+      .send({ text: "hello agent" });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(typeof res.body.id).toBe("string");
+    const doc = await db().doc(`teams/team1/projects/acme/messages/${res.body.id}`).get();
+    expect(doc.data()?.author).toBe("user");
+    expect(doc.data()?.status).toBe("pending");
+  });
+
+  it("returns 400 on empty text", async () => {
+    await seedUserMember();
+    await request(agentApp)
+      .put("/v1/teams/team1/projects/acme")
+      .set(authHeader())
+      .send({ title: "Acme", status: "running" });
+    const res = await request(userApp())
+      .post("/v1/u/teams/team1/projects/acme/messages")
+      .set(tok("alice"))
+      .send({ text: "" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /v1/teams/:teamId/projects/:slug/messages — agent pull", () => {
+  it("returns 200 {ok, messages:[...]} with only pending user messages", async () => {
+    await createProject();
+    const id1 = await createMessage("team1", "acme", "user msg", "user", "u1");
+    await createMessage("team1", "acme", "agent reply", "agent", "agent1");
+    const res = await request(agentApp)
+      .get("/v1/teams/team1/projects/acme/messages")
+      .set(authHeader());
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(Array.isArray(res.body.messages)).toBe(true);
+    expect(res.body.messages.length).toBe(1);
+    expect(res.body.messages[0].id).toBe(id1);
+  });
+});
+
+describe("POST /v1/teams/:teamId/projects/:slug/messages/:id/ack — agent ack", () => {
+  it("returns 200, flips message to delivered, pull no longer returns it", async () => {
+    await createProject();
+    const id = await createMessage("team1", "acme", "ack me", "user", "u1");
+
+    const ackRes = await request(agentApp)
+      .post(`/v1/teams/team1/projects/acme/messages/${id}/ack`)
+      .set(authHeader())
+      .send({});
+    expect(ackRes.status).toBe(200);
+    expect(ackRes.body.ok).toBe(true);
+
+    // doc is now delivered
+    const doc = await db().doc(`teams/team1/projects/acme/messages/${id}`).get();
+    expect(doc.data()?.status).toBe("delivered");
+
+    // pull no longer returns it
+    const pullRes = await request(agentApp)
+      .get("/v1/teams/team1/projects/acme/messages")
+      .set(authHeader());
+    expect(pullRes.body.messages.length).toBe(0);
+  });
+});
+
+describe("POST /v1/teams/:teamId/projects/:slug/messages — agent reply", () => {
+  it("returns 200 {ok, id}; message is author:agent with no status; not returned by pull", async () => {
+    await createProject();
+    const res = await request(agentApp)
+      .post("/v1/teams/team1/projects/acme/messages")
+      .set(authHeader())
+      .send({ text: "agent says hi" });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(typeof res.body.id).toBe("string");
+
+    const doc = await db().doc(`teams/team1/projects/acme/messages/${res.body.id}`).get();
+    expect(doc.data()?.author).toBe("agent");
+    expect(Object.prototype.hasOwnProperty.call(doc.data(), "status")).toBe(false);
+
+    // not returned by pull
+    const pullRes = await request(agentApp)
+      .get("/v1/teams/team1/projects/acme/messages")
+      .set(authHeader());
+    expect(pullRes.body.messages.length).toBe(0);
+  });
+
+  it("returns 400 on empty text", async () => {
+    await createProject();
+    const res = await request(agentApp)
+      .post("/v1/teams/team1/projects/acme/messages")
+      .set(authHeader())
+      .send({ text: "" });
+    expect(res.status).toBe(400);
   });
 });
