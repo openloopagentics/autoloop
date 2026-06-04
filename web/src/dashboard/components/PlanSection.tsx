@@ -4,11 +4,12 @@ import type { Phase, Task } from "../types";
 interface Props {
   phases: Phase[];
   tasks: Task[];
+  currentTaskId?: string | null;
   renderLegacyPhase: (phase: Phase) => ReactNode;
-  renderTask: (task: Task) => ReactNode;
+  renderTask: (task: Task, isCurrent: boolean) => ReactNode;
 }
 
-export function PlanSection({ phases, tasks, renderLegacyPhase, renderTask }: Props) {
+export function PlanSection({ phases, tasks, currentTaskId, renderLegacyPhase, renderTask }: Props) {
   if (tasks.length === 0) {
     return (
       <section>
@@ -27,7 +28,7 @@ export function PlanSection({ phases, tasks, renderLegacyPhase, renderTask }: Pr
         {phases.map((p) => (
           <div key={p.id} className="planphase card">
             <div className="planphase-head"><span className="planphase-name">{p.name ?? p.id}</span></div>
-            <div className="tasklist">{tasksFor(p.id ?? "").map((t) => <div key={t.id}>{renderTask(t)}</div>)}</div>
+            <div className="tasklist">{tasksFor(p.id ?? "").map((t) => <div key={t.id}>{renderTask(t, t.id === currentTaskId)}</div>)}</div>
           </div>
         ))}
       </div>

@@ -23,9 +23,9 @@ function LegacyPhase({ teamId, slug, phase }: { teamId: string; slug: string; ph
   const { data } = useCommits(teamId, slug, phase.id ?? "");
   return <PhaseItem phase={phase} commits={data} />;
 }
-function PlanTask({ teamId, slug, task }: { teamId: string; slug: string; task: Task }) {
+function PlanTask({ teamId, slug, task, isCurrent }: { teamId: string; slug: string; task: Task; isCurrent: boolean }) {
   const { data } = useTaskCommits(teamId, slug, task.id);
-  return <TaskItem task={task} commits={data} />;
+  return <TaskItem task={task} commits={data} isCurrent={isCurrent} />;
 }
 
 export function ProjectDetail() {
@@ -65,7 +65,7 @@ export function ProjectDetail() {
                   phases={phases.data}
                   tasks={tasks.data}
                   renderLegacyPhase={(p) => <LegacyPhase teamId={teamId} slug={slug} phase={p} />}
-                  renderTask={(t) => <PlanTask teamId={teamId} slug={slug} task={t} />}
+                  renderTask={(t, isCurrent) => <PlanTask teamId={teamId} slug={slug} task={t} isCurrent={isCurrent} />}
                 />
               )}
 
