@@ -1,48 +1,65 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs,
 } from "./hooks";
+import { buildLoopList, defaultSelectedLoop, loopArgFor } from "./loopView";
 import { ProjectHeader } from "./components/ProjectHeader";
-import { ScenariosMetBanner } from "./components/ScenariosMetBanner";
-import { VisionSection } from "./components/VisionSection";
-import { VisionEditableSection } from "./VisionEditableSection";
-import { PlanSection } from "./components/PlanSection";
+import { Tabs, type TabKey } from "./components/Tabs";
+import { LoopSelector } from "./components/LoopSelector";
 import { TaskItem } from "./components/TaskItem";
 import { PhaseItem } from "./components/PhaseItem";
-import { RevisionTimeline } from "./components/RevisionTimeline";
-import { DocumentsSection } from "./components/DocumentsSection";
 import { Spinner } from "./components/Spinner";
 import { ErrorNote } from "./components/ErrorNote";
 import { EmptyState } from "./components/EmptyState";
-import { summarize } from "./scenarioState";
+import { DashboardTab } from "./tabs/DashboardTab";
+import { VisionTab } from "./tabs/VisionTab";
+import { LoopsTab } from "./tabs/LoopsTab";
+import { BugsTab } from "./tabs/BugsTab";
 import type { Phase, Task } from "./types";
 
-// Small containers so commit hooks are called at component top-level (not in a callback).
-function LegacyPhase({ teamId, slug, phase }: { teamId: string; slug: string; phase: Phase }) {
-  const { data } = useCommits(teamId, slug, phase.id ?? "");
+function LegacyPhase({ teamId, slug, phase, loopId }: { teamId: string; slug: string; phase: Phase; loopId?: string }) {
+  const { data } = useCommits(teamId, slug, phase.id ?? "", loopId);
   return <PhaseItem phase={phase} commits={data} />;
 }
-function PlanTask({ teamId, slug, task, isCurrent }: { teamId: string; slug: string; task: Task; isCurrent: boolean }) {
-  const { data } = useTaskCommits(teamId, slug, task.id);
+function PlanTask({ teamId, slug, task, loopId, isCurrent }: { teamId: string; slug: string; task: Task; loopId?: string; isCurrent: boolean }) {
+  const { data } = useTaskCommits(teamId, slug, task.id, loopId);
   return <TaskItem task={task} commits={data} isCurrent={isCurrent} />;
 }
 
 export function ProjectDetail() {
   const { teamId = "", slug = "" } = useParams();
+  const [tab, setTab] = useState<TabKey>("dashboard");
+  const [picked, setPicked] = useState<string>("");
+
   const project = useProject(teamId, slug);
-  const phases = usePhases(teamId, slug);
+  const loops = useLoops(teamId, slug);
   const goals = useGoals(teamId, slug);
   const scenarios = useScenarios(teamId, slug);
-  const tasks = useTasks(teamId, slug);
-  const scores = useScores(teamId, slug);
-  const testRuns = useTestRuns(teamId, slug);
-  const revisions = useRevisions(teamId, slug);
   const documents = useDocuments(teamId, slug);
 
-  const hasScenarios = scenarios.data.length > 0;
+  // Project-direct reads: detect legacy data for `main` synthesis.
+  const directPhases = usePhases(teamId, slug);
+  const directTasks = useTasks(teamId, slug);
+  const hasProjectDirectData = directPhases.data.length > 0 || directTasks.data.length > 0;
+
+  const loopList = buildLoopList(loops.data, project.data ?? null, hasProjectDirectData);
+  const selectedId = (picked && loopList.some((l) => l.id === picked)) ? picked : defaultSelectedLoop(loopList, project.data?.currentLoopId);
+  const selected = loopList.find((l) => l.id === selectedId);
+  const loopArg = loopArgFor(selected);
+
+  // Selected-loop run data (re-subscribes when loopArg changes).
+  const phases = usePhases(teamId, slug, loopArg);
+  const tasks = useTasks(teamId, slug, loopArg);
+  const scores = useScores(teamId, slug, loopArg);
+  const testRuns = useTestRuns(teamId, slug, loopArg);
+  const revisions = useRevisions(teamId, slug, loopArg);
+  const bugs = useBugs(teamId, slug, loopArg);
+
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
-  const { met, total } = summarize(scenarios.data, scores.data, testRuns.data);
+  const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
+  const renderTask = (t: Task, isCurrent: boolean) => <PlanTask teamId={teamId} slug={slug} task={t} loopId={loopArg} isCurrent={isCurrent} />;
 
   return (
     <div className="main main--narrow">
@@ -53,24 +70,24 @@ export function ProjectDetail() {
         : (
           <>
             {project.data && <ProjectHeader project={project.data} />}
-            {hasScenarios && <ScenariosMetBanner met={met} total={total} />}
-            {editable
-              ? <VisionEditableSection teamId={teamId} slug={slug} goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} documents={documents.data} />
-              : hasScenarios && <VisionSection goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />}
+            <Tabs active={tab} onChange={setTab} />
+            {tab !== "vision" && <LoopSelector loops={loopList} selectedId={selectedId} onChange={setPicked} />}
 
-            {(phases.loading || tasks.loading) ? <Spinner />
-              : (phases.error || tasks.error) ? <ErrorNote message={phases.error || tasks.error || ""} />
-              : (
-                <PlanSection
-                  phases={phases.data}
-                  tasks={tasks.data}
-                  renderLegacyPhase={(p) => <LegacyPhase teamId={teamId} slug={slug} phase={p} />}
-                  renderTask={(t, isCurrent) => <PlanTask teamId={teamId} slug={slug} task={t} isCurrent={isCurrent} />}
-                />
-              )}
-
-            <RevisionTimeline revisions={revisions.data} />
-            <DocumentsSection documents={documents.data} />
+            {tab === "dashboard" && (
+              <DashboardTab loops={loopList} selected={selected} status={project.data?.status}
+                phases={phases.data} tasks={tasks.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />
+            )}
+            {tab === "vision" && (
+              <VisionTab teamId={teamId} slug={slug} editable={editable}
+                goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} documents={documents.data} />
+            )}
+            {tab === "loops" && (
+              <LoopsTab teamId={teamId} slug={slug} loops={loopList} scenarios={scenarios.data}
+                selectedId={selectedId} selected={selected} onSelect={setPicked}
+                phases={phases.data} tasks={tasks.data} testRuns={testRuns.data} revisions={revisions.data}
+                renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />
+            )}
+            {tab === "bugs" && <BugsTab bugs={bugs.data} />}
           </>
         )}
     </div>
