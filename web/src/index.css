@@ -1065,3 +1065,17 @@ a.docrow-title:hover { color: var(--accent); }
 .msgcompose-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 .msgcompose-input::placeholder { color: var(--fg-meta); }
 .msgcompose-send { align-self: flex-end; }
+
+/* project card delete icon */
+.pcard { position: relative; }
+.pcard-link { display: block; text-decoration: none; color: inherit; }
+.pcard-delete {
+  position: absolute; top: .55rem; right: .55rem;
+  display: flex; align-items: center; justify-content: center;
+  width: 1.75rem; height: 1.75rem; padding: 0;
+  background: transparent; border: none; border-radius: var(--radius-sm, 6px);
+  color: var(--fg-meta, #888); cursor: pointer; opacity: 0; transition: opacity .15s, color .15s;
+}
+.pcard:hover .pcard-delete { opacity: 1; }
+.pcard-delete:hover { color: var(--st-failed, #d33); background: var(--surface-raised, #f5f5f5); }
+.pcard-delete .ico { width: 1rem; height: 1rem; stroke: currentColor; }

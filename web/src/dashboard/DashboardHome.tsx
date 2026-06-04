@@ -6,10 +6,13 @@ import { Spinner } from "./components/Spinner";
 import { ErrorNote } from "./components/ErrorNote";
 import { EmptyState } from "./components/EmptyState";
 import { NewProjectForm } from "./components/edit/NewProjectForm";
-import { putProject } from "./api";
+import { putProject, deleteProject } from "./api";
 import type { TeamRef } from "./types";
 
-function TeamSectionContainer({ teamRef }: { teamRef: TeamRef }) {
+function TeamSectionContainer({ teamRef, onDeleteProject }: {
+  teamRef: TeamRef;
+  onDeleteProject?: (slug: string) => void;
+}) {
   const team = useTeam(teamRef.teamId);
   const projects = useTeamProjects(teamRef.teamId);
   return (
@@ -19,6 +22,7 @@ function TeamSectionContainer({ teamRef }: { teamRef: TeamRef }) {
       projects={projects.data}
       loading={team.loading || projects.loading}
       error={team.error ?? projects.error}
+      onDeleteProject={onDeleteProject}
     />
   );
 }
@@ -54,7 +58,20 @@ export function DashboardHome() {
       {loading ? <Spinner />
         : error ? <ErrorNote message={error} />
         : teams.length === 0 ? <EmptyState message="You're not on a team yet." />
-        : teams.map((t) => <TeamSectionContainer key={t.teamId} teamRef={t} />)}
+        : teams.map((t) => {
+            const canDelete = t.role === "owner" || t.role === "manager";
+            async function handleDelete(slug: string) {
+              if (!window.confirm(`Delete project "${slug}"? This cannot be undone.`)) return;
+              try { await deleteProject(t.teamId, slug); } catch (e) { alert((e as Error).message); }
+            }
+            return (
+              <TeamSectionContainer
+                key={t.teamId}
+                teamRef={t}
+                onDeleteProject={canDelete ? handleDelete : undefined}
+              />
+            );
+          })}
     </div>
   );
 }

@@ -2,24 +2,46 @@ import { Link } from "react-router-dom";
 import { StatusBadge } from "./StatusBadge";
 import type { Project } from "../types";
 
-export function ProjectCard({ teamId, project }: { teamId: string; project: Project }) {
+const TrashIcon = () => (
+  <svg className="ico" viewBox="0 0 24 24" fill="none" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14H6L5 6" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M9 6V4h6v2" />
+  </svg>
+);
+
+export function ProjectCard({ teamId, project, onDelete }: {
+  teamId: string; project: Project; onDelete?: () => void;
+}) {
   const alarm = project.status === "blocked" || project.status === "failed";
   return (
-    <Link to={`/dashboard/${teamId}/${project.slug}`} className={`pcard card${alarm ? " pcard--alarm" : ""}`}>
-      <div className="pcard-top">
-        <h3 className="pcard-title">{project.title ?? project.slug}</h3>
-        {project.status && <StatusBadge status={project.status} />}
-      </div>
-
-      <div className="pcard-phase">
-        <span className="pcard-phase-name">
-          {project.currentPhaseId ? `phase: ${project.currentPhaseId}` : "no active phase"}
-        </span>
-      </div>
-
-      <div className="pcard-foot">
-        <span className="pcard-slug mono">{project.slug}</span>
-      </div>
-    </Link>
+    <div className={`pcard card${alarm ? " pcard--alarm" : ""}`}>
+      <Link to={`/dashboard/${teamId}/${project.slug}`} className="pcard-link">
+        <div className="pcard-top">
+          <h3 className="pcard-title">{project.title ?? project.slug}</h3>
+          {project.status && <StatusBadge status={project.status} />}
+        </div>
+        <div className="pcard-phase">
+          <span className="pcard-phase-name">
+            {project.currentPhaseId ? `phase: ${project.currentPhaseId}` : "no active phase"}
+          </span>
+        </div>
+        <div className="pcard-foot">
+          <span className="pcard-slug mono">{project.slug}</span>
+        </div>
+      </Link>
+      {onDelete && (
+        <button
+          type="button"
+          className="pcard-delete"
+          title={`Delete ${project.slug}`}
+          aria-label={`Delete ${project.slug}`}
+          onClick={(e) => { e.preventDefault(); onDelete(); }}
+        >
+          <TrashIcon />
+        </button>
+      )}
+    </div>
   );
 }
