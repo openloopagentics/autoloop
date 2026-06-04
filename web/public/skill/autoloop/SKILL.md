@@ -85,10 +85,14 @@ autoloop score <scenarioId> --task <taskId> \
   --criterion <id>=<val> [--criterion ...] --composite <n> --commit <sha>
 ```
 
-### 2d. Mark completed (immediately after 2c)
+### 2d. Mark completed + upload session log
 ```bash
 autoloop task set <taskId> --status completed
+autoloop session push --loop <loopId>
 ```
+
+`session push` uploads the current transcript to the dashboard so the Session Log
+tab updates in real time. It is best-effort — if it warns, note it and continue.
 
 ### 2e. Evaluate, revise, drain messages
 
@@ -194,6 +198,7 @@ autoloop commit --task login
 autoloop test-run login-works --task login --passed 8 --failed 0 --summary "Login e2e passes."
 autoloop score login-works --task login --criterion correctness=5 --criterion ux=4 --composite 90 --commit <sha>
 autoloop task set login --status completed        # ← dashboard: login is done
+autoloop session push --loop loop-2026-06-04      # ← session log updates in UI
 
 # --- Task 2: search ---
 autoloop task set search --status running         # ← dashboard: search is running
@@ -204,6 +209,7 @@ autoloop commit --task search
 autoloop test-run search-works --task search --passed 6 --failed 0 --summary "Search returns relevant results."
 autoloop score search-works --task search --criterion correctness=4 --criterion ux=4 --composite 85 --commit <sha>
 autoloop task set search --status completed       # ← dashboard: search is done
+autoloop session push --loop loop-2026-06-04      # ← session log updates in UI
 
 autoloop phase set build --status completed
 autoloop loop set loop-2026-06-04 --status completed
