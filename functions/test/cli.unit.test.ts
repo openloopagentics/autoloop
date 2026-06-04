@@ -388,4 +388,186 @@ describe("event + vision verbs (request shapes)", () => {
     expect(urls).toContain("http://api/v1/teams/acme/projects/web/scenarios/s1");
     expect(urls).toContain("http://api/v1/teams/acme/projects/web/documents/d1");
   });
+
+  it("test-run includes --summary in the body", async () => {
+    const dir = initDir(); const c = cap();
+    await run(["test-run", "s1", "--task", "t1", "--passed", "1", "--failed", "0", "--summary", "ran fine"], base(dir, c));
+    expect(JSON.parse(c.init.body)).toMatchObject({ summary: "ran fine" });
+  });
+
+  it("test-run reads --summary-file and it wins over --summary", async () => {
+    const dir = initDir(); const c = cap();
+    writeFileSync(join(dir, "sum.md"), "# from file");
+    await run(["test-run", "s1", "--task", "t1", "--passed", "1", "--failed", "0", "--summary", "inline", "--summary-file", "sum.md"], base(dir, c));
+    expect(JSON.parse(c.init.body).summary).toBe("# from file");
+  });
+});
+
+describe("bug add/set verbs", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {}, ...extra });
+    return dir;
+  }
+  const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true }) }; }; return c; };
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+
+  it("bug add PUTs the bug with default status open", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["bug", "add", "b1", "--title", "Login breaks", "--severity", "high", "--scenario", "s1", "--task", "t1"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/bugs/b1");
+    expect(c.init.method).toBe("PUT");
+    expect(JSON.parse(c.init.body)).toMatchObject({ title: "Login breaks", status: "open", severity: "high", scenarioId: "s1", taskId: "t1" });
+  });
+
+  it("bug set PUTs a status update", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["bug", "set", "b1", "--status", "fixed"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/bugs/b1");
+    expect(JSON.parse(c.init.body)).toMatchObject({ status: "fixed" });
+  });
+
+  it("bug add is loop-scoped when currentLoopId is set", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    await run(["bug", "add", "b1", "--title", "X"], base(dir, c));
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1/bugs/b1");
+  });
+
+  it("bug add rejects an unknown severity", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["bug", "add", "b1", "--title", "X", "--severity", "blocker"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+
+  it("bug set requires at least one field", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["bug", "set", "b1"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+});
+
+describe("messages pull/ack/send verbs", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {}, ...extra });
+    return dir;
+  }
+  // cap captures URL+init, returns ok with json body; logsOut captures log() calls
+  const cap = (jsonBody: any = { ok: true }) => {
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => jsonBody }; };
+    return c;
+  };
+  const base = (dir: string, c: any, logsOut: string[] = [], errsOut: string[] = []) => ({
+    cwd: dir, env: { DALOOP_API_KEY: "dl_k" },
+    log: (m: string) => logsOut.push(m),
+    err: (m: string) => errsOut.push(m),
+    fetchImpl: c.fetchImpl,
+  });
+
+  it("messages send POSTs to project-level /messages with {text}, no loopSeg even when currentLoopId set", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    const code = await run(["messages", "send", "--text", "hi"], base(dir, c));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/messages");
+    expect(c.init.method).toBe("POST");
+    expect(JSON.parse(c.init.body)).toMatchObject({ text: "hi" });
+  });
+
+  it("messages send requires --text", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["messages", "send"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/--text/);
+  });
+
+  it("messages ack POSTs to project-level /messages/:id/ack (ULID id, no validateId)", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    const code = await run(["messages", "ack", "01JXKM8F3XABCDE12345"], base(dir, c));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/messages/01JXKM8F3XABCDE12345/ack");
+    expect(c.init.method).toBe("POST");
+  });
+
+  it("messages ack requires a non-empty id", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["messages", "ack"], { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/id/i);
+  });
+
+  it("messages pull GETs project-level /messages and prints JSON to log (stdout)", async () => {
+    const dir = initDir({ currentLoopId: "l1" });
+    const msgs = [{ id: "01JXKM8F3XABCDE12345", text: "hi" }];
+    const c = cap({ messages: msgs });
+    const logs: string[] = [];
+    const code = await run(["messages", "pull"], base(dir, c, logs));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/messages");
+    expect(c.init.method).toBe("GET");
+    // printed JSON should contain the message id
+    expect(logs.join("\n")).toContain("01JXKM8F3XABCDE12345");
+  });
+
+  it("messages pull is project-level even when no currentLoopId", async () => {
+    const dir = initDir(); const c = cap({ messages: [] });
+    const logs: string[] = [];
+    const code = await run(["messages", "pull"], base(dir, c, logs));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/messages");
+  });
+});
+
+describe("report() pendingMessages notice", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {} });
+    return dir;
+  }
+
+  it("prints a 📨 notice on err when task set response has pendingMessages", async () => {
+    const dir = initDir();
+    const errs: string[] = [];
+    const fetchImpl = async () => ({
+      ok: true, status: 200,
+      json: async () => ({ ok: true, pendingMessages: [{ id: "01JXKM8F3XABCDE12345", text: "hi" }] }),
+    });
+    const code = await run(["task", "set", "t1", "--status", "completed"],
+      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
+    expect(code).toBe(0);
+    expect(errs.join(" ")).toMatch(/📨/);
+    expect(errs.join(" ")).toMatch(/message/i);
+  });
+
+  it("does NOT print a notice when pendingMessages is empty", async () => {
+    const dir = initDir();
+    const errs: string[] = [];
+    const fetchImpl = async () => ({
+      ok: true, status: 200,
+      json: async () => ({ ok: true, pendingMessages: [] }),
+    });
+    await run(["task", "set", "t1", "--status", "completed"],
+      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
+    expect(errs.join(" ")).not.toMatch(/📨/);
+  });
+
+  it("does NOT break when response has no pendingMessages (existing stubs)", async () => {
+    const dir = initDir();
+    const errs: string[] = [];
+    const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) });
+    const code = await run(["task", "set", "t1", "--status", "completed"],
+      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
+    expect(code).toBe(0);
+    expect(errs.join(" ")).not.toMatch(/📨/);
+  });
+
+  it("does NOT break when response stub has no .json method (legacy stub shape)", async () => {
+    const dir = initDir();
+    const errs: string[] = [];
+    // minimal stub: no json() method at all
+    const fetchImpl = async () => ({ ok: true, status: 200 } as any);
+    const code = await run(["task", "set", "t1", "--status", "completed"],
+      { cwd: dir, env: { DALOOP_API_KEY: "dl_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl });
+    expect(code).toBe(0);
+  });
 });

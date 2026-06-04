@@ -49,6 +49,12 @@ export async function processScenarioEvent(teamId: string, slug: string, scenari
   }
 }
 
+/** On agent reply, emit one agent_message notification to alert the user. */
+export async function processAgentMessage(teamId: string, slug: string, text: string): Promise<void> {
+  const message = text.length > 140 ? text.slice(0, 140) + "..." : text;
+  await writeNotification(teamId, { type: "agent_message", projectSlug: slug, title: "Agent replied", message });
+}
+
 /** On project status edge → completed, emit one loop_complete. */
 export async function processProjectStatusChange(teamId: string, slug: string, before: string | undefined, after: string | undefined): Promise<void> {
   if (before === "completed" || after !== "completed") return; // edge guard

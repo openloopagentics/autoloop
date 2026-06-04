@@ -83,6 +83,23 @@ describe("POST /v1/teams/:teamId/projects/:slug/testRuns", () => {
     expect(d.failed).toBe(1);
     expect(d.issues).toEqual(["flaky login"]);
   });
+
+  it("stores a summary when provided", async () => {
+    await createProject();
+    const res = await request(app).post("/v1/teams/team1/projects/acme/testRuns").set(authHeader())
+      .send({ scenarioId: "s1", taskId: "t1", passed: 8, failed: 1, summary: "# Run\nlogin flow exercised" });
+    expect(res.status).toBe(200);
+    const d = (await db().doc(`teams/team1/projects/acme/testRuns/${res.body.id}`).get()).data()!;
+    expect(d.summary).toBe("# Run\nlogin flow exercised");
+  });
+
+  it("omits the summary key when not provided", async () => {
+    await createProject();
+    const res = await request(app).post("/v1/teams/team1/projects/acme/testRuns").set(authHeader())
+      .send({ scenarioId: "s1", taskId: "t1", passed: 1, failed: 0 });
+    const d = (await db().doc(`teams/team1/projects/acme/testRuns/${res.body.id}`).get()).data()!;
+    expect(d.summary).toBeUndefined();
+  });
 });
 
 describe("POST /v1/teams/:teamId/projects/:slug/revisions", () => {

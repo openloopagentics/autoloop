@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import "./helpers.js";
 import { db } from "../src/firestore.js";
 import { ulid } from "../src/ulid.js";
-import { processScenarioEvent, processProjectStatusChange } from "../src/notify/notifier.js";
+import { processScenarioEvent, processProjectStatusChange, processAgentMessage } from "../src/notify/notifier.js";
 
 const P = "teams/t1/projects/web";
 async function seedScenario(threshold = 80) {
@@ -48,4 +48,32 @@ describe("processProjectStatusChange", () => {
     await processProjectStatusChange("t1", "web", "completed", "completed"); // no edge
     expect((await notifs()).filter((n) => n.type === "loop_complete")).toHaveLength(1);
   });
+});
+
+describe("processAgentMessage", () => {
+  it("writes exactly one agent_message notification with correct fields", async () => {
+    const text = "Here is my reply to your question about the feature.";
+    await processAgentMessage("t1", "web", text);
+    const ns = await notifs();
+    const agentMsgs = ns.filter((n) => n.type === "agent_message");
+    expect(agentMsgs).toHaveLength(1);
+    expect(agentMsgs[0].projectSlug).toBe("web");
+    expect(agentMsgs[0].title).toBe("Agent replied");
+    expect(agentMsgs[0].message).toBe(text);
+  });
+
+  it("truncates message text to ~140 chars", async () => {
+    const longText = "A".repeat(200);
+    await processAgentMessage("t1", "web", longText);
+    const ns = await notifs();
+    const agentMsgs = ns.filter((n) => n.type === "agent_message");
+    expect(agentMsgs).toHaveLength(1);
+    expect(agentMsgs[0].message.length).toBeLessThanOrEqual(143); // 140 + "..." = 143
+  });
+
+  // The author/create guard lives in the trigger (onMessageWritten in trigger.ts).
+  // processAgentMessage is only called when author === "agent" and the doc is newly created.
+  // Unit-testing the trigger itself would require invoking the Firebase Functions SDK emulator
+  // event handler directly, which is outside the scope of these unit tests.
+  // The guard is: !event.data?.before?.exists && event.data?.after?.exists && after.data().author === "agent"
 });

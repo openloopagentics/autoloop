@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { db } from "../firestore.js";
 import { AppError } from "../errors.js";
-import { idPattern, projectBody, goalBody, scenarioBody, documentBody } from "../schemas.js";
+import { idPattern, projectBody, goalBody, scenarioBody, documentBody, messageBody } from "../schemas.js";
 import { assertWebEditable } from "../services/visionOwner.js";
 import { applyProjectUpsert } from "../services/projects.js";
 import { applyGoalUpsert, deleteGoal } from "../services/goals.js";
 import { applyScenarioUpsert, deleteScenario } from "../services/scenarios.js";
 import { applyDocumentUpsert, deleteDocument } from "../services/documents.js";
+import { createMessage } from "../services/messages.js";
 
 export const userProjectsRouter = Router({ mergeParams: true });
 
@@ -107,5 +108,17 @@ userProjectsRouter.delete("/:slug/documents/:docId", async (req, res, next) => {
     const { teamId, slug, docId } = req.params as Record<string, string>;
     await deleteDocument(teamId, slug, docId);
     res.status(200).json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// messages: POST /:slug/messages
+userProjectsRouter.post("/:slug/messages", async (req, res, next) => {
+  try {
+    ids(req, ["teamId", "slug"]);
+    const parsed = messageBody.safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, "validation", parsed.error.issues[0].message);
+    const { teamId, slug } = req.params as Record<string, string>;
+    const id = await createMessage(teamId, slug, parsed.data.text, "user", (req as { uid?: string }).uid ?? "");
+    res.status(200).json({ ok: true, id });
   } catch (err) { next(err); }
 });

@@ -2,11 +2,11 @@ import { StatusBadge } from "./StatusBadge";
 import { CommitItem } from "./CommitItem";
 import type { Task, Commit } from "../types";
 
-export function TaskItem({ task, commits }: { task: Task; commits: Commit[] }) {
+export function TaskItem({ task, commits, isCurrent = false }: { task: Task; commits: Commit[]; isCurrent?: boolean }) {
   return (
     <div className="taskrow">
       <div className="taskrow-head">
-        {task.status && <span className={`sdot s-${task.status}${task.status === "running" ? " is-live" : ""}`} aria-hidden="true" />}
+        {task.status && <span className={`sdot s-${task.status}${isCurrent ? " is-live" : ""}`} aria-hidden="true" />}
         <span className="taskrow-name">{task.title ?? task.id}</span>
         {task.status && <StatusBadge status={task.status} />}
         {task.scenarioIds && task.scenarioIds.length > 0 && (

@@ -1,27 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { db } from "../firestore.js";
 import { AppError } from "../errors.js";
 import { ulid } from "../ulid.js";
 import type { ScoreBody, TestRunBody, RevisionBody } from "../schemas.js";
-
-async function requireProject(teamId: string, slug: string) {
-  const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
-  const snap = await projectRef.get();
-  if (!snap.exists) throw new AppError(404, "not_found", "project does not exist");
-  return projectRef;
-}
-
-/**
- * Resolve the base ref for event writes: the loop doc when loop-scoped, else the project.
- * Verifies the project (always) and the loop (when loopId) exist.
- */
-async function resolveBase(teamId: string, slug: string, loopId?: string) {
-  const projectRef = await requireProject(teamId, slug);
-  if (!loopId) return { projectRef, baseRef: projectRef };
-  const loopRef = projectRef.collection("loops").doc(loopId);
-  if (!(await loopRef.get()).exists) throw new AppError(404, "not_found", "loop does not exist");
-  return { projectRef, baseRef: loopRef };
-}
+import { resolveBase } from "./baseRef.js";
 
 /** Append a score event. Server stamps the id (sortable ULID) + createdAt. Returns the id. */
 export async function appendScore(teamId: string, slug: string, body: ScoreBody, loopId?: string): Promise<string> {
@@ -59,14 +40,16 @@ export async function appendTestRun(teamId: string, slug: string, body: TestRunB
   const { baseRef } = await resolveBase(teamId, slug, loopId);
   const id = ulid();
   // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
-  await baseRef.collection("testRuns").doc(id).set({
+  const data: Record<string, unknown> = {
     scenarioId: body.scenarioId,
     taskId: body.taskId,
     passed: body.passed,
     failed: body.failed,
     issues: body.issues ?? [],
     createdAt: FieldValue.serverTimestamp(),
-  });
+  };
+  if (body.summary !== undefined) data.summary = body.summary;
+  await baseRef.collection("testRuns").doc(id).set(data);
   return id;
 }
 

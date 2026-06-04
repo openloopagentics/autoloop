@@ -3,4 +3,4 @@ import { makeApp } from "./app.js";
 
 export const api = onRequest({ cors: false }, makeApp());
 
-export { onScoreWritten, onTestRunWritten, onProjectStatusWritten } from "./notify/trigger.js";
+export { onScoreWritten, onTestRunWritten, onProjectStatusWritten, onMessageWritten } from "./notify/trigger.js";

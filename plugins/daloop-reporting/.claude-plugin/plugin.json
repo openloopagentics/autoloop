@@ -1,7 +1,7 @@
 {
   "name": "daloop-reporting",
   "description": "Author a vision, drive a self-evaluating development loop, and report its status (goals, scenarios, scores, phases, commits) to a Daloop dashboard via the bundled daloop CLI.",
-  "version": "0.2.1",
+  "version": "0.4.0",
   "author": { "name": "OpenLoop Agentics" },
   "homepage": "https://daloop-42b47.web.app"
 }

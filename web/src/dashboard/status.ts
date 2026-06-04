@@ -6,3 +6,8 @@ const COLORS: Record<string, string> = {
 export function statusColor(status: string): string {
   return COLORS[status] ?? "gray";
 }
+
+const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+export function isTerminalStatus(status: string): boolean {
+  return TERMINAL.has(status);
+}
