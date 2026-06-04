@@ -73,12 +73,14 @@ derail the work.**
        at threshold 80.)
        Report:
        `autoloop score <scenarioId> --task <taskId> --criterion <id>=<value> [--criterion ...] --composite <n> --commit <sha> [--note "..."]`.
-   - **Close the task.** When its work is done, mark it terminal:
-     `autoloop task set <taskId> --status completed` (use `--status failed` if you
-     abandon it). A task is "done" when its implementation+evaluation cycle is
-     complete — even if its scenario is still unmet (that drives a revision or a new
-     task in step 3, not a task left `running`). **Never leave a finished task
-     `running`.**
+   - **Close the task — do this the instant its cycle ends, before touching the next
+     task.** Mark it terminal: `autoloop task set <taskId> --status completed` (use
+     `--status failed` if you abandon it). A task is "done" when its
+     implementation+evaluation cycle is complete — even if its scenario is still unmet
+     (that drives a revision or a new task in step 3, not a task left `running`).
+     **Never leave a finished task `running`** — on the dashboard a `running` task is
+     indistinguishable from one still in progress, so a skipped close makes a finished
+     build look stuck. (Step 4 has a safety-net sweep, but close each task here.)
    - **Check for user messages.** The `task set` response surfaces a `📨 N message(s)
      from the user` notice when messages are pending; on seeing it (or proactively at
      each task boundary), run:
@@ -119,6 +121,17 @@ derail the work.**
      standard "N/M scenarios met" summary (below), explicitly noting the user-requested
      stop.
 
+   **Reconcile status (MANDATORY — every run, before closing the loop).** Make the
+   dashboard match reality. Go through **every** task you started this run and set it
+   terminal — `autoloop task set <taskId> --status completed` (or `--status failed` for
+   one you abandoned); then set **every** phase whose tasks are all done to
+   `autoloop phase set <phaseId> --status completed`. These calls are **idempotent** —
+   re-issue them even for items you believe you already closed; cost is nothing and it
+   guarantees nothing is missed. **A run must never end with an implemented task or a
+   finished phase still `running`** — that is the single most common way a completed
+   build looks "stuck" on the dashboard. (Use the plan's task/phase ids, e.g. the ones
+   recorded in `.autoloop.json`, as your checklist.)
+
    **Close the loop:** `autoloop loop set <loopId> --status completed` on success, or
    `--status cancelled` if a cap or user stop truncated the run.
 
@@ -133,9 +146,12 @@ derail the work.**
   network), note it once and keep building. Never abort the loop over reporting.
 - **Message channel is best-effort.** A `autoloop messages pull` error is noted once
   and skipped — never block or abort the build on the message channel.
-- **Close what you open.** A finished task gets `task set --status completed/failed`; a
-  phase whose tasks are all terminal gets `phase set --status completed`; the loop gets
-  `loop set --status` at the end. Don't leave work `running`.
+- **Close what you open, and reconcile at the end.** A finished task gets `task set
+  --status completed/failed`; a phase whose tasks are all terminal gets `phase set
+  --status completed`; the loop gets `loop set --status` at the end. Close each item as
+  it finishes AND run the mandatory end-of-run reconciliation sweep (step 4) over every
+  task/phase before the summary — the `set` calls are idempotent, so re-set freely.
+  **Never end a run with implemented work left `running`.**
 - **Bugs are tracked, not just noted.** Open a `bug` for real defects (so they appear in
   the dashboard's Bugs view and can be resolved), and `bug set --status fixed` when
   resolved. Reserve `test-run --issue` for transient notes.
