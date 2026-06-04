@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync } from "node:fs";
 import { join, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -176,22 +176,25 @@ function installSessionLogHook(env, log) {
   if (existsSync(settingsPath)) {
     try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
   }
+  // Copy the current CLI to a STABLE, version-independent path so the hook command
+  // doesn't break when the plugin updates (plugin paths are version-pinned). The skill
+  // re-runs `init --session-log` each loop, refreshing this copy to the current version.
+  mkdirSync(join(home, ".claude"), { recursive: true });
+  const stableCli = join(home, ".claude", "autoloop-cli.mjs");
+  try { copyFileSync(process.argv[1], stableCli); }
+  catch (e) { log(`autoloop: could not copy CLI to stable path: ${e.message}`); return; }
+
   // Settings file uses { "hooks": { "Stop": [...] } } — write to the correct nested path.
   if (!settings.hooks) settings.hooks = {};
-  const cliPath = process.argv[1];
   // session push reads loop from .autoloop.json and transcript_path from the hook's stdin payload.
-  const hookCmd = `node "${cliPath}" session push`;
+  const hookCmd = `node "${stableCli}" session push`;
   const stopHooks = settings.hooks.Stop ?? [];
-  const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
-  if (!alreadyAdded) {
-    stopHooks.push({ hooks: [{ type: "command", command: hookCmd }] });
-    settings.hooks.Stop = stopHooks;
-    mkdirSync(join(home, ".claude"), { recursive: true });
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-    log(`autoloop: session-log hook installed → ${settingsPath}`);
-  } else {
-    log("autoloop: session-log hook already present");
-  }
+  // Drop any prior autoloop session-push hook (may point at a stale versioned path), then re-add.
+  const cleaned = stopHooks.filter((h) => !h.hooks?.some((hh) => hh.command?.includes("session push")));
+  cleaned.push({ hooks: [{ type: "command", command: hookCmd }] });
+  settings.hooks.Stop = cleaned;
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  log(`autoloop: session-log hook installed → ${settingsPath} (CLI: ${stableCli})`);
 }
 
 /**
@@ -633,7 +636,16 @@ export async function run(argv, deps = {}) {
 }
 
 // Entry point (only when run directly, not when imported by tests).
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// realpathSync resolves symlinks so the guard matches when the CLI is invoked via a
+// symlinked path (e.g. a stable ~/.claude copy on a system where ~/.claude is symlinked).
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    if (import.meta.url === pathToFileURL(process.argv[1]).href) return true;
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch { return false; }
+}
+if (isMainModule()) {
   run(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((e) => { console.error(`autoloop: unexpected error: ${e.message}`); process.exit(1); });

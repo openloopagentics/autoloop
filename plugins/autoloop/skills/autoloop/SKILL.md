@@ -205,7 +205,6 @@ autoloop commit --task search
 autoloop test-run search-works --task search --passed 6 --failed 0 --summary "Search returns relevant results."
 autoloop score search-works --task search --criterion correctness=4 --criterion ux=4 --composite 85 --commit <sha>
 autoloop task set search --status completed       # ← dashboard: search is done
-autoloop session push --loop loop-2026-06-04      # ← session log updates in UI
 
 autoloop phase set build --status completed
 autoloop loop set loop-2026-06-04 --status completed
