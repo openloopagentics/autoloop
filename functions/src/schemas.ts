@@ -152,7 +152,7 @@ const sessionEntry = z.discriminatedUnion("kind", [
 ]);
 
 export const sessionBody = z.object({
-  sessionId: z.string().regex(/^[0-9a-f-]+$/i).min(8).max(64),
+  sessionId: z.string().regex(/^[a-z0-9-]+$/).min(1).max(64),
   startedAt: z.number(),
   endedAt:   z.number(),
   entries:   z.array(sessionEntry).max(2000),
