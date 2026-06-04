@@ -204,7 +204,9 @@ export async function run(argv, deps = {}) {
           if (existsSync(settingsPath)) {
             try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; }
           }
-          const hookCmd = `autoloop session push --loop "$(autoloop state --current-loop)" || true`;
+          // Use absolute path to this CLI so the hook works regardless of PATH
+          const cliPath = process.argv[1];
+          const hookCmd = `node "${cliPath}" session push --loop "$(node "${cliPath}" state --current-loop)" || true`;
           const stopHooks = settings.Stop ?? [];
           const alreadyAdded = stopHooks.some((h) => h.hooks?.some((hh) => hh.command?.includes("session push")));
           if (!alreadyAdded) {
