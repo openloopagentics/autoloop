@@ -284,3 +284,67 @@ describe("POST /v1/teams/:teamId/projects/:slug/messages — agent reply", () =>
     expect(res.status).toBe(400);
   });
 });
+
+// ─── A4: task-boundary pendingMessages piggyback ──────────────────────────────
+
+describe("PUT /v1/teams/:teamId/projects/:slug/tasks/:taskId — pendingMessages piggyback", () => {
+  it("returns pendingMessages array with pending user messages when they exist", async () => {
+    await createProject();
+    await request(agentApp)
+      .put("/v1/teams/team1/projects/acme/phases/p1")
+      .set(authHeader())
+      .send({ name: "Phase 1", order: 1, status: "running" });
+    // seed a pending user message
+    await createMessage("team1", "acme", "please fix the bug", "user", "u1");
+
+    const res = await request(agentApp)
+      .put("/v1/teams/team1/projects/acme/tasks/t1")
+      .set(authHeader())
+      .send({ phaseId: "p1", title: "Task 1", order: 1, status: "running" });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(Array.isArray(res.body.pendingMessages)).toBe(true);
+    expect(res.body.pendingMessages.length).toBeGreaterThan(0);
+    expect(res.body.pendingMessages[0].text).toBe("please fix the bug");
+  });
+
+  it("returns pendingMessages as [] when no pending messages exist", async () => {
+    await createProject();
+    await request(agentApp)
+      .put("/v1/teams/team1/projects/acme/phases/p1")
+      .set(authHeader())
+      .send({ name: "Phase 1", order: 1, status: "running" });
+
+    const res = await request(agentApp)
+      .put("/v1/teams/team1/projects/acme/tasks/t1")
+      .set(authHeader())
+      .send({ phaseId: "p1", title: "Task 1", order: 1, status: "running" });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.pendingMessages).toEqual([]);
+  });
+
+  it("loop-scoped task PUT returns project-level pendingMessages (no loopId passed to listPendingUserMessages)", async () => {
+    await createProject();
+    await request(agentApp)
+      .put("/v1/teams/team1/projects/acme/loops/l1")
+      .set(authHeader())
+      .send({ goal: "build feature", order: 1, status: "running" });
+    await request(agentApp)
+      .put("/v1/teams/team1/projects/acme/loops/l1/phases/p1")
+      .set(authHeader())
+      .send({ name: "Phase 1", order: 1, status: "running" });
+    // seed a pending user message at the project level
+    await createMessage("team1", "acme", "user msg for loop task", "user", "u1");
+
+    const res = await request(agentApp)
+      .put("/v1/teams/team1/projects/acme/loops/l1/tasks/t1")
+      .set(authHeader())
+      .send({ phaseId: "p1", title: "Loop Task 1", order: 1, status: "running" });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(Array.isArray(res.body.pendingMessages)).toBe(true);
+    expect(res.body.pendingMessages.length).toBe(1);
+    expect(res.body.pendingMessages[0].text).toBe("user msg for loop task");
+  });
+});

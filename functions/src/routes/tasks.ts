@@ -2,6 +2,7 @@ import { Router } from "express";
 import { idPattern, taskBody } from "../schemas.js";
 import { AppError } from "../errors.js";
 import { upsertTask } from "../services/tasks.js";
+import { listPendingUserMessages } from "../services/messages.js";
 
 export const tasksRouter = Router({ mergeParams: true });
 
@@ -15,7 +16,9 @@ tasksRouter.put("/:taskId", async (req, res, next) => {
     const parsed = taskBody.safeParse(req.body);
     if (!parsed.success) throw new AppError(400, "validation", parsed.error.issues[0].message);
     await upsertTask(teamId, slug, taskId, parsed.data, loopId);
-    res.status(200).json({ ok: true });
+    // Piggyback project-level pending messages (pass only teamId/slug — no loopId)
+    const pendingMessages = await listPendingUserMessages(teamId, slug, 5);
+    res.status(200).json({ ok: true, pendingMessages });
   } catch (err) {
     next(err);
   }
