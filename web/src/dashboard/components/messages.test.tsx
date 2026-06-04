@@ -72,4 +72,25 @@ describe("MessagesTab", () => {
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  it("shows running hint when agentActive=true", () => {
+    const { container } = render(<MessagesTab messages={[]} onSend={vi.fn()} agentActive={true} />);
+    expect(container.querySelector(".msg-agentstatus--active")).not.toBeNull();
+    expect(screen.getByText(/a loop is running/i)).toBeInTheDocument();
+    expect(screen.getByText(/it'll see your message at its next step/i)).toBeInTheDocument();
+  });
+
+  it("shows waiting hint when agentActive=false", () => {
+    const { container } = render(<MessagesTab messages={[]} onSend={vi.fn()} agentActive={false} />);
+    const el = container.querySelector(".msg-agentstatus");
+    expect(el).not.toBeNull();
+    expect(el?.classList.contains("msg-agentstatus--active")).toBe(false);
+    expect(screen.getByText(/no active run/i)).toBeInTheDocument();
+    expect(screen.getByText(/your message will wait until a loop starts/i)).toBeInTheDocument();
+  });
+
+  it("omits the agent-status hint when agentActive is not passed", () => {
+    const { container } = render(<MessagesTab messages={[]} onSend={vi.fn()} />);
+    expect(container.querySelector(".msg-agentstatus")).toBeNull();
+  });
 });

@@ -60,6 +60,7 @@ export function ProjectDetail() {
   const bugs = useBugs(teamId, slug, loopArg);
   const messages = useMessages(teamId, slug);
 
+  const agentActive = loops.data.some((l) => l.status === "running") || (loops.data.length === 0 && project.data?.status === "running");
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
   const renderTask = (t: Task, isCurrent: boolean) => <PlanTask teamId={teamId} slug={slug} task={t} loopId={loopArg} isCurrent={isCurrent} />;
@@ -106,7 +107,7 @@ export function ProjectDetail() {
                     renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />
                 )}
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
-                {tab === "messages" && <MessagesTab messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} />}
+                {tab === "messages" && <MessagesTab messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}
               </>
             )}
           </>

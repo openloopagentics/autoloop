@@ -23,9 +23,11 @@ function relativeTime(createdAt: unknown): string {
 export function MessagesTab({
   messages,
   onSend,
+  agentActive,
 }: {
   messages: Message[];
   onSend: (text: string) => Promise<void>;
+  agentActive?: boolean;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -70,6 +72,14 @@ export function MessagesTab({
       </div>
 
       {sendError && <ErrorNote message={sendError} />}
+
+      {agentActive !== undefined && (
+        <p className={`msg-agentstatus${agentActive ? " msg-agentstatus--active" : ""}`}>
+          {agentActive
+            ? "A loop is running — it'll see your message at its next step."
+            : "No active run — your message will wait until a loop starts."}
+        </p>
+      )}
 
       <div className="msgcompose">
         <textarea
