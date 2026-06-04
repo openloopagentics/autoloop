@@ -224,7 +224,7 @@ export async function run(argv, deps = {}) {
         if (!flags.name || typeof flags.order !== "string") throw new UsageError("phase start requires --name <n> --order <number>");
         const order = Number(flags.order);
         if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
-        const status = flags.status || "running";
+        const status = flags.status || "queued";
         validateStatus(status);
         const cfg = loadConfig(cwd);
         cfg.phases = cfg.phases || {};
@@ -312,7 +312,9 @@ export async function run(argv, deps = {}) {
         cfg.currentTaskId = id;
         saveConfig(cwd, cfg);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/tasks/${id}`;
-        return report({ method: "PUT", url, body: { phaseId: flags.phase, title: flags.name, order, status: "running", scenarioIds } },
+        const taskStatus = flags.status || "queued";
+        validateStatus(taskStatus);
+        return report({ method: "PUT", url, body: { phaseId: flags.phase, title: flags.name, order, status: taskStatus, scenarioIds } },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "task set": {
@@ -389,7 +391,7 @@ export async function run(argv, deps = {}) {
           if (!cfg.currentPhaseId) throw new UsageError("no current phase — run `autoloop phase start` (or pass --task)");
           taskId = "main";
           const taskUrl = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/tasks/${taskId}`;
-          const tcode = await report({ method: "PUT", url: taskUrl, body: { phaseId: cfg.currentPhaseId, title: "Main", order: 0, status: "running", scenarioIds: [] } },
+          const tcode = await report({ method: "PUT", url: taskUrl, body: { phaseId: cfg.currentPhaseId, title: "Main", order: 0, status: "queued", scenarioIds: [] } },
             { env, fetchImpl, err, strict, teamId: cfg.teamId });
           if (strict && tcode !== 0) return tcode;
           cfg.currentTaskId = taskId; cfg.tasks = cfg.tasks || {}; cfg.tasks[taskId] = { phaseId: cfg.currentPhaseId, title: "Main", order: 0 };

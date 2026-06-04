@@ -114,13 +114,13 @@ describe("phase start/set", () => {
   }
   const okFetch = async (url: string, init: any) => { (okFetch as any).last = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; };
 
-  it("phase start records name/order + currentPhaseId and PUTs running", async () => {
+  it("phase start records name/order + currentPhaseId and PUTs queued", async () => {
     const dir = initDir();
     const code = await run(["phase", "start", "build", "--name", "Build", "--order", "1"],
       { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: okFetch });
     expect(code).toBe(0);
     expect((okFetch as any).last.url).toBe("http://api/v1/teams/acme/projects/web/phases/build");
-    expect(JSON.parse((okFetch as any).last.init.body)).toMatchObject({ name: "Build", order: 1, status: "running" });
+    expect(JSON.parse((okFetch as any).last.init.body)).toMatchObject({ name: "Build", order: 1, status: "queued" });
     const cfg = loadConfig(dir);
     expect(cfg.currentPhaseId).toBe("build");
     expect(cfg.phases.build).toEqual({ name: "Build", order: 1 });
@@ -202,7 +202,7 @@ describe("commit", () => {
     const code = await run(["commit"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, gitRun, fetchImpl });
     expect(code).toBe(0);
     expect(calls[0].url).toBe("http://api/v1/teams/acme/projects/web/tasks/main"); // implicit task created
-    expect(JSON.parse(calls[0].init.body)).toMatchObject({ phaseId: "build", title: "Main", order: 0, status: "running", scenarioIds: [] });
+    expect(JSON.parse(calls[0].init.body)).toMatchObject({ phaseId: "build", title: "Main", order: 0, status: "queued", scenarioIds: [] });
     expect(calls[1].url).toBe("http://api/v1/teams/acme/projects/web/tasks/main/commits/deadbeef");
     expect(loadConfig(dir).currentTaskId).toBe("main");
   });
@@ -268,7 +268,7 @@ describe("goal/scenario/task/doc verbs (request shapes)", () => {
     const dir = initDir(); const c = cap();
     expect(await run(["task", "start", "t1", "--phase", "p1", "--name", "Build", "--order", "1", "--scenarios", "s1,s2"], base(dir, c))).toBe(0);
     expect(c.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t1");
-    expect(JSON.parse(c.init.body)).toMatchObject({ phaseId: "p1", title: "Build", order: 1, status: "running", scenarioIds: ["s1", "s2"] });
+    expect(JSON.parse(c.init.body)).toMatchObject({ phaseId: "p1", title: "Build", order: 1, status: "queued", scenarioIds: ["s1", "s2"] });
     expect(loadConfig(dir).currentTaskId).toBe("t1");
   });
 
