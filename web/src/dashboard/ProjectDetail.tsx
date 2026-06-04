@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useMessages, useMyTeams,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useMessages,
 } from "./hooks";
-import { postMessage, deleteProject } from "./api";
-import { DangerZone } from "./components/DangerZone";
+import { postMessage } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor } from "./loopView";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Tabs, type TabKey } from "./components/Tabs";
@@ -33,13 +32,8 @@ function PlanTask({ teamId, slug, task, loopId, isCurrent }: { teamId: string; s
 
 export function ProjectDetail() {
   const { teamId = "", slug = "" } = useParams();
-  const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>("dashboard");
   const [picked, setPicked] = useState<string>("");
-
-  const myTeams = useMyTeams();
-  const role = myTeams.data.find((t) => t.teamId === teamId)?.role;
-  const canDelete = role === "owner" || role === "manager";
 
   const project = useProject(teamId, slug);
   const loops = useLoops(teamId, slug);
@@ -115,9 +109,6 @@ export function ProjectDetail() {
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
                 {tab === "messages" && <MessagesTab messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}
               </>
-            )}
-            {canDelete && (
-              <DangerZone slug={slug} onDelete={async () => { await deleteProject(teamId, slug); navigate("/dashboard"); }} />
             )}
           </>
         )}
