@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
   useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllTestRuns, useMessages,
@@ -7,7 +7,7 @@ import {
 import { postMessage } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor } from "./loopView";
 import { ProjectHeader } from "./components/ProjectHeader";
-import { Tabs, type TabKey } from "./components/Tabs";
+import { Tabs, isTabKey, type TabKey } from "./components/Tabs";
 import { TaskItem } from "./components/TaskItem";
 import { PhaseItem } from "./components/PhaseItem";
 import { Spinner } from "./components/Spinner";
@@ -31,8 +31,10 @@ function PlanTask({ teamId, slug, task, loopId, isCurrent }: { teamId: string; s
 }
 
 export function ProjectDetail() {
-  const { teamId = "", slug = "" } = useParams();
-  const [tab, setTab] = useState<TabKey>("dashboard");
+  const { teamId = "", slug = "", tab: tabParam } = useParams();
+  const navigate = useNavigate();
+  const tab: TabKey = isTabKey(tabParam) ? tabParam : "dashboard";
+  const setTab = (k: TabKey) => navigate(`/dashboard/${teamId}/${slug}/${k}`);
   const [picked, setPicked] = useState<string>("");
 
   const project = useProject(teamId, slug);

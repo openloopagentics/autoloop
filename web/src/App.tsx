@@ -31,6 +31,7 @@ export function App() {
           <Route path="getting-started" element={<GettingStarted />} />
           <Route path="dashboard" element={<DashboardHome />} />
           <Route path="dashboard/:teamId/:slug" element={<ProjectDetail />} />
+          <Route path="dashboard/:teamId/:slug/:tab" element={<ProjectDetail />} />
           <Route path="teams" element={<TeamsPage />} />
           <Route path="keys" element={<KeysPage />} />
           <Route path="admin" element={<AdminPage />} />
