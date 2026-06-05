@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../auth/context";
-import { useMyTeams } from "../dashboard/hooks";
+import { useMyTeams, useTeam } from "../dashboard/hooks";
 import { Spinner } from "../dashboard/components/Spinner";
 import { ErrorNote } from "../dashboard/components/ErrorNote";
 import { EmptyState } from "../dashboard/components/EmptyState";
@@ -20,8 +20,25 @@ function useActionError() {
   return { err, run };
 }
 
+function TeamSlug({ teamId }: { teamId: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="team-slug"
+      title="Team ID — use with `autoloop init --team`. Click to copy."
+      onClick={() => { void navigator.clipboard?.writeText(teamId); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
+    >
+      <span className="team-slug-label dim">ID</span>
+      <code className="team-slug-id">{teamId}</code>
+      <span className="team-slug-copy dim">{copied ? "copied ✓" : "copy"}</span>
+    </button>
+  );
+}
+
 function TeamAdminContainer({ teamId, role }: { teamId: string; role: Role }) {
   const { uid } = useAuth().user!;
+  const team = useTeam(teamId);
   const members = useTeamMembers(teamId);
   const invites = useTeamInvites(teamId);
   const { err, run } = useActionError();
@@ -29,7 +46,10 @@ function TeamAdminContainer({ teamId, role }: { teamId: string; role: Role }) {
   return (
     <section className="teamcard card">
       <div className="teamcard-head">
-        <h3 className="teamcard-name serif">{teamId}</h3>
+        <div className="teamcard-titles">
+          <h3 className="teamcard-name serif">{team.data?.name ?? teamId}</h3>
+          <TeamSlug teamId={teamId} />
+        </div>
         <span className="team-meta">
           <span className={`role${role === "owner" ? " owner" : ""}`}>{role}</span>
         </span>
