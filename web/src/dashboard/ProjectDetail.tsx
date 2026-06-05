@@ -8,7 +8,6 @@ import { postMessage } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor } from "./loopView";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Tabs, type TabKey } from "./components/Tabs";
-import { LoopSelector } from "./components/LoopSelector";
 import { TaskItem } from "./components/TaskItem";
 import { PhaseItem } from "./components/PhaseItem";
 import { Spinner } from "./components/Spinner";
@@ -90,7 +89,6 @@ export function ProjectDetail() {
           <>
             {project.data && <ProjectHeader project={project.data} />}
             <Tabs active={tab} onChange={setTab} />
-            {tab === "dashboard" && <LoopSelector loops={loopList} selectedId={selectedId} onChange={setPicked} />}
             {dataError && <ErrorNote message={dataError} />}
 
             {tabLoading ? <Spinner /> : (
