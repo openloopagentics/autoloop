@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useMessages,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useMessages,
 } from "./hooks";
 import { postMessage } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor } from "./loopView";
@@ -57,7 +57,7 @@ export function ProjectDetail() {
   const scores = useScores(teamId, slug, loopArg);
   const testRuns = useTestRuns(teamId, slug, loopArg);
   const revisions = useRevisions(teamId, slug, loopArg);
-  const bugs = useBugs(teamId, slug, loopArg);
+  const bugs = useAllBugs(teamId, slug); // all bugs across every loop — not loop-scoped
   const messages = useMessages(teamId, slug);
 
   const agentActive = loops.data.some((l) => l.status === "running") || (loops.data.length === 0 && project.data?.status === "running");
@@ -87,7 +87,7 @@ export function ProjectDetail() {
           <>
             {project.data && <ProjectHeader project={project.data} />}
             <Tabs active={tab} onChange={setTab} />
-            {tab !== "vision" && tab !== "messages" && <LoopSelector loops={loopList} selectedId={selectedId} onChange={setPicked} />}
+            {tab !== "vision" && tab !== "messages" && tab !== "bugs" && <LoopSelector loops={loopList} selectedId={selectedId} onChange={setPicked} />}
             {dataError && <ErrorNote message={dataError} />}
 
             {tabLoading ? <Spinner /> : (

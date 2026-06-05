@@ -8,7 +8,7 @@ export function BugsList({ bugs }: { bugs: Bug[] }) {
   return (
     <section>
       <div className="proj-section-head"><h2 className="proj-section-title">Bugs</h2></div>
-      <div className="buglist">{[...open, ...fixed].map((b) => <BugItem key={b.id} bug={b} />)}</div>
+      <div className="buglist">{[...open, ...fixed].map((b) => <BugItem key={`${b.loopId ?? "main"}:${b.id}`} bug={b} />)}</div>
     </section>
   );
 }
