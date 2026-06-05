@@ -26,6 +26,7 @@ export interface Bug {
   id: string; title?: string; description?: string; scenarioId?: string; taskId?: string;
   severity?: "low" | "medium" | "high"; status?: "open" | "fixed";
   createdAt?: unknown; updatedAt?: unknown; fixedAt?: unknown;
+  loopId?: string; // client-attached: which loop the bug came from (undefined = project-direct)
 }
 export interface Message { id: string; text: string; author: "user" | "agent"; status?: "pending" | "delivered"; createdAt?: unknown; deliveredAt?: unknown; }
 
