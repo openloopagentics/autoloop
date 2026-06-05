@@ -10,10 +10,8 @@ export function LoopsTab({ teamId, slug, loops, scenarios, selectedId, selected,
   renderLegacyPhase: (p: Phase) => ReactNode; renderTask: (t: Task, isCurrent: boolean) => ReactNode;
 }) {
   return (
-    <>
-      <LoopList teamId={teamId} slug={slug} loops={loops} scenarios={scenarios} selectedId={selectedId} onSelect={onSelect} />
-      {selected && <LoopDetail phases={phases} tasks={tasks} testRuns={testRuns} revisions={revisions}
-        currentTaskId={selected.currentTaskId} renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />}
-    </>
+    <LoopList teamId={teamId} slug={slug} loops={loops} scenarios={scenarios} selectedId={selectedId} onSelect={onSelect}
+      detail={selected && <LoopDetail phases={phases} tasks={tasks} testRuns={testRuns} revisions={revisions}
+        currentTaskId={selected.currentTaskId} renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />} />
   );
 }

@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from "react";
 import { usePhases, useScores, useTestRuns } from "../hooks";
 import { phaseProgress, loopArgFor, type SelectableLoop } from "../loopView";
 import { summarize } from "../scenarioState";
@@ -19,14 +20,18 @@ function LoopRowContainer({ teamId, slug, loop, scenarios, selected, onSelect }:
   );
 }
 
-export function LoopList({ teamId, slug, loops, scenarios, selectedId, onSelect }: {
+export function LoopList({ teamId, slug, loops, scenarios, selectedId, onSelect, detail }: {
   teamId: string; slug: string; loops: SelectableLoop[]; scenarios: Scenario[]; selectedId: string; onSelect: (id: string) => void;
+  detail?: ReactNode; // rendered inline beneath the selected loop row
 }) {
   if (loops.length === 0) return <div className="empty">No loops yet.</div>;
   return (
     <div className="looplist">
       {loops.map((l) => (
-        <LoopRowContainer key={l.id} teamId={teamId} slug={slug} loop={l} scenarios={scenarios} selected={l.id === selectedId} onSelect={onSelect} />
+        <Fragment key={l.id}>
+          <LoopRowContainer teamId={teamId} slug={slug} loop={l} scenarios={scenarios} selected={l.id === selectedId} onSelect={onSelect} />
+          {l.id === selectedId && detail && <div className="loopdetail">{detail}</div>}
+        </Fragment>
       ))}
     </div>
   );
