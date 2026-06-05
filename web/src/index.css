@@ -942,6 +942,13 @@ a.docrow-title:hover { color: var(--accent); }
 .looprow-prog { font-size: 12px; color: var(--fg-soft); flex-shrink: 0; }
 .looprow-met  { font-size: 12px; color: var(--fg-soft); flex-shrink: 0; }
 
+/* Selected loop's plan/tests/revisions, nested inline beneath its row. */
+.loopdetail {
+  margin: -2px 0 6px; padding: 14px var(--card-pad) 6px;
+  border-left: 2px solid color-mix(in oklab, var(--brand) 50%, var(--border));
+  margin-left: 10px;
+}
+
 /* ==========================================================================
    TEST RUNS
    ========================================================================== */
