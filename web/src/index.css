@@ -99,6 +99,54 @@
   --st-cancelled: #6b6258;
 }
 
+/* ----- MIDNIGHT (deep indigo) -------------------------------------------- */
+[data-surface="midnight"] {
+  --surface: #0f1420; --surface-raised: #161d2e; --surface-deep: #0a0e17;
+  --surface-hover: #1c2438; --surface-inset: #11161f;
+  --border: #283145; --border-soft: #1d2536; --border-strong: #3a4763;
+  --fg: #e6ecf5; --fg-body: #c2ccdc; --fg-soft: #8a94a8; --fg-meta: #5f6878; --fg-faint: #3a4356;
+  --accent: #4db5e8; --accent-soft: #163040; --accent-glow: rgba(77,181,232,0.16);
+  --shadow: none;
+  --st-queued: #868ea2; --st-running: #cda85f; --st-blocked: #d18a55; --st-paused: #9d92a8;
+  --st-completed: #88a571; --st-failed: #c5685d; --st-cancelled: #7c7264;
+}
+
+/* ----- FOREST (deep green) ----------------------------------------------- */
+[data-surface="forest"] {
+  --surface: #11201a; --surface-raised: #16291f; --surface-deep: #0c1812;
+  --surface-hover: #1b3326; --surface-inset: #0f1d16;
+  --border: #2a4133; --border-soft: #1f3327; --border-strong: #38543f;
+  --fg: #e8f0e8; --fg-body: #c4d4c4; --fg-soft: #8ba189; --fg-meta: #5f7560; --fg-faint: #3c4f3e;
+  --accent: #5fb87a; --accent-soft: #1c3a26; --accent-glow: rgba(95,184,122,0.16);
+  --shadow: none;
+  --st-queued: #868ea2; --st-running: #cda85f; --st-blocked: #d18a55; --st-paused: #9d92a8;
+  --st-completed: #88a571; --st-failed: #c5685d; --st-cancelled: #7c7264;
+}
+
+/* ----- NORD (arctic slate) ----------------------------------------------- */
+[data-surface="nord"] {
+  --surface: #2e3440; --surface-raised: #3b4252; --surface-deep: #272c36;
+  --surface-hover: #434c5e; --surface-inset: #2b313c;
+  --border: #434c5e; --border-soft: #3b4252; --border-strong: #4c566a;
+  --fg: #eceff4; --fg-body: #d8dee9; --fg-soft: #a9b3c4; --fg-meta: #7b8494; --fg-faint: #4c566a;
+  --accent: #88c0d0; --accent-soft: #2c3a40; --accent-glow: rgba(136,192,208,0.16);
+  --shadow: none;
+  --st-queued: #97a0b4; --st-running: #ebcb8b; --st-blocked: #d08770; --st-paused: #b48ead;
+  --st-completed: #a3be8c; --st-failed: #bf616a; --st-cancelled: #7c8494;
+}
+
+/* ----- ROSÉ (muted mauve) ------------------------------------------------ */
+[data-surface="rose"] {
+  --surface: #1f1a22; --surface-raised: #2a232e; --surface-deep: #181319;
+  --surface-hover: #322839; --surface-inset: #1c161f;
+  --border: #3a2f40; --border-soft: #2c2531; --border-strong: #4d3f54;
+  --fg: #efe6f0; --fg-body: #d2c4d4; --fg-soft: #a08fa6; --fg-meta: #6f6075; --fg-faint: #463a4c;
+  --accent: #d98bb0; --accent-soft: #3a2433; --accent-glow: rgba(217,139,176,0.16);
+  --shadow: none;
+  --st-queued: #9a8fa6; --st-running: #d9a85f; --st-blocked: #d18a70; --st-paused: #b48ead;
+  --st-completed: #8fb482; --st-failed: #d2697a; --st-cancelled: #7c7080;
+}
+
 /* ----- density variants -------------------------------------------------- */
 [data-density="airy"]    { --gap:20px; --card-pad:26px; --row-pad:16px; --section-gap:44px; }
 [data-density="regular"] { --gap:16px; --card-pad:20px; --row-pad:12px; --section-gap:34px; }
@@ -305,6 +353,18 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .menu-item:hover { background: var(--surface-hover); color: var(--fg); }
 .menu-item--danger:hover { color: var(--st-failed); background: color-mix(in oklab, var(--st-failed) 12%, transparent); }
+
+/* theme picker in profile menu */
+.menu-label--inset { padding: 4px 10px 2px; }
+.theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 2px; }
+.theme-opt {
+  display: flex; align-items: center; gap: 7px; background: none; border: 1px solid transparent;
+  font-size: 12px; color: var(--fg-body); padding: 6px 8px; border-radius: var(--radius-md);
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.theme-opt:hover { background: var(--surface-hover); }
+.theme-opt--active { border-color: var(--accent); color: var(--fg); }
+.theme-dot { width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(0,0,0,.2) inset; }
 
 /* notifications bell + dropdown */
 .bell-wrap { position: relative; display: inline-flex; }
