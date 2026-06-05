@@ -30,11 +30,20 @@ export const phaseBody = z.object({
   status: status.optional(),
 });
 
+const commitTokens = z.object({
+  input: z.number().nonnegative(),
+  output: z.number().nonnegative(),
+  cacheRead: z.number().nonnegative(),
+  cacheWrite: z.number().nonnegative(),
+  total: z.number().nonnegative(),
+});
+
 export const commitBody = z.object({
   message: z.string().min(1).optional(),
   author: z.string().min(1).optional(),
   url: z.string().url().nullable().optional(),
   committedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  tokens: commitTokens.optional(), // subagent token usage attributed to this commit
 });
 
 export type ProjectBody = z.infer<typeof projectBody>;

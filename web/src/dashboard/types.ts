@@ -8,7 +8,8 @@ export interface Loop {
   currentPhaseId?: string | null; currentTaskId?: string | null;
 }
 export interface Phase { id?: string; name?: string; order?: number; status?: string; startedAt?: unknown; endedAt?: unknown; }
-export interface Commit { sha: string; message?: string; author?: string; committedAt?: unknown; }
+export interface CommitTokens { input: number; output: number; cacheRead: number; cacheWrite: number; total: number; }
+export interface Commit { sha: string; message?: string; author?: string; committedAt?: unknown; tokens?: CommitTokens; }
 
 export interface RubricCriterion { id: string; name: string; weight: number; max: number; }
 export interface Goal { id: string; title?: string; description?: string; order?: number; }

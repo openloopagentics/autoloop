@@ -25,6 +25,7 @@ export async function upsertTaskCommit(
     if (body.committedAt !== undefined && body.committedAt !== null) {
       data.committedAt = Timestamp.fromDate(new Date(body.committedAt));
     }
+    if (body.tokens !== undefined) data.tokens = body.tokens;
     tx.set(commitRef, data, { merge: true });
     tx.set(taskRef, { updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });

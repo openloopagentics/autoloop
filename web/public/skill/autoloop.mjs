@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync, readdirSync } from "node:fs";
 import { join, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -155,6 +155,40 @@ export async function fetchJson(req, deps) {
 
   err(`autoloop: messages pull failed (${res.status})`);
   return 0;
+}
+
+/** Locate a subagent's transcript by agentId and sum its token usage.
+ *  Subagent transcripts live either directly at ~/.claude/projects/<enc>/agent-<id>.jsonl
+ *  or under ~/.claude/projects/<enc>/<sessionId>/subagents/agent-<id>.jsonl.
+ *  Returns { input, output, cacheRead, cacheWrite, total } or null if not found. */
+function subagentTokenUsage(cwd, agentId, env) {
+  const home = env.HOME || env.USERPROFILE || "";
+  if (!home) return null;
+  const enc = cwd.replace(/[/.]/g, "-");
+  const base = join(home, ".claude", "projects", enc);
+  if (!existsSync(base)) return null;
+  const file = `agent-${agentId}.jsonl`;
+  const candidates = [join(base, file)];
+  try {
+    for (const entry of readdirSync(base)) {
+      const sub = join(base, entry, "subagents", file);
+      if (existsSync(sub)) candidates.push(sub);
+    }
+  } catch { /* base not a dir / unreadable — fall through */ }
+  const path = candidates.find((p) => existsSync(p));
+  if (!path) return null;
+
+  let input = 0, output = 0, cacheRead = 0, cacheWrite = 0;
+  for (const line of readFileSync(path, "utf8").trim().split("\n")) {
+    let rec; try { rec = JSON.parse(line); } catch { continue; }
+    const u = rec?.message?.usage;
+    if (!u) continue;
+    input += u.input_tokens ?? 0;
+    output += u.output_tokens ?? 0;
+    cacheRead += u.cache_read_input_tokens ?? 0;
+    cacheWrite += u.cache_creation_input_tokens ?? 0;
+  }
+  return { input, output, cacheRead, cacheWrite, total: input + output + cacheRead + cacheWrite };
 }
 
 /** Read the hook JSON payload Claude Code pipes to stdin. Returns null if not piped (TTY) or invalid. */
@@ -465,8 +499,16 @@ export async function run(argv, deps = {}) {
         validateId("sha", c.sha);
         if (!c.author) throw new UsageError("git author empty — set `git config user.name`");
         if (!c.message) throw new UsageError("git commit message empty");
+        const commitBody = { message: c.message, author: c.author, committedAt: c.committedAt };
+        // Attribute the implementing subagent's token usage to this commit (Agent tool returns
+        // the agentId to the loop driver, which passes it here as --agent <agentId>).
+        if (flags.agent) {
+          const tokens = subagentTokenUsage(cwd, String(flags.agent), env);
+          if (tokens) commitBody.tokens = tokens;
+          else err(`autoloop: no subagent transcript found for agent '${flags.agent}' — commit recorded without tokens`);
+        }
         const url = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/tasks/${taskId}/commits/${c.sha}`;
-        return report({ method: "PUT", url, body: { message: c.message, author: c.author, committedAt: c.committedAt } },
+        return report({ method: "PUT", url, body: commitBody },
           { env, fetchImpl, err, strict, teamId: cfg.teamId });
       }
       case "score": {

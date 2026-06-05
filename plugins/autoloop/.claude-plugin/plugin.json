@@ -1,7 +1,7 @@
 {
   "name": "autoloop",
   "description": "Author a vision, drive a self-evaluating development loop, and report its status (goals, scenarios, scores, phases, commits) to an Autoloop dashboard via the bundled autoloop CLI.",
-  "version": "0.9.4",
+  "version": "0.10.0",
   "author": { "name": "OpenLoop Agentics" },
   "homepage": "https://daloop-42b47.web.app"
 }

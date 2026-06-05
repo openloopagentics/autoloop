@@ -588,6 +588,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .commit-sha { color: var(--accent); font-size: 11.5px; flex-shrink: 0; width: 56px; }
 .commit-msg { flex: 1; color: var(--fg-body); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-author { font-size: 11.5px; color: var(--fg-soft); flex-shrink: 0; }
+.commit-tokens { font-size: 11px; color: var(--fg-meta); flex-shrink: 0; padding: 1px 6px; border-radius: 4px; background: var(--surface-inset); cursor: help; }
 @media (max-width: 620px) { .commit-author { display: none; } }
 
 /* ==========================================================================
