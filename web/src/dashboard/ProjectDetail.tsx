@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllTestRuns, useMessages,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllScores, useAllTestRuns, useMessages,
 } from "./hooks";
 import { postMessage } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor } from "./loopView";
@@ -60,6 +60,7 @@ export function ProjectDetail() {
   const testRuns = useTestRuns(teamId, slug, loopArg);
   const revisions = useRevisions(teamId, slug, loopArg);
   const bugs = useAllBugs(teamId, slug); // all bugs across every loop — not loop-scoped
+  const allScores = useAllScores(teamId, slug);     // scenarios are project-level → met-state spans all loops
   const allTestRuns = useAllTestRuns(teamId, slug); // all test runs across every loop
   const messages = useMessages(teamId, slug);
 
@@ -101,7 +102,7 @@ export function ProjectDetail() {
                 )}
                 {tab === "vision" && (
                   <VisionTab teamId={teamId} slug={slug} editable={editable}
-                    goals={goals.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} documents={documents.data} />
+                    goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data} documents={documents.data} />
                 )}
                 {tab === "loops" && (
                   <LoopsTab teamId={teamId} slug={slug} loops={loopList} scenarios={scenarios.data}
