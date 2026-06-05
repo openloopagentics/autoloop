@@ -9,6 +9,11 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "messages", label: "Messages" },
 ];
 
+export const TAB_KEYS = TABS.map((t) => t.key);
+export function isTabKey(v: string | undefined): v is TabKey {
+  return v !== undefined && (TAB_KEYS as string[]).includes(v);
+}
+
 export function Tabs({ active, onChange }: { active: TabKey; onChange: (k: TabKey) => void }) {
   return (
     <div className="tabbar" role="tablist">
