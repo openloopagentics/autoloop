@@ -72,6 +72,10 @@ single task's steps from the plan**. The subagent must:
 
 It does NOT call any `autoloop` CLI commands — that is your job. Wait for it to finish.
 
+**Note the subagent's `agentId`** from the Agent tool's result (it appears as
+`agentId: a…` in the returned text). You pass it to `autoloop commit --agent`
+below so the subagent's token usage is attributed to this task's commit.
+
 If the subagent reports it could not write a passing test for a scenario, that
 scenario stays **unmet** — do not score it as met (see 2c).
 
@@ -84,8 +88,9 @@ never invent them. A scenario with no passing automated test is unmet.
 exact artifacts so anyone can follow scenario → test → result → bug → fix.
 
 ```bash
-# 1. Report the commit (gives every test-run/bug below a commit to trace to)
-autoloop commit --task <taskId>
+# 1. Report the commit (gives every test-run/bug below a commit to trace to).
+#    Pass --agent <agentId> (from 2b) to attribute the subagent's token usage to this commit.
+autoloop commit --task <taskId> --agent <agentId>
 
 # 2. For EACH scenario this task advances — submit the REAL test result.
 #    The --summary MUST name: the test file path, the test name(s), and the exact
