@@ -22,15 +22,20 @@ export function GettingStarted() {
         <span className="eyebrow">Getting started</span>
         <h1 className="page-title">Welcome to Autoloop</h1>
         <p className="page-sub">
-          Autoloop is a live status board for software built in a loop by AI coding agents.
-          Agents report progress through a write-only API; this site shows it updating in real time.
+          Autoloop drives a vision-driven, self-scoring build loop with an AI coding agent and shows it
+          on a live dashboard. You define what "done" means as a set of scenarios; the loop implements
+          features, writes and runs tests, scores each scenario, tracks bugs, and keeps iterating —
+          reporting every step in real time.
         </p>
       </div>
 
       <p className="gs-intro">
-        The data model is simple: a <strong>team</strong> owns <strong>projects</strong>, each project
-        moves through ordered <strong>phases</strong>, and each phase collects the <strong>commits</strong>
-        your agents make. Here's how to go from zero to a live dashboard.
+        The model: a <strong>team</strong> owns <strong>projects</strong>. A project's{" "}
+        <strong>vision</strong> is a set of <strong>goals</strong> and <strong>scenarios</strong> (with
+        scoring rubrics). The loop runs in <strong>iterations</strong>, each made of{" "}
+        <strong>tasks</strong> that produce <strong>commits</strong>, <strong>test runs</strong>,{" "}
+        <strong>scores</strong>, and <strong>bugs</strong>. A scenario is <strong>met</strong> when it
+        has a passing test and a score above its threshold. Here's how to go from zero to a live loop.
       </p>
 
       <div className="gs-steps">
@@ -43,15 +48,18 @@ export function GettingStarted() {
 
         <Step n={2} title="Mint an API key">
           <p>
-            Your agents authenticate with a personal API key. Create one on the{" "}
+            Your agent authenticates with a personal API key. Create one on the{" "}
             <Link className="gs-link" to="/keys">API keys</Link> page — copy it once (it's shown only then),
-            and expose it to your loop:
+            and export it in the shell you launch Claude Code from:
           </p>
           <pre className="gs-pre"><code>export AUTOLOOP_API_KEY=…</code></pre>
         </Step>
 
-        <Step n={3} title="Install the reporting skill">
-          <p>The skill teaches Claude Code (or Codex) to report status as the loop runs. Two ways:</p>
+        <Step n={3} title="Install the Autoloop plugin">
+          <p>
+            The plugin gives Claude Code the loop-driver skills (<code>/autoloop</code>,{" "}
+            <code>/autoloop-vision</code>) and the bundled <code>autoloop</code> CLI. Two ways:
+          </p>
           <p><strong>Plugin (auto-updates):</strong></p>
           <pre className="gs-pre"><code>/plugin marketplace add openloopagentics/autoloop
 /plugin install autoloop@autoloop</code></pre>
@@ -62,12 +70,26 @@ export function GettingStarted() {
           </p>
         </Step>
 
-        <Step n={4} title="Point a loop at your project">
-          <p>In the loop's working directory, initialize once — then the skill reports automatically:</p>
-          <pre className="gs-pre"><code>autoloop init --team &lt;teamId&gt; --project &lt;slug&gt;</code></pre>
+        <Step n={4} title="Author your vision">
           <p>
-            As the loop runs, the project, its phases, and each commit appear live on your{" "}
-            <Link className="gs-link" to="/dashboard">Dashboard</Link>.
+            In your project directory, run <code>/autoloop-vision</code> in Claude Code. It interviews you
+            and writes a <code>vision.json</code> — the goals and scenarios (with scoring rubrics) that
+            define what "done" means. This is what the loop builds toward and scores against.
+          </p>
+        </Step>
+
+        <Step n={5} title="Run the loop">
+          <p>Initialize once, then start the loop:</p>
+          <pre className="gs-pre"><code>autoloop init --team &lt;teamId&gt; --project &lt;slug&gt; --session-log
+# then, in Claude Code:
+/autoloop</code></pre>
+          <p>
+            <code>--session-log</code> streams the live session transcript to the dashboard. As the loop
+            runs, your{" "}
+            <Link className="gs-link" to="/dashboard">Dashboard</Link> updates in real time — scenarios
+            turning met/unmet, the <strong>Tests</strong> and <strong>Bugs</strong> tabs, per-commit token
+            counts, and the <strong>Session Log</strong>. Send the loop a message from the dashboard any
+            time to steer or pause it.
           </p>
         </Step>
       </div>
