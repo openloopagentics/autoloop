@@ -15,11 +15,11 @@ export function basePath(teamId: string, slug: string, loopId?: string): [string
   return loopId ? [...base, "loops", loopId] : base;
 }
 
-/** Explicit loops (sorted by order then id) + a synthesized `main` when the project has legacy
- *  project-direct data. `main` carries the PROJECT doc's status/currentPhaseId/currentTaskId. */
+/** Explicit loops (latest first — descending by order then id) + a synthesized `main` (always last)
+ *  when the project has legacy project-direct data. `main` carries the PROJECT doc's status/phase/task. */
 export function buildLoopList(loops: Loop[], project: Project | null | undefined, hasProjectDirectData: boolean): SelectableLoop[] {
   const list: SelectableLoop[] = [...loops]
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id))
+    .sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || b.id.localeCompare(a.id))
     .map((l) => ({
       id: l.id, isMain: false, goal: l.goal, name: l.name, status: l.status, order: l.order,
       currentPhaseId: l.currentPhaseId, currentTaskId: l.currentTaskId,
@@ -39,7 +39,7 @@ export function defaultSelectedLoop(list: SelectableLoop[], currentLoopId?: stri
   if (list.length === 0) return "";
   if (currentLoopId && list.some((l) => l.id === currentLoopId)) return currentLoopId;
   const explicit = list.filter((l) => !l.isMain);
-  if (explicit.length > 0) return explicit[explicit.length - 1].id; // list is asc by order
+  if (explicit.length > 0) return explicit[0].id; // list is desc by order → [0] is latest
   return list[list.length - 1].id; // main
 }
 
