@@ -684,6 +684,24 @@ ul { margin: 0; padding: 0; list-style: none; }
   gap: var(--gap);
 }
 
+/* scenario table (read-only vision view) */
+.scntable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.scntable thead th {
+  text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--fg-meta); font-weight: 600; padding: 6px 12px; border-bottom: 1px solid var(--border);
+}
+.scntable thead th:nth-child(2) { width: 90px; }
+.scntable thead th:nth-child(3) { width: 160px; }
+.scntable thead th:nth-child(4) { width: 70px; text-align: right; }
+.scnrow { border-bottom: 1px solid var(--border-soft); }
+.scnrow:hover { background: var(--surface-hover); }
+.scnrow td { padding: 8px 12px; vertical-align: middle; }
+.scnrow-name { display: flex; flex-direction: column; gap: 2px; }
+.scnrow-title { font-weight: 600; color: var(--fg); }
+.scnrow-desc { font-size: 11.5px; }
+.scnrow-score { display: flex; align-items: center; gap: 8px; }
+.scnrow-tests { text-align: right; }
+
 /* scenario card */
 .scncard { padding: var(--card-pad); display: flex; flex-direction: column; gap: 10px; }
 .scncard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
