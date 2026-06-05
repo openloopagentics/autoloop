@@ -152,7 +152,8 @@ for i in 1 2 3; do
 done
 ```
 
-- If any message is a **stop**: reply, ack, then go to Step 3.
+- If any message is a **stop/pause**: finish the current task cleanly, then go to
+  **Step 4 (Paused — wait for resume)**. Do NOT end the session.
 - If any message changes scope or direction: adjust the remaining task plan accordingly.
 
 **Now go back to 2a for the next task.**
@@ -208,10 +209,13 @@ on what's already been built, open `loop start loop-YYYY-MM-DD-<n>` with the
 next order number, plan its tasks, and go back to Step 2. Do NOT ask the user
 whether to continue. Do NOT suggest the next round as an option. Just run it.
 
-**The only valid reasons to stop are:**
-1. The user sent an explicit stop message (via `autoloop messages pull`).
+**The only valid reasons to stop building are:**
+1. The user sent a **stop/pause** message → go to **Step 4 (Paused)**, keep the
+   session alive and polling. (This is a pause, not an exit.)
 2. The user gave an explicit iteration count and you've reached it (e.g. "run 3 rounds").
 3. Genuine context or token exhaustion — you physically cannot continue.
+
+**Only end the session** on an explicit **shutdown/exit/quit/"we're done"** message.
 
 Anything else — "a sensible cap", "one round is enough", "the app looks good" —
 is a rationalization. Ignore it and start the next loop.
@@ -225,6 +229,48 @@ If either is missing, the scenario is **unmet** — even if the composite is hig
 This matches exactly what the UI shows. Do not report a scenario as "met" based
 on the score alone.
 
+## Step 4 — Paused: keep polling, act on the next message
+
+A **stop/pause** message does NOT end your session. It parks the loop in a paused
+state where you **keep polling for the user's next message and act on whatever it
+says** — it will rarely be the literal word "resume"; it's any prompt (a new
+instruction, a scope change, "keep going", "fix the header", "build X next", etc.).
+
+On entering pause:
+```bash
+autoloop messages ack <stopMsgId>
+autoloop loop set <loopId> --status paused
+# reply so the dashboard shows you're parked and listening:
+autoloop messages send --text "Paused. Send any message and I'll act on it and resume."
+```
+
+Then poll indefinitely until a message arrives — the session stays alive the whole
+time, so a message sent from the dashboard reaches you here:
+```bash
+# Wait-for-next-message loop. Keep going; do NOT exit the session.
+while true; do
+  autoloop messages pull        # prints any pending user messages
+  # → if one or more messages came back: break out and handle them (below)
+  sleep 30
+done
+```
+
+When a message arrives:
+1. `autoloop messages ack <id>` for each.
+2. **Do exactly what it says.** Treat it as a fresh user instruction:
+   - If it's a directive to keep building / continue / a new feature → `autoloop loop
+     set <loopId> --status running` (or `loop start` a new iteration), then go back
+     to **Step 2** and run it.
+   - If it changes scope/plan → adjust the plan, then resume Step 2.
+   - Only if it explicitly says to **shut down / exit / quit / we're done** → close
+     the loop terminally (Step 3b) and end the session.
+3. After handling, if you're building again you're back in the normal loop; if the
+   message was itself another pause, return to the wait-for-next-message loop above.
+
+**Never end the session on a plain stop/pause.** Ending is only for an explicit
+shutdown/exit message or genuine context exhaustion. As long as the session is
+alive, a stop must leave you polling so the user's next dashboard message is picked up.
+
 ## Rules
 
 - **One task at a time.** Never start 2b for task N+1 while task N is still open.
@@ -237,6 +283,7 @@ on the score alone.
 - **No scenario left behind.** Before closing a loop, run the Step 3a sweep: every scenario tagged to this loop's tasks must end either met (passing test + score) or with a revision explaining why not. Never close a loop with implemented-but-untested scenarios silently unmet.
 - **Traceability is mandatory.** Every test-run names the exact test (file + test name) and command in its `--summary`; every bug links `--scenario` + `--task` and records the catching test, commit sha, and expected-vs-actual in `--description`; fixed bugs cite the fixing commit. Vague "tests pass" summaries or bugs with no scenario/test/commit reference must be redone.
 - **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
+- **Pause ≠ exit.** A stop/pause message parks you in Step 4 polling for the next message — it never ends the session. Only an explicit shutdown/exit message (or context exhaustion) ends it. While the session is alive, always be polling so a dashboard message lands. The next message may be any prompt, not the word "resume" — act on whatever it says.
 
 ## Example (two tasks)
 
