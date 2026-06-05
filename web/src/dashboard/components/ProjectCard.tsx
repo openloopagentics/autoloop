@@ -11,16 +11,17 @@ const TrashIcon = () => (
   </svg>
 );
 
-export function ProjectCard({ teamId, project, onDelete }: {
-  teamId: string; project: Project; onDelete?: () => void;
+export function ProjectCard({ teamId, project, status, onDelete }: {
+  teamId: string; project: Project; status?: string; onDelete?: () => void;
 }) {
-  const alarm = project.status === "blocked" || project.status === "failed";
+  const shown = status ?? project.status;
+  const alarm = shown === "blocked" || shown === "failed";
   return (
     <div className={`pcard card${alarm ? " pcard--alarm" : ""}`}>
       <Link to={`/dashboard/${teamId}/${project.slug}`} className="pcard-link">
         <div className="pcard-top">
           <h3 className="pcard-title">{project.title ?? project.slug}</h3>
-          {project.status && <StatusBadge status={project.status} />}
+          {shown && <StatusBadge status={shown} />}
         </div>
         <div className="pcard-phase">
           <span className="pcard-phase-name">
