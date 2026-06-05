@@ -61,30 +61,45 @@ any code.
 ### 2b. Implement — dispatch ONE subagent for this task only
 
 Use `superpowers:subagent-driven-development` with the subagent scoped to **this
-single task's steps from the plan**. The subagent: reads the relevant files,
-writes/edits code, runs tests, commits. It does NOT call any `autoloop` CLI
-commands — that is your job.
+single task's steps from the plan**. The subagent must:
+- Read the relevant files and implement the feature.
+- **Write a real automated test for EACH scenario this task advances** — a test
+  that actually exercises the scenario's behavior and fails before the feature
+  exists, passes after. Do not hand-wave "it works"; there must be an executable
+  test per scenario.
+- Run the full test suite and report the **actual** pass/fail counts per scenario.
+- Commit code + tests together.
 
-Wait for the subagent to finish before proceeding.
+It does NOT call any `autoloop` CLI commands — that is your job. Wait for it to finish.
+
+If the subagent reports it could not write a passing test for a scenario, that
+scenario stays **unmet** — do not score it as met (see 2c).
 
 ### 2c. Report — run these CLI commands yourself, in order
+
+The `--passed`/`--failed` numbers MUST come from the subagent's real test run —
+never invent them. A scenario with no passing automated test is unmet.
 
 ```bash
 # 1. Report the commit
 autoloop commit --task <taskId>
 
-# 2. For each scenario this task advances:
+# 2. For EACH scenario this task advances — submit the REAL test result:
 autoloop test-run <scenarioId> --task <taskId> --passed <n> --failed <m> \
-  --summary "<what was tested and the conclusion>"
+  --summary "<which test verifies this scenario + the conclusion>"
 
 # 3. Open a bug for any concrete defect found:
 autoloop bug add <bugId> --title "<short>" --scenario <scenarioId> \
   --task <taskId> --severity <low|medium|high>
 
-# 4. Score each scenario:
+# 4. Score each scenario (only score met when its test-run has failed=0):
 autoloop score <scenarioId> --task <taskId> \
   --criterion <id>=<val> [--criterion ...] --composite <n> --commit <sha>
 ```
+
+**Every scenario tagged on this task must get BOTH a test-run and a score here.**
+Skipping a scenario's test-run is the #1 cause of features shipping with scenarios
+stuck unmet.
 
 ### 2d. Mark completed
 ```bash
@@ -114,9 +129,26 @@ done
 
 **Now go back to 2a for the next task.**
 
-## Step 3 — Close the current loop, then start the next one
+## Step 3 — Verify EVERY scenario, then close the loop
 
-When a loop's tasks are done, close it:
+### 3a. Scenario verification sweep (do this BEFORE closing)
+
+Before closing the loop, account for **every scenario that belongs to this loop
+iteration** — i.e. the union of `scenarioIds` across all of this loop's tasks.
+For each such scenario, confirm there is:
+1. a **test-run** with `failed = 0` (a real automated test that passes), AND
+2. a **score** with `composite >= threshold`.
+
+For any scenario missing either:
+- If it's genuinely implemented but you never wrote/ran its test → dispatch a
+  subagent to write the automated test now, run it, then submit the test-run + score.
+- If it's actually not met → record a revision and leave it unmet honestly:
+  `autoloop revise --scenario <s> --reason "<why>" --change <op>:<id>`
+
+Do not close the loop with implemented-but-untested scenarios silently sitting
+unmet. Either they have a passing test (met) or a revision explaining why not.
+
+### 3b. Close the loop
 
 ```bash
 # Safety net — idempotent, re-set every task and phase to terminal:
@@ -173,6 +205,8 @@ on the score alone.
 - **Honest scoring.** Don't inflate composites; an unmet scenario driving a revision is the loop working correctly.
 - **No silent truncation.** If a cap stops the loop, the summary must say which scenarios remain unmet.
 - **test-run is required.** A score alone does not make a scenario met. Always submit `autoloop test-run` before `autoloop score` for every scenario a task advances. Skipping test-run means the scenario will show as "unmet" in the UI regardless of the composite.
+- **Real tests, real numbers.** Every scenario in the loop needs an executable automated test that actually verifies it. The `--passed`/`--failed` counts must come from running that test — never fabricated. Implementing a feature without a test for its scenario leaves the scenario unmet, which is the defect we're avoiding.
+- **No scenario left behind.** Before closing a loop, run the Step 3a sweep: every scenario tagged to this loop's tasks must end either met (passing test + score) or with a revision explaining why not. Never close a loop with implemented-but-untested scenarios silently unmet.
 - **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
 
 ## Example (two tasks)
