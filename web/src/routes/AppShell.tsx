@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/context";
 import { LoopMark } from "../ui/LoopMark";
 import { NotificationsBell } from "../notifications/NotificationsBell";
+import { THEMES, getTheme, applyTheme } from "../ui/theme";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard" },
@@ -14,7 +15,10 @@ export function AppShell() {
   const { user, isAdmin, signOut } = useAuth();
   const [navOpen, setNavOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [theme, setTheme] = useState(getTheme);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  const pickTheme = (id: string) => { applyTheme(id); setTheme(id); };
   const items = isAdmin ? [...NAV, { to: "/admin", label: "Admin" }] : NAV;
 
   // close the profile menu on outside-click / Escape
@@ -70,6 +74,22 @@ export function AppShell() {
                 <div className="menu-head">
                   <span className="menu-label">Signed in as</span>
                   <span className="menu-email">{user?.email}</span>
+                </div>
+                <hr className="rule" />
+                <div className="menu-label menu-label--inset">Theme</div>
+                <div className="theme-grid">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`theme-opt${theme === t.id ? " theme-opt--active" : ""}`}
+                      aria-pressed={theme === t.id}
+                      onClick={() => pickTheme(t.id)}
+                    >
+                      <span className="theme-dot" style={{ background: t.swatch }} />
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
                 <hr className="rule" />
                 <NavLink to="/getting-started" className="menu-item" onClick={() => setProfileOpen(false)}>Getting started</NavLink>
