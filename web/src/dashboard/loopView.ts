@@ -54,6 +54,19 @@ export function loopIsRunning(loop: { status?: string }): boolean {
   return loop.status === "running";
 }
 
+/** A project's effective status. "running" only when a loop is actually running; otherwise the
+ *  latest loop's status (so a project with no running loop reflects its loops, not a stale flag).
+ *  Falls back to the stored project status when the project has no loops. */
+export function effectiveProjectStatus(
+  loops: { id: string; status?: string; order?: number }[],
+  projectStatus?: string,
+): string | undefined {
+  if (loops.length === 0) return projectStatus;
+  if (loops.some((l) => l.status === "running")) return "running";
+  const latest = [...loops].sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || b.id.localeCompare(a.id))[0];
+  return latest?.status ?? projectStatus;
+}
+
 /** Hook arg for a selectable loop: undefined for main (project-direct), else its id. */
 export function loopArgFor(loop: SelectableLoop | undefined): string | undefined {
   return !loop || loop.isMain ? undefined : loop.id;

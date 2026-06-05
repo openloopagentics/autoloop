@@ -225,6 +225,7 @@ export function useLoops(teamId: string, slug: string): Result<Loop[]> {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
+    if (!teamId || !slug) { setData([]); setLoading(false); return; }
     setLoading(true);
     const q = query(collection(db, "teams", teamId, "projects", slug, "loops"), orderBy("order"));
     return onSnapshot(q,

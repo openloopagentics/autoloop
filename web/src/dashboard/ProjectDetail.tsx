@@ -5,7 +5,7 @@ import {
   useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllScores, useAllTestRuns, useMessages,
 } from "./hooks";
 import { postMessage } from "./api";
-import { buildLoopList, defaultSelectedLoop, loopArgFor } from "./loopView";
+import { buildLoopList, defaultSelectedLoop, loopArgFor, effectiveProjectStatus } from "./loopView";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Tabs, isTabKey, type TabKey } from "./components/Tabs";
 import { TaskItem } from "./components/TaskItem";
@@ -49,6 +49,8 @@ export function ProjectDetail() {
   const hasProjectDirectData = directPhases.data.length > 0 || directTasks.data.length > 0;
 
   const loopList = buildLoopList(loops.data, project.data ?? null, hasProjectDirectData);
+  // Project shows "running" only when a loop actually is; otherwise it reflects the latest loop.
+  const projStatus = effectiveProjectStatus(loops.data, project.data?.status);
   const selectedId = (picked && loopList.some((l) => l.id === picked)) ? picked : defaultSelectedLoop(loopList, project.data?.currentLoopId);
   const selected = loopList.find((l) => l.id === selectedId);
   const loopArg = loopArgFor(selected);
@@ -90,14 +92,14 @@ export function ProjectDetail() {
         : project.data === null ? <EmptyState message="Project not found." />
         : (
           <>
-            {project.data && <ProjectHeader project={project.data} />}
+            {project.data && <ProjectHeader project={project.data} status={projStatus} />}
             <Tabs active={tab} onChange={setTab} />
             {dataError && <ErrorNote message={dataError} />}
 
             {tabLoading ? <Spinner /> : (
               <>
                 {tab === "dashboard" && (
-                  <DashboardTab loops={loopList} selected={selected} status={project.data?.status}
+                  <DashboardTab loops={loopList} selected={selected} status={projStatus}
                     phases={phases.data} tasks={tasks.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />
                 )}
                 {tab === "vision" && (

@@ -1,7 +1,8 @@
 import { StatusBadge } from "./StatusBadge";
 import type { Project } from "../types";
 
-export function ProjectHeader({ project }: { project: Project }) {
+export function ProjectHeader({ project, status }: { project: Project; status?: string }) {
+  const shown = status ?? project.status;
   return (
     <header className="proj-head">
       <div className="proj-head-top">
@@ -11,7 +12,7 @@ export function ProjectHeader({ project }: { project: Project }) {
             <code className="chip">{project.slug}</code>
           </div>
         </div>
-        {project.status && <StatusBadge status={project.status} />}
+        {shown && <StatusBadge status={shown} />}
       </div>
 
       {project.design?.format === "url" ? (
