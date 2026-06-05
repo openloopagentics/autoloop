@@ -611,8 +611,14 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .teamcards { display: flex; flex-direction: column; gap: var(--gap); }
 .teamcard { padding: var(--card-pad); }
-.teamcard-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
+.teamcard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
+.teamcard-titles { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .teamcard-name { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--fg); margin: 0; white-space: nowrap; }
+.team-slug { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-inset); border: 1px solid var(--border-soft); border-radius: 5px; padding: 2px 8px; cursor: pointer; font-size: 11px; width: fit-content; }
+.team-slug:hover { border-color: var(--border-strong); }
+.team-slug-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; }
+.team-slug-id { font-family: var(--font-mono); color: var(--fg-body); }
+.team-slug-copy { font-size: 10px; }
 
 .members { display: flex; flex-direction: column; }
 .member { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
