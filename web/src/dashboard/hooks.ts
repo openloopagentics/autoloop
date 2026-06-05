@@ -248,6 +248,33 @@ export function useBugs(teamId: string, slug: string, loopId?: string): Result<B
   return { data, loading, error };
 }
 
+/** All test runs across the whole project — project-direct + every loop's testRuns, merged. */
+export function useAllTestRuns(teamId: string, slug: string): Result<TestRun[]> {
+  const { data: loops } = useLoops(teamId, slug);
+  const loopKey = loops.map((l) => l.id).join(",");
+  const [byScope, setByScope] = useState<Record<string, TestRun[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const scopes: (string | undefined)[] = [undefined, ...loopKey.split(",").filter(Boolean)];
+    const unsubs = scopes.map((loopId) => {
+      const scopeKey = loopId ?? "__main__";
+      const q = query(collection(db, ...basePath(teamId, slug, loopId), "testRuns"), orderBy(documentId()));
+      return onSnapshot(q,
+        (snap) => {
+          setByScope((prev) => ({ ...prev, [scopeKey]: snap.docs.map((d) => ({ id: d.id, loopId, ...(d.data() as object) })) as TestRun[] }));
+          setLoading(false);
+        },
+        (e) => { setError(e.message); setLoading(false); });
+    });
+    return () => unsubs.forEach((u) => u());
+  }, [teamId, slug, loopKey]);
+  const current = new Set(["__main__", ...loopKey.split(",").filter(Boolean)]);
+  const data = Object.entries(byScope).filter(([k]) => current.has(k)).flatMap(([, v]) => v);
+  return { data, loading, error };
+}
+
 /** All bugs across the whole project — project-direct + every loop's bugs, merged. */
 export function useAllBugs(teamId: string, slug: string): Result<Bug[]> {
   const { data: loops } = useLoops(teamId, slug);
