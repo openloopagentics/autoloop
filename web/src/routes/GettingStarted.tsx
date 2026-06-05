@@ -61,8 +61,8 @@ export function GettingStarted() {
             <code>/autoloop-vision</code>) and the bundled <code>autoloop</code> CLI. Two ways:
           </p>
           <p><strong>Plugin (auto-updates):</strong></p>
-          <pre className="gs-pre"><code>/plugin marketplace add openloopagentics/autoloop
-/plugin install autoloop@autoloop</code></pre>
+          <pre className="gs-pre"><code>{`/plugin marketplace add openloopagentics/autoloop
+/plugin install autoloop@autoloop`}</code></pre>
           <p><strong>Or one-shot install</strong> — paste to Claude Code, or run it yourself:</p>
           <pre className="gs-pre"><code>curl -fsSL https://daloop-42b47.web.app/skill/install.sh | bash</code></pre>
           <p className="gs-muted">
@@ -80,9 +80,9 @@ export function GettingStarted() {
 
         <Step n={5} title="Run the loop">
           <p>Initialize once, then start the loop:</p>
-          <pre className="gs-pre"><code>autoloop init --team &lt;teamId&gt; --project &lt;slug&gt; --session-log
+          <pre className="gs-pre"><code>{`autoloop init --team <teamId> --project <slug> --session-log
 # then, in Claude Code:
-/autoloop</code></pre>
+/autoloop`}</code></pre>
           <p>
             <code>--session-log</code> streams the live session transcript to the dashboard. As the loop
             runs, your{" "}
