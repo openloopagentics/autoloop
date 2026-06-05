@@ -24,14 +24,12 @@ function relativeTime(createdAt: unknown): string {
 export function MessagesTab({
   teamId,
   slug,
-  loopId,
   messages,
   onSend,
   agentActive,
 }: {
   teamId: string;
   slug: string;
-  loopId: string | undefined;
   messages: Message[];
   onSend: (text: string) => Promise<void>;
   agentActive?: boolean;
@@ -58,7 +56,7 @@ export function MessagesTab({
       </div>
 
       {tab === "log" ? (
-        <SessionLogTab teamId={teamId} slug={slug} loopId={loopId} />
+        <SessionLogTab teamId={teamId} slug={slug} />
       ) : (
         <>
           <div className="msgthread">

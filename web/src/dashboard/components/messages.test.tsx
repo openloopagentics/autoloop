@@ -9,46 +9,46 @@ const agentMsg: Message = { id: "m3", text: "I will handle it", author: "agent" 
 
 describe("MessagesTab", () => {
   it("renders user bubble with msg--user class", () => {
-    const { container } = render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[userMsg]} onSend={vi.fn()} />);
+    const { container } = render(<MessagesTab teamId="t1" slug="p1" messages={[userMsg]} onSend={vi.fn()} />);
     const userBubble = container.querySelector(".msg--user");
     expect(userBubble).not.toBeNull();
     expect(userBubble?.textContent).toContain("Hello agent");
   });
 
   it("renders agent bubble with msg--agent class", () => {
-    const { container } = render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[agentMsg]} onSend={vi.fn()} />);
+    const { container } = render(<MessagesTab teamId="t1" slug="p1" messages={[agentMsg]} onSend={vi.fn()} />);
     const agentBubble = container.querySelector(".msg--agent");
     expect(agentBubble).not.toBeNull();
     expect(agentBubble?.textContent).toContain("I will handle it");
   });
 
   it("shows pending pill on user message with status=pending", () => {
-    const { container } = render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[userMsg]} onSend={vi.fn()} />);
+    const { container } = render(<MessagesTab teamId="t1" slug="p1" messages={[userMsg]} onSend={vi.fn()} />);
     const pill = container.querySelector(".msgstatus--pending");
     expect(pill).not.toBeNull();
     expect(pill?.textContent).toMatch(/sent/i);
   });
 
   it("shows delivered pill on user message with status=delivered", () => {
-    const { container } = render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[deliveredMsg]} onSend={vi.fn()} />);
+    const { container } = render(<MessagesTab teamId="t1" slug="p1" messages={[deliveredMsg]} onSend={vi.fn()} />);
     const pill = container.querySelector(".msgstatus--delivered");
     expect(pill).not.toBeNull();
     expect(pill?.textContent).toMatch(/delivered/i);
   });
 
   it("does NOT render a status pill on agent messages", () => {
-    const { container } = render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[agentMsg]} onSend={vi.fn()} />);
+    const { container } = render(<MessagesTab teamId="t1" slug="p1" messages={[agentMsg]} onSend={vi.fn()} />);
     expect(container.querySelector(".msgstatus")).toBeNull();
   });
 
   it("shows empty state when messages array is empty", () => {
-    render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[]} onSend={vi.fn()} />);
+    render(<MessagesTab teamId="t1" slug="p1" messages={[]} onSend={vi.fn()} />);
     expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
   });
 
   it("calls onSend with the typed text and clears on success", async () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
-    render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[]} onSend={onSend} />);
+    render(<MessagesTab teamId="t1" slug="p1" messages={[]} onSend={onSend} />);
     const textarea = screen.getByRole("textbox");
     fireEvent.change(textarea, { target: { value: "new message" } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
@@ -58,7 +58,7 @@ describe("MessagesTab", () => {
 
   it("shows an error via ErrorNote when onSend rejects", async () => {
     const onSend = vi.fn().mockRejectedValue(new Error("network failure"));
-    render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[]} onSend={onSend} />);
+    render(<MessagesTab teamId="t1" slug="p1" messages={[]} onSend={onSend} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "hi" } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
@@ -67,21 +67,21 @@ describe("MessagesTab", () => {
 
   it("does not call onSend for empty/whitespace-only text", () => {
     const onSend = vi.fn();
-    render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[]} onSend={onSend} />);
+    render(<MessagesTab teamId="t1" slug="p1" messages={[]} onSend={onSend} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     expect(onSend).not.toHaveBeenCalled();
   });
 
   it("shows running hint when agentActive=true", () => {
-    const { container } = render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[]} onSend={vi.fn()} agentActive={true} />);
+    const { container } = render(<MessagesTab teamId="t1" slug="p1" messages={[]} onSend={vi.fn()} agentActive={true} />);
     expect(container.querySelector(".msg-agentstatus--active")).not.toBeNull();
     expect(screen.getByText(/a loop is running/i)).toBeInTheDocument();
     expect(screen.getByText(/it'll see your message at its next step/i)).toBeInTheDocument();
   });
 
   it("shows waiting hint when agentActive=false", () => {
-    const { container } = render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[]} onSend={vi.fn()} agentActive={false} />);
+    const { container } = render(<MessagesTab teamId="t1" slug="p1" messages={[]} onSend={vi.fn()} agentActive={false} />);
     const el = container.querySelector(".msg-agentstatus");
     expect(el).not.toBeNull();
     expect(el?.classList.contains("msg-agentstatus--active")).toBe(false);
@@ -90,7 +90,7 @@ describe("MessagesTab", () => {
   });
 
   it("omits the agent-status hint when agentActive is not passed", () => {
-    const { container } = render(<MessagesTab teamId="t1" slug="p1" loopId="loop1" messages={[]} onSend={vi.fn()} />);
+    const { container } = render(<MessagesTab teamId="t1" slug="p1" messages={[]} onSend={vi.fn()} />);
     expect(container.querySelector(".msg-agentstatus")).toBeNull();
   });
 });

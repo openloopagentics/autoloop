@@ -1086,7 +1086,22 @@ a.docrow-title:hover { color: var(--accent); }
 .msgtab--active { background: var(--surface-raised); color: var(--fg); }
 
 /* Session log */
-.slog-wrap { display: flex; flex-direction: column; gap: 16px; }
+.slog-wrap { display: flex; flex-direction: column; gap: 6px; }
+
+/* Collapsible per-loop rows */
+.slog-loop { border: 1px solid var(--border-soft); border-radius: 6px; overflow: hidden; }
+.slog-loop--open { border-color: var(--border); }
+.slog-loop-head { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-inset); border: none; cursor: pointer; text-align: left; font-size: 12px; color: var(--fg); }
+.slog-loop-head:hover { background: var(--surface-hover); }
+.slog-loop-caret { color: var(--fg-soft); width: 12px; }
+.slog-loop-id { font-family: monospace; font-weight: 600; }
+.slog-loop-goal { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.slog-loop-status { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 3px; background: var(--surface-raised); color: var(--fg-soft); }
+.slog-loop-status--completed { color: var(--st-completed); }
+.slog-loop-status--running { color: var(--st-running); }
+.slog-loop-status--failed { color: var(--st-failed); }
+.slog-loop-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 16px; }
+
 .slog-session { display: flex; flex-direction: column; gap: 4px; }
 .slog-session-header { font-size: 11px; padding: 0 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .slog-entry { display: flex; gap: 8px; font-size: 12px; padding: 2px 0; }
