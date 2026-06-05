@@ -18,7 +18,7 @@ export interface Scenario {
 }
 export interface Task { id: string; phaseId?: string; title?: string; order?: number; status?: string; scenarioIds?: string[]; }
 export interface Score { id: string; scenarioId?: string; taskId?: string; criteria?: Record<string, number>; composite?: number; by?: string; note?: string; commitSha?: string; }
-export interface TestRun { id: string; scenarioId?: string; taskId?: string; passed?: number; failed?: number; issues?: string[]; summary?: string; }
+export interface TestRun { id: string; scenarioId?: string; taskId?: string; passed?: number; failed?: number; issues?: string[]; summary?: string; loopId?: string; }
 export interface RevisionChange { op: string; taskId: string; [k: string]: unknown; }
 export interface Revision { id: string; trigger?: { scenarioId?: string; reason?: string }; changes?: RevisionChange[]; }
 export interface DocumentRec { id: string; kind?: string; title?: string; format?: "markdown" | "url"; content?: string; }
