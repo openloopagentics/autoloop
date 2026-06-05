@@ -80,17 +80,30 @@ scenario stays **unmet** — do not score it as met (see 2c).
 The `--passed`/`--failed` numbers MUST come from the subagent's real test run —
 never invent them. A scenario with no passing automated test is unmet.
 
+**Traceability is mandatory.** Every test-run and every bug must point back to the
+exact artifacts so anyone can follow scenario → test → result → bug → fix.
+
 ```bash
-# 1. Report the commit
+# 1. Report the commit (gives every test-run/bug below a commit to trace to)
 autoloop commit --task <taskId>
 
-# 2. For EACH scenario this task advances — submit the REAL test result:
+# 2. For EACH scenario this task advances — submit the REAL test result.
+#    The --summary MUST name: the test file path, the test name(s), and the exact
+#    command used to run them, plus the conclusion. One --issue per failing assertion.
 autoloop test-run <scenarioId> --task <taskId> --passed <n> --failed <m> \
-  --summary "<which test verifies this scenario + the conclusion>"
+  --summary "test: web/src/foo.test.tsx › 'hero rotates' | cmd: npm test -- foo | <pass/fail conclusion>" \
+  [--issue "<file::test> expected X, got Y"]   # repeat per failure
 
-# 3. Open a bug for any concrete defect found:
-autoloop bug add <bugId> --title "<short>" --scenario <scenarioId> \
-  --task <taskId> --severity <low|medium|high>
+# 3. Open a bug for EVERY concrete defect found. It must be traceable:
+#    --scenario + --task link it; --description carries the test that caught it,
+#    the commit sha, and expected-vs-actual so it can be reproduced and verified.
+autoloop bug add <bugId> --title "<short, specific>" \
+  --scenario <scenarioId> --task <taskId> --severity <low|medium|high> \
+  --description "caught by: <test file::name> @ <commit sha> | expected: <…> | actual: <…> | repro: <steps>"
+
+# When a bug is fixed, close it with the fixing commit referenced:
+autoloop bug set <bugId> --status fixed \
+  --description "fixed in <commit sha>; <test file::name> now passes"
 
 # 4. Score each scenario (only score met when its test-run has failed=0):
 autoloop score <scenarioId> --task <taskId> \
@@ -100,6 +113,16 @@ autoloop score <scenarioId> --task <taskId> \
 **Every scenario tagged on this task must get BOTH a test-run and a score here.**
 Skipping a scenario's test-run is the #1 cause of features shipping with scenarios
 stuck unmet.
+
+**Traceability checklist — every test-run and bug must carry:**
+- which **scenario** it belongs to (`<scenarioId>` / `--scenario`)
+- which **task** produced it (`--task`)
+- the exact **test** (file path + test name) — in the test-run `--summary` and the bug `--description`
+- the **commit sha** the result/defect is against
+- for bugs: **expected vs actual** and how to **reproduce**; on fix, the **fixing commit**
+
+A test-run with a vague summary ("tests pass") or a bug with no scenario/test/commit
+reference is not acceptable — redo it with the specifics.
 
 ### 2d. Mark completed
 ```bash
@@ -207,6 +230,7 @@ on the score alone.
 - **test-run is required.** A score alone does not make a scenario met. Always submit `autoloop test-run` before `autoloop score` for every scenario a task advances. Skipping test-run means the scenario will show as "unmet" in the UI regardless of the composite.
 - **Real tests, real numbers.** Every scenario in the loop needs an executable automated test that actually verifies it. The `--passed`/`--failed` counts must come from running that test — never fabricated. Implementing a feature without a test for its scenario leaves the scenario unmet, which is the defect we're avoiding.
 - **No scenario left behind.** Before closing a loop, run the Step 3a sweep: every scenario tagged to this loop's tasks must end either met (passing test + score) or with a revision explaining why not. Never close a loop with implemented-but-untested scenarios silently unmet.
+- **Traceability is mandatory.** Every test-run names the exact test (file + test name) and command in its `--summary`; every bug links `--scenario` + `--task` and records the catching test, commit sha, and expected-vs-actual in `--description`; fixed bugs cite the fixing commit. Vague "tests pass" summaries or bugs with no scenario/test/commit reference must be redone.
 - **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
 
 ## Example (two tasks)
