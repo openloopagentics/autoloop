@@ -17,9 +17,9 @@ describe("buildLoopList", () => {
     { id: "l2", goal: "B", order: 2, status: "running", currentTaskId: "t9" },
     { id: "l1", goal: "A", order: 1, status: "completed" },
   ];
-  it("sorts explicit loops by order then id and adds no main when no legacy data", () => {
+  it("sorts explicit loops latest-first (descending by order) and adds no main when no legacy data", () => {
     const list = buildLoopList(loops, project, false);
-    expect(list.map((l) => l.id)).toEqual(["l1", "l2"]);
+    expect(list.map((l) => l.id)).toEqual(["l2", "l1"]);
     expect(list.some((l) => l.isMain)).toBe(false);
   });
   it("appends a synthesized main (with project fields) when legacy data exists", () => {
