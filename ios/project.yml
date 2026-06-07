@@ -39,3 +39,6 @@ targets:
     sources: [AutoloopTests]
     dependencies:
       - target: Autoloop
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
