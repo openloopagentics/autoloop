@@ -17,10 +17,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct AutoloopApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var auth = AuthStore()
     @StateObject private var theme = ThemeStore()
     var body: some Scene {
         WindowGroup {
-            AppShell().environmentObject(theme)
+            RootView().environmentObject(auth).environmentObject(theme)
         }
     }
 }
