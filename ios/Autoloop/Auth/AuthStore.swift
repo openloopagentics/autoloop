@@ -29,7 +29,12 @@ final class AuthStore: ObservableObject {
         // Firebase may be unconfigured (no GoogleService-Info.plist in CI / unit-test
         // hosting). Auth.auth() hard-crashes in that case, so resolve to signed-out
         // and skip attaching listeners — mirrors the AppDelegate configure() guard.
+        // In a real app run this branch should never execute; fail loud if it does so a
+        // misconfiguration surfaces instead of masquerading as a silent "signed-out".
         guard FirebaseApp.app() != nil else {
+            if !isRunningUnitTests {
+                assertionFailure("FirebaseApp not configured before AuthStore — check AppDelegate.")
+            }
             authResolved = true
             recompute()
             return
@@ -62,11 +67,17 @@ final class AuthStore: ObservableObject {
     func signIn() async {
         signInError = nil
         guard let clientID = FirebaseApp.app()?.options.clientID,
-              let root = Self.topViewController() else { return }
+              let root = Self.topViewController() else {
+            signInError = "Sign-in is unavailable right now."
+            return
+        }
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         do {
             let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: root)
-            guard let idToken = result.user.idToken?.tokenString else { return }
+            guard let idToken = result.user.idToken?.tokenString else {
+                signInError = "Sign-in is unavailable right now."
+                return
+            }
             let cred = GoogleAuthProvider.credential(withIDToken: idToken,
                                                      accessToken: result.user.accessToken.tokenString)
             try await Auth.auth().signIn(with: cred)

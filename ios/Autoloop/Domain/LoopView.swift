@@ -24,6 +24,9 @@ func basePath(teamId: String, slug: String, loopId: String? = nil) -> [String] {
 private func descByOrderThenId<T>(_ a: T, _ b: T, order: (T) -> Int?, id: (T) -> String) -> Bool {
     let oa = order(a) ?? 0, ob = order(b) ?? 0
     if oa != ob { return oa > ob }
+    // Descending id tie-break. The web uses String.localeCompare; we use Swift's `>`
+    // (Unicode-scalar order). These agree for the ULID/ASCII ids used as loop ids
+    // (uppercase Crockford base32), which is the only id shape produced here.
     return id(a) > id(b)
 }
 
