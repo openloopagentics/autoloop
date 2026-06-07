@@ -3,4 +3,5 @@ DerivedData/
 *.xcodeproj
 Config/Autoloop.xcconfig
 Config/GoogleService-Info.plist
+Autoloop/Info.plist
 .DS_Store

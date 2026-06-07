@@ -28,10 +28,18 @@ targets:
         product: FirebaseFirestore
       - package: GoogleSignIn
         product: GoogleSignIn
+    info:
+      path: Autoloop/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        API_BASE_URL: $(API_BASE_URL)
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - REVERSED_CLIENT_ID_PLACEHOLDER
     settings:
       base:
-        GENERATE_INFOPLIST_FILE: true
-        INFOPLIST_KEY_UILaunchScreen_Generation: true
         PRODUCT_BUNDLE_IDENTIFIER: com.openloopagentics.autoloop
   AutoloopTests:
     type: bundle.unit-test
