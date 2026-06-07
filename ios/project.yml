@@ -1,0 +1,41 @@
+name: Autoloop
+options:
+  bundleIdPrefix: com.openloopagentics.autoloop
+  deploymentTarget:
+    iOS: "16.0"
+configFiles:
+  Debug: Config/Autoloop.xcconfig
+  Release: Config/Autoloop.xcconfig
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 11.0.0
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 7.0.0
+targets:
+  Autoloop:
+    type: application
+    platform: iOS
+    sources: [Autoloop]
+    resources:
+      - path: Config/GoogleService-Info.plist
+        optional: true
+    dependencies:
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: GoogleSignIn
+        product: GoogleSignIn
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        PRODUCT_BUNDLE_IDENTIFIER: com.openloopagentics.autoloop
+  AutoloopTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AutoloopTests]
+    dependencies:
+      - target: Autoloop

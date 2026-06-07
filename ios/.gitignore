@@ -1,0 +1,6 @@
+build/
+DerivedData/
+*.xcodeproj
+Config/Autoloop.xcconfig
+Config/GoogleService-Info.plist
+.DS_Store
