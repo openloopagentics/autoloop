@@ -85,13 +85,24 @@ A "+" toolbar button on `DashboardView` opens a sheet with `NewProjectFormView`
 `RestClient.putProject(teamId:slug:title:)` (create = upsert with a fresh slug).
 The Dashboard listener shows the new project live.
 
-### Project delete (from project-detail)
-A `DangerZoneView` (mirror `DangerZone.tsx`): a destructive control behind a
-type-the-slug-to-confirm step; on success pops back to the Dashboard. Reach it via
-an overflow (`…`) menu in the project-detail toolbar.
-- **Role gating:** `ProjectDetailStore` reads `teams/{teamId}/members/{uid}` for
-  the current user's `role`; the delete control shows only for `owner`/`manager`.
-  The server also enforces authz (defense in depth); API errors surface inline.
+### Project delete (from the Dashboard — mirrors the real web UX)
+The live web deletes projects from `DashboardHome.tsx`, NOT via the unused
+`DangerZone.tsx` (which is dead code). Mirror the real flow:
+- A per-project delete action on the Dashboard (a swipe action / context menu on
+  the project row), shown only when the user's role on that project's team is
+  `owner` or `manager`.
+- Confirm with a simple iOS confirmation dialog ("Delete project \"<slug>\"? This
+  cannot be undone."), then call `RestClient.deleteProject(teamId:slug:)`. The
+  Dashboard listener removes the row live; an API error surfaces inline (the
+  server also enforces authz).
+- **Role source:** reuse the team list `DashboardStore` already builds from the
+  `collectionGroup("members")` query (the analogue of `useMyTeams`) — each
+  `TeamRef` carries `role`. Expose role per team on `DashboardStore` (e.g. a
+  `[teamId: role]` map or `role(forTeam:)`); do NOT add a new
+  `teams/{teamId}/members/{uid}` read.
+
+(There is no project-detail toolbar delete and no type-the-slug step — those would
+diverge from the web. Delete lives on the Dashboard, like the web.)
 
 ## Error handling
 
@@ -108,9 +119,10 @@ appears. A failed delete keeps the user on the screen with the error shown.
   optionals).
 - **Build + manual acceptance** (needs the SP1/SP2 secrets): on an editable
   project, add/edit/delete a goal, a scenario (with rubric), a document; create a
-  new project from the Dashboard; delete a project via the confirm flow as an
-  owner. Verify non-editable projects (`visionOwner == "loop"`) show no editing
-  UI, and non-owners see no delete control.
+  new project from the Dashboard; delete a project from the Dashboard via the
+  confirm dialog as an owner/manager. Verify non-editable projects
+  (`visionOwner == "loop"`) show no editing UI, and members (non-owner/manager)
+  see no delete action.
 
 ## Out of scope (later)
 
