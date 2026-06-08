@@ -44,4 +44,61 @@ enum RestClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(data, resp)
     }
+
+    // MARK: - Generic send helper
+
+    private static func send(method: String, url: URL, jsonBody: [String: Any]?) async throws {
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
+        if let body = jsonBody {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(data, resp)
+    }
+
+    // MARK: - Goal writes
+
+    /// PUT /goals/{id}
+    static func putGoal(teamId: String, slug: String, id: String, body: GoalBody) async throws {
+        try await send(method: "PUT", url: url(teamId, slug, "/goals/\(id)"), jsonBody: body.jsonObject)
+    }
+
+    /// DELETE /goals/{id}
+    static func deleteGoal(teamId: String, slug: String, id: String) async throws {
+        try await send(method: "DELETE", url: url(teamId, slug, "/goals/\(id)"), jsonBody: nil)
+    }
+
+    // MARK: - Scenario writes
+
+    /// PUT /scenarios/{id}
+    static func putScenario(teamId: String, slug: String, id: String, body: ScenarioBody) async throws {
+        try await send(method: "PUT", url: url(teamId, slug, "/scenarios/\(id)"), jsonBody: body.jsonObject)
+    }
+
+    /// DELETE /scenarios/{id}
+    static func deleteScenario(teamId: String, slug: String, id: String) async throws {
+        try await send(method: "DELETE", url: url(teamId, slug, "/scenarios/\(id)"), jsonBody: nil)
+    }
+
+    // MARK: - Document writes
+
+    /// PUT /documents/{id}
+    static func putDocument(teamId: String, slug: String, id: String, body: DocumentBody) async throws {
+        try await send(method: "PUT", url: url(teamId, slug, "/documents/\(id)"), jsonBody: body.jsonObject)
+    }
+
+    /// DELETE /documents/{id}
+    static func deleteDocument(teamId: String, slug: String, id: String) async throws {
+        try await send(method: "DELETE", url: url(teamId, slug, "/documents/\(id)"), jsonBody: nil)
+    }
+
+    // MARK: - Project writes
+
+    /// DELETE project (no rest path).
+    static func deleteProject(teamId: String, slug: String) async throws {
+        try await send(method: "DELETE", url: url(teamId, slug), jsonBody: nil)
+    }
 }
