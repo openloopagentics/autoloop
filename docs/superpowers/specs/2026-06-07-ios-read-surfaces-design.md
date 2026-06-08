@@ -102,7 +102,12 @@ SP1 `Timestamp`→`Date` shim; loose/extra fields tolerated.
 - Project-level: `loops`, `goals`, `scenarios`, `documents`, `messages`
 - Loop-scoped (path via SP1 `basePath`, which handles loop-vs-project-direct):
   `phases`, `tasks`, `scores`, `testRuns`, `revisions`, `sessionLog`
-- CollectionGroup across loops: `allTestRuns`, `allScores`, `allBugs`
+- All-scope merges `allTestRuns`, `allScores`, `allBugs` — **NOT** Firestore
+  `collectionGroup` queries. Mirror the web (`hooks.ts`): fan out one
+  `QueryListener` per scope (project-direct + each loop id from `loops`), keyed by
+  scope; each snapshot stamps `loopId` onto its docs; merge all scopes and filter
+  to currently-present scopes so a removed loop's data doesn't linger. This needs
+  no new Firestore indexes/rules (it reuses the same per-collection reads).
 - Lazy: `commits(phaseId)`, `taskCommits(taskId)`
 
 Each exposes `data/loading/error` like the web's `Result<T>`.
