@@ -11,6 +11,7 @@ struct ProjectRow: Identifiable, Equatable {
 @MainActor
 final class DashboardStore: ObservableObject {
     @Published var rows: [ProjectRow] = []
+    @Published private(set) var teams: [TeamRef] = []
     @Published var loading = true
     @Published var error: String?
 
@@ -36,6 +37,7 @@ final class DashboardStore: ObservableObject {
         switch result {
         case .failure(let e): error = e.localizedDescription; loading = false
         case .success(let teams):
+            self.teams = teams.sorted { $0.teamId < $1.teamId }
             let ids = Set(teams.map(\.teamId))
             for (id, reg) in projectListeners where !ids.contains(id) {
                 reg.remove(); projectListeners[id] = nil; byTeam[id] = nil
