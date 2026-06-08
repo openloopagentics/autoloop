@@ -72,10 +72,18 @@ collection-group → `[TeamRef]` already in `DashboardStore`; extract a shared
 - **Create a team:** name field → `TeamActions.createTeam(teamIdFromName(name),
   name)`.
 - **Pending invites for you:** each with Accept / Decline.
-- **Your teams:** per-team card — name + copyable team id; member rows (role +
-  email; for managers `owner|admin`, a role `Menu` and remove, but not on self/owner
-  per the web `MemberRow` rules); for managers an invite form (email + role) and
-  the list of sent invites with revoke.
+- **Your teams:** per-team card — name + copyable team id; member rows following
+  the exact `MemberRow.tsx` rules:
+  - `canManage = !isSelf && (viewerRole == "owner" || (viewerRole == "admin" &&
+    member.role == "member"))` — owners manage anyone but themselves; admins manage
+    only `member`-role rows (not other admins/owners).
+  - When `canManage`: a role picker (options = owner sees `owner|admin|member`,
+    admin sees only `member`) → `changeRole`, plus a Remove button → `removeMember`.
+  - Otherwise: a plain role label.
+  - When `isSelf`: always show a "Leave" button (`removeMember(self.uid)`),
+    independent of `canManage`.
+  - The invite form + sent-invites-with-revoke show only to managers
+    (`owner|admin`, matching `TeamsPage` `isManager`).
 Errors surface inline via `ErrorNote` (a shared "run action, capture error"
 helper mirrors `useActionError`).
 
