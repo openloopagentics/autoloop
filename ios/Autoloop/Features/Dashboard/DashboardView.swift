@@ -7,6 +7,7 @@ struct DashboardView: View {
     @State private var writeError: String?
     @State private var showNew = false
     @State private var createdTarget: ProjectRow?
+    @State private var deleting: ProjectRow?
 
     var body: some View {
         Group {
@@ -29,6 +30,14 @@ struct DashboardView: View {
                     }
                     .swipeActions {
                         Button("Rename") { renaming = row; newTitle = row.project.title ?? "" }
+                        if store.canDelete(teamId: row.teamId) {
+                            Button("Delete", role: .destructive) { deleting = row }
+                        }
+                    }
+                    .contextMenu {
+                        if store.canDelete(teamId: row.teamId) {
+                            Button("Delete", role: .destructive) { deleting = row }
+                        }
                     }
                 }
             }
@@ -61,6 +70,14 @@ struct DashboardView: View {
             Button("Save") { Task { await save() } }
             Button("Cancel", role: .cancel) { renaming = nil }
         }
+        .confirmationDialog(
+            deleting.map { "Delete project \"\($0.project.slug)\"? This cannot be undone." } ?? "",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { if let row = deleting { Task { await delete(row) } } }
+            Button("Cancel", role: .cancel) { deleting = nil }
+        }
         .alert("Write failed", isPresented: Binding(get: { writeError != nil }, set: { if !$0 { writeError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(writeError ?? "") }
@@ -72,6 +89,13 @@ struct DashboardView: View {
             try await RestClient.putProject(teamId: row.teamId, slug: row.project.slug,
                                             title: newTitle, status: row.project.status ?? "running")
             renaming = nil
+        } catch { writeError = error.localizedDescription }
+    }
+
+    private func delete(_ row: ProjectRow) async {
+        deleting = nil
+        do {
+            try await RestClient.deleteProject(teamId: row.teamId, slug: row.project.slug)
         } catch { writeError = error.localizedDescription }
     }
 }

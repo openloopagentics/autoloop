@@ -72,4 +72,15 @@ final class DashboardStore: ObservableObject {
         projectListeners.values.forEach { $0.remove() }
         projectListeners.removeAll(); byTeam.removeAll()
     }
+
+    /// The user's role on a team, if they're a member.
+    func role(forTeam teamId: String) -> String? {
+        teams.first { $0.teamId == teamId }?.role
+    }
+
+    /// Mirrors DashboardHome.tsx: owners and managers may delete projects.
+    func canDelete(teamId: String) -> Bool {
+        let r = role(forTeam: teamId)
+        return r == "owner" || r == "manager"
+    }
 }
