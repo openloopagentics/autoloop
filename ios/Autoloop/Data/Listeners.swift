@@ -56,7 +56,7 @@ func loopsQuery(teamId: String, slug: String) -> Query {
         .collection("teams").document(teamId)
         .collection("projects").document(slug)
         .collection("loops")
-        .order(by: FieldPath.documentID())
+        .order(by: "order")
 }
 
 func goalsQuery(teamId: String, slug: String) -> Query {
@@ -64,7 +64,7 @@ func goalsQuery(teamId: String, slug: String) -> Query {
         .collection("teams").document(teamId)
         .collection("projects").document(slug)
         .collection("goals")
-        .order(by: FieldPath.documentID())
+        .order(by: "order")
 }
 
 func scenariosQuery(teamId: String, slug: String) -> Query {
@@ -72,7 +72,7 @@ func scenariosQuery(teamId: String, slug: String) -> Query {
         .collection("teams").document(teamId)
         .collection("projects").document(slug)
         .collection("scenarios")
-        .order(by: FieldPath.documentID())
+        .order(by: "order")
 }
 
 func documentsQuery(teamId: String, slug: String) -> Query {
@@ -95,12 +95,12 @@ func messagesQuery(teamId: String, slug: String) -> Query {
 
 func phasesQuery(teamId: String, slug: String, loopId: String?) -> Query {
     collectionRef(segments: basePath(teamId: teamId, slug: slug, loopId: loopId), name: "phases")
-        .order(by: FieldPath.documentID())
+        .order(by: "order")
 }
 
 func tasksQuery(teamId: String, slug: String, loopId: String?) -> Query {
     collectionRef(segments: basePath(teamId: teamId, slug: slug, loopId: loopId), name: "tasks")
-        .order(by: FieldPath.documentID())
+        .order(by: "order")
 }
 
 func scoresQuery(teamId: String, slug: String, loopId: String?) -> Query {
@@ -120,7 +120,7 @@ func revisionsQuery(teamId: String, slug: String, loopId: String?) -> Query {
 
 func sessionsQuery(teamId: String, slug: String, loopId: String?) -> Query {
     collectionRef(segments: basePath(teamId: teamId, slug: slug, loopId: loopId), name: "sessions")
-        .order(by: FieldPath.documentID())
+        .order(by: "startedAt")
 }
 
 func bugsQuery(teamId: String, slug: String, loopId: String?) -> Query {

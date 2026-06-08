@@ -18,7 +18,6 @@ final class MessagesTabStore: ObservableObject {
     @Published private(set) var sessionsByScope: [(scopeLabel: String, sessions: [SessionDoc])] = []
     @Published var sendError: String?
 
-    private let mainScope = "__main__"
     private var byScope: [String: [SessionDoc]] = [:]
     private var listeners: [String: QueryListener<[SessionDoc]>] = [:]
     private var currentScopes: Set<String> = []
@@ -39,14 +38,16 @@ final class MessagesTabStore: ObservableObject {
         subscribeSessions(loops: loops)
     }
 
-    /// (Re)subscribe session listeners for the project-direct scope + each loop.
+    /// (Re)subscribe session listeners — one per loop. Sessions are loop-scoped only;
+    /// the web's useSessionLog returns empty for the project-direct scope and
+    /// SessionLogTab iterates loops only, so we do NOT subscribe a project-direct scope.
     func subscribeSessions(loops: [Loop]) {
         // Newest loop first (order desc, then id desc) — mirrors SessionLogTab.tsx.
         orderedLoopIds = loops
             .sorted { ($0.order ?? 0, $0.id) > ($1.order ?? 0, $1.id) }
             .map(\.id)
 
-        let newScopes: Set<String> = Set([mainScope] + orderedLoopIds)
+        let newScopes: Set<String> = Set(orderedLoopIds)
 
         for gone in currentScopes.subtracting(newScopes) {
             listeners[gone]?.stop()
@@ -55,7 +56,7 @@ final class MessagesTabStore: ObservableObject {
         }
 
         for scopeKey in newScopes.subtracting(currentScopes) {
-            let loopId: String? = scopeKey == mainScope ? nil : scopeKey
+            let loopId: String? = scopeKey
             let ql = QueryListener<[SessionDoc]>()
             ql.start(sessionsQuery(teamId: teamId, slug: slug, loopId: loopId), map: { docs in
                 docs.map { SessionDoc(id: $0.documentID, data: $0.data()) }
@@ -80,9 +81,6 @@ final class MessagesTabStore: ObservableObject {
         for loopId in orderedLoopIds {
             let sessions = byScope[loopId] ?? []
             if !sessions.isEmpty { out.append((scopeLabel: loopId, sessions: sessions)) }
-        }
-        if let mainSessions = byScope[mainScope], !mainSessions.isEmpty {
-            out.append((scopeLabel: "main", sessions: mainSessions))
         }
         sessionsByScope = out
     }

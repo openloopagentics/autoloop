@@ -55,6 +55,7 @@ final class AllScopeStore<T>: ObservableObject {
                         self.loading = false
                     case .success(let items):
                         self.byScope[scopeKey] = items
+                        self.loading = false   // first snapshot arrived
                         self.publish()
                     }
                 }
@@ -62,9 +63,12 @@ final class AllScopeStore<T>: ObservableObject {
             listeners[scopeKey] = ql
         }
 
+        // Keep `loading` true until the first snapshot of an initial load arrives
+        // (mirrors the web, which clears loading only inside onSnapshot). Do NOT flip
+        // it false synchronously here, or the first-load spinner never shows.
+        if byScope.isEmpty { loading = true }
         currentScopes = newScopes
         publish()
-        loading = false
     }
 
     private func publish() {
