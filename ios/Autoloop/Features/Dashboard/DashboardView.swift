@@ -13,13 +13,17 @@ struct DashboardView: View {
             else if store.rows.isEmpty { EmptyState(text: "No projects yet.") }
             else {
                 List(store.rows) { row in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(row.project.title ?? row.project.slug).font(.headline)
-                            Text(row.teamId).font(.caption).foregroundStyle(.secondary)
+                    NavigationLink {
+                        ProjectDetailView(teamId: row.teamId, slug: row.project.slug)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(row.project.title ?? row.project.slug).font(.headline)
+                                Text(row.teamId).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if let s = row.project.status { StatusBadge(status: s) }
                         }
-                        Spacer()
-                        if let s = row.project.status { StatusBadge(status: s) }
                     }
                     .swipeActions {
                         Button("Rename") { renaming = row; newTitle = row.project.title ?? "" }
