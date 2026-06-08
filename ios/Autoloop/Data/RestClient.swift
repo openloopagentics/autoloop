@@ -33,4 +33,15 @@ enum RestClient {
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(data, resp)
     }
+
+    /// Mirrors api.ts postMessage: POST /messages with { text }.
+    static func postMessage(teamId: String, slug: String, text: String) async throws {
+        var req = URLRequest(url: url(teamId, slug, "/messages"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["text": text])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(data, resp)
+    }
 }
