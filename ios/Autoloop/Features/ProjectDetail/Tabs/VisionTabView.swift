@@ -44,6 +44,7 @@ struct VisionTabView: View {
 
     @State private var activeSheet: VisionFormSheet?
     @State private var deleteTarget: VisionDeleteTarget?
+    @State private var deleteError: String?
 
     // Convenience accessors
     private var scenarios: [Scenario] { store.scenarios.data }
@@ -116,6 +117,10 @@ struct VisionTabView: View {
             }
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         }
+        .alert("Delete failed", isPresented: Binding(get: { deleteError != nil },
+                                                     set: { if !$0 { deleteError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(deleteError ?? "") }
     }
 
     // MARK: - Add menu
@@ -155,24 +160,24 @@ struct VisionTabView: View {
     // MARK: - Save wiring
 
     private func saveGoal(_ body: GoalBody, existing: Goal?) async throws {
-        let id = existing?.id ?? genId(title: body.title, taken: goals.map(\.id), prefix: "g")
+        let id = existing?.id ?? genId(title: body.title, taken: goals.map(\.id), prefix: "goal")
         try await RestClient.putGoal(teamId: store.teamId, slug: store.slug, id: id, body: body)
     }
 
     private func saveScenario(_ body: ScenarioBody, existing: Scenario?) async throws {
-        let id = existing?.id ?? genId(title: body.title, taken: scenarios.map(\.id), prefix: "s")
+        let id = existing?.id ?? genId(title: body.title, taken: scenarios.map(\.id), prefix: "scenario")
         try await RestClient.putScenario(teamId: store.teamId, slug: store.slug, id: id, body: body)
     }
 
     private func saveDocument(_ body: DocumentBody, existing: DocumentRec?) async throws {
-        let id = existing?.id ?? genId(title: body.title, taken: documents.map(\.id), prefix: "doc")
+        let id = existing?.id ?? genId(title: body.title, taken: documents.map(\.id), prefix: "document")
         try await RestClient.putDocument(teamId: store.teamId, slug: store.slug, id: id, body: body)
     }
 
     // MARK: - Delete wiring
 
     private func performDelete(_ target: VisionDeleteTarget) {
-        Task {
+        Task { @MainActor in
             do {
                 switch target {
                 case .goal(let g):
@@ -182,9 +187,9 @@ struct VisionTabView: View {
                 case .document(let d):
                     try await RestClient.deleteDocument(teamId: store.teamId, slug: store.slug, id: d.id)
                 }
+                // On success the live listener drops the item — no local mutation.
             } catch {
-                // Live listeners keep the list authoritative; surface failures silently
-                // here (the item simply remains). A toast layer is out of scope for SP3a.
+                deleteError = error.localizedDescription
             }
         }
     }

@@ -31,7 +31,10 @@ struct ScenarioFormView: View {
         _threshold = State(initialValue: initial?.threshold.map(String.init) ?? "")
         if let criteria = initial?.rubric, !criteria.isEmpty {
             _rows = State(initialValue: criteria.map {
-                CriterionRow(name: $0.name, weight: String($0.weight), max: String(Int($0.max)))
+                CriterionRow(name: $0.name,
+                             weight: $0.weight.truncatingRemainder(dividingBy: 1) == 0
+                                 ? String(Int($0.weight)) : String($0.weight),
+                             max: String(Int($0.max)))
             })
         } else {
             _rows = State(initialValue: [Self.emptyRow()])
