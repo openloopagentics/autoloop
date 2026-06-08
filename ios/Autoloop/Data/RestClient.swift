@@ -101,4 +101,76 @@ enum RestClient {
     static func deleteProject(teamId: String, slug: String) async throws {
         try await send(method: "DELETE", url: url(teamId, slug), jsonBody: nil)
     }
+
+    // MARK: - Generic top-level (non-project) endpoints
+    // Built from AppConfig.apiBaseURL + path (keys/admin are not under /teams/.../projects).
+
+    private static func apiURL(_ path: String) -> URL {
+        URL(string: "\(AppConfig.apiBaseURL)\(path)")!
+    }
+
+    /// GET decoding into T.
+    static func get<T: Decodable>(_ path: String) async throws -> T {
+        var req = URLRequest(url: apiURL(path))
+        req.httpMethod = "GET"
+        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(data, resp)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    /// POST with a JSON body, decoding the response into T.
+    static func post<T: Decodable>(_ path: String, jsonBody: [String: Any]) async throws -> T {
+        var req = URLRequest(url: apiURL(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: jsonBody)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(data, resp)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    // MARK: - Keys (mirrors keys/client.ts)
+
+    private struct KeysEnvelope: Decodable { let keys: [KeyMeta] }
+
+    static func listKeys() async throws -> [KeyMeta] {
+        let env: KeysEnvelope = try await get("/v1/keys")
+        return env.keys
+    }
+
+    static func mintKey(label: String) async throws -> MintedKey {
+        try await post("/v1/keys", jsonBody: ["label": label])
+    }
+
+    static func revokeKey(id: String) async throws {
+        try await send(method: "DELETE", url: apiURL("/v1/keys/\(id)"), jsonBody: nil)
+    }
+
+    // MARK: - Admin (mirrors admin/client.ts)
+
+    private struct UsersEnvelope: Decodable { let users: [AdminUser] }
+    private struct RequestsEnvelope: Decodable { let requests: [AccessRequest] }
+
+    static func listUsers() async throws -> [AdminUser] {
+        let env: UsersEnvelope = try await get("/v1/admin/users")
+        return env.users
+    }
+
+    static func setAllowed(uid: String, isAllowed: Bool, email: String? = nil) async throws {
+        var body: [String: Any] = ["isAllowed": isAllowed]
+        if let email { body["email"] = email }
+        try await send(method: "PUT", url: apiURL("/v1/admin/users/\(uid)"), jsonBody: body)
+    }
+
+    static func listAccessRequests() async throws -> [AccessRequest] {
+        let env: RequestsEnvelope = try await get("/v1/admin/access-requests")
+        return env.requests
+    }
+
+    static func decideAccessRequest(uid: String, decision: String) async throws {
+        try await send(method: "POST", url: apiURL("/v1/admin/access-requests/\(uid)"),
+                       jsonBody: ["decision": decision])
+    }
 }

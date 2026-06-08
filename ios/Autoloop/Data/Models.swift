@@ -344,6 +344,90 @@ struct SessionDoc: Identifiable {
     }
 }
 
+// MARK: - SP3b Account / Team / Admin Models
+
+enum Role: String, Codable { case owner, admin, member }
+
+struct Member: Identifiable {
+    let uid: String
+    let role: Role
+    let email: String?
+    var id: String { uid }
+    init(uid: String, role: Role, email: String? = nil) {
+        self.uid = uid; self.role = role; self.email = email
+    }
+    init(id: String, data: [String: Any]) {
+        self.init(uid: id,
+                  role: Role(rawValue: data.str("role") ?? "member") ?? .member,
+                  email: data.str("email"))
+    }
+}
+
+struct Invite: Identifiable {
+    let id: String
+    let teamId: String?
+    let email: String
+    let role: Role
+    let status: String?
+    init(id: String, teamId: String? = nil, email: String, role: Role, status: String? = nil) {
+        self.id = id; self.teamId = teamId; self.email = email; self.role = role; self.status = status
+    }
+    init(id: String, teamId: String?, data: [String: Any]) {
+        self.init(id: id, teamId: teamId,
+                  email: data.str("email") ?? "",
+                  role: Role(rawValue: data.str("role") ?? "member") ?? .member,
+                  status: data.str("status"))
+    }
+}
+
+// MARK: - REST (Keys / Admin) Codable Models
+
+struct KeyMeta: Codable, Identifiable {
+    let id: String
+    let label: String
+    let prefix: String
+    let createdAt: Double?
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        label = try c.decode(String.self, forKey: .label)
+        prefix = try c.decode(String.self, forKey: .prefix)
+        createdAt = try c.decodeIfPresent(Double.self, forKey: .createdAt)
+    }
+}
+
+struct MintedKey: Codable {
+    let id: String
+    let label: String
+    let prefix: String
+    let key: String
+    let createdAt: Double?
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        label = try c.decode(String.self, forKey: .label)
+        prefix = try c.decode(String.self, forKey: .prefix)
+        key = try c.decode(String.self, forKey: .key)
+        createdAt = try c.decodeIfPresent(Double.self, forKey: .createdAt)
+    }
+}
+
+struct AdminUser: Codable, Identifiable {
+    let uid: String
+    let email: String?
+    let isAllowed: Bool
+    let isAdmin: Bool
+    var id: String { uid }
+}
+
+struct AccessRequest: Codable, Identifiable {
+    let uid: String
+    let email: String?
+    let note: String?
+    let status: String
+    var id: String { uid }
+}
+
 // MARK: - SP1 Models
 
 struct TeamRef: Identifiable, Equatable {
