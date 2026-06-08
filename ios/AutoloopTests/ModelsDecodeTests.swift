@@ -9,6 +9,12 @@ final class ModelsDecodeTests: XCTestCase {
         XCTAssertEqual(p.title, "Demo")
         XCTAssertEqual(p.status, "running")
     }
+    func testProjectDecodesDesignAndPointers() {
+        let p = Project(slug: "s", data: ["currentPhaseId":"p1","currentTaskId":"t1","visionOwner":"loop",
+            "design":["format":"url","content":"https://x"]])
+        XCTAssertEqual(p.currentTaskId, "t1"); XCTAssertEqual(p.visionOwner, "loop")
+        XCTAssertEqual(p.design?.format, "url"); XCTAssertEqual(p.design?.content, "https://x")
+    }
     func testProjectToleratesMissingFields() {
         let p = Project(slug: "x", data: [:])
         XCTAssertEqual(p.slug, "x")

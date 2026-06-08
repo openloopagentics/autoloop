@@ -15,9 +15,9 @@ extension Loop {
 // MARK: - Project → ProjectRec
 
 extension Project {
-    /// Project model only carries slug/status/currentLoopId; phase/task are loop-level on this model.
     var asProjectRec: ProjectRec {
-        ProjectRec(slug: slug, status: status)
+        ProjectRec(slug: slug, status: status,
+                   currentPhaseId: currentPhaseId, currentTaskId: currentTaskId)
     }
 }
 

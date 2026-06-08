@@ -360,17 +360,39 @@ struct Team: Equatable { let name: String?
     init(data: [String: Any]) { self.init(name: data.str("name")) }
 }
 
+struct ProjectDesign: Equatable {
+    let format: String  // "markdown" | "url"
+    let content: String
+    init(format: String, content: String) { self.format = format; self.content = content }
+    init?(data: [String: Any]) {
+        guard let format = data.str("format"), let content = data.str("content") else { return nil }
+        self.init(format: format, content: content)
+    }
+}
+
 struct Project: Identifiable, Equatable {
     let slug: String
     let title: String?
     let status: String?
     let currentLoopId: String?
+    let currentPhaseId: String?
+    let currentTaskId: String?
+    let visionOwner: String?  // "web" | "loop"
+    let design: ProjectDesign?
     var id: String { slug }
-    init(slug: String, title: String? = nil, status: String? = nil, currentLoopId: String? = nil) {
+    init(slug: String, title: String? = nil, status: String? = nil, currentLoopId: String? = nil,
+         currentPhaseId: String? = nil, currentTaskId: String? = nil,
+         visionOwner: String? = nil, design: ProjectDesign? = nil) {
         self.slug = slug; self.title = title; self.status = status; self.currentLoopId = currentLoopId
+        self.currentPhaseId = currentPhaseId; self.currentTaskId = currentTaskId
+        self.visionOwner = visionOwner; self.design = design
     }
     init(slug: String, data: [String: Any]) {
         self.init(slug: slug, title: data.str("title"), status: data.str("status"),
-                  currentLoopId: data.str("currentLoopId"))
+                  currentLoopId: data.str("currentLoopId"),
+                  currentPhaseId: data.str("currentPhaseId"),
+                  currentTaskId: data.str("currentTaskId"),
+                  visionOwner: data.str("visionOwner"),
+                  design: (data["design"] as? [String: Any]).flatMap { ProjectDesign(data: $0) })
     }
 }
