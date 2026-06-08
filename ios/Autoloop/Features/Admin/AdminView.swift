@@ -6,8 +6,8 @@ struct AdminView: View {
     @State private var grantEmail = ""
 
     var body: some View {
-        NavigationStack {
-            List {
+        // AppShell already wraps this tab in a NavigationStack — don't nest another.
+        List {
                 // Error
                 if let err = store.error {
                     Section { ErrorNote(message: err) }
@@ -67,10 +67,9 @@ struct AdminView: View {
                         }
                     }
                 }
-            }
-            .navigationTitle("Admin")
-            .onAppear { Task { await store.refresh() } }
         }
+        .navigationTitle("Admin")
+        .onAppear { Task { await store.refresh() } }
     }
 }
 
@@ -114,12 +113,11 @@ private struct AccessRequestRowView: View {
 private struct AdminUserRowView: View {
     let user: AdminUser
     let onToggle: (Bool) -> Void
-    @State private var isAllowed: Bool
 
-    init(user: AdminUser, onToggle: @escaping (Bool) -> Void) {
-        self.user = user
-        self.onToggle = onToggle
-        _isAllowed = State(initialValue: user.isAllowed)
+    // Drive the toggle from the model (server truth), not local @State: on a failed
+    // mutation the store doesn't refresh, so the switch snaps back instead of lying.
+    private var allowedBinding: Binding<Bool> {
+        Binding(get: { user.isAllowed }, set: { onToggle($0) })
     }
 
     var body: some View {
@@ -143,11 +141,8 @@ private struct AdminUserRowView: View {
                 }
             }
             Spacer()
-            Toggle("Allowed", isOn: $isAllowed)
+            Toggle("Allowed", isOn: allowedBinding)
                 .labelsHidden()
-                .onChange(of: isAllowed) { newValue in
-                    onToggle(newValue)
-                }
         }
     }
 }

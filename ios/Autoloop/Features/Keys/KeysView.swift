@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct KeysView: View {
     @StateObject private var store = KeysStore()
@@ -6,8 +7,8 @@ struct KeysView: View {
     @State private var revokeTarget: KeyMeta?
 
     var body: some View {
-        NavigationStack {
-            List {
+        // AppShell already wraps this tab in a NavigationStack — don't nest another.
+        List {
                 // Hint
                 Section {
                     Text("Mint keys for the autoloop CLI; set AUTOLOOP_API_KEY")
@@ -80,10 +81,9 @@ struct KeysView: View {
                         }
                     }
                 }
-            }
-            .navigationTitle("API keys")
-            .task { await store.refresh() }
         }
+        .navigationTitle("API keys")
+        .task { await store.refresh() }
     }
 }
 
@@ -100,7 +100,7 @@ private struct KeyRowView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let ts = key.createdAt {
-                    Text(Date(timeIntervalSince1970: ts / 1000), style: .date)
+                    Text(Date(timeIntervalSince1970: ts), style: .date)  // createdAt decoded as epoch seconds
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }

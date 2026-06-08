@@ -382,17 +382,34 @@ struct Invite: Identifiable {
 
 // MARK: - REST (Keys / Admin) Codable Models
 
+/// The REST API returns Firestore Admin `Timestamp` values raw, which JSON-serialize
+/// to an object (`{_seconds,_nanoseconds}` or `{seconds,nanoseconds}`), NOT a number.
+/// Decode all shapes — a raw epoch number, or either timestamp object — to epoch SECONDS.
+struct FlexTimestamp: Decodable {
+    let seconds: Double?
+    init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(), let n = try? single.decode(Double.self) {
+            seconds = n
+            return
+        }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        seconds = (try? c.decodeIfPresent(Double.self, forKey: ._seconds))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: .seconds)) ?? nil
+    }
+    enum CodingKeys: String, CodingKey { case _seconds, seconds }
+}
+
 struct KeyMeta: Codable, Identifiable {
     let id: String
     let label: String
     let prefix: String
-    let createdAt: Double?
+    let createdAt: Double?   // epoch seconds
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         label = try c.decode(String.self, forKey: .label)
         prefix = try c.decode(String.self, forKey: .prefix)
-        createdAt = try c.decodeIfPresent(Double.self, forKey: .createdAt)
+        createdAt = (try c.decodeIfPresent(FlexTimestamp.self, forKey: .createdAt))?.seconds
     }
 }
 
@@ -401,14 +418,14 @@ struct MintedKey: Codable {
     let label: String
     let prefix: String
     let key: String
-    let createdAt: Double?
+    let createdAt: Double?   // epoch seconds
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         label = try c.decode(String.self, forKey: .label)
         prefix = try c.decode(String.self, forKey: .prefix)
         key = try c.decode(String.self, forKey: .key)
-        createdAt = try c.decodeIfPresent(Double.self, forKey: .createdAt)
+        createdAt = (try c.decodeIfPresent(FlexTimestamp.self, forKey: .createdAt))?.seconds
     }
 }
 
