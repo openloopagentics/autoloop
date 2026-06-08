@@ -13,6 +13,9 @@ packages:
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: 7.0.0
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: 2.4.0
 targets:
   Autoloop:
     type: application
@@ -28,6 +31,8 @@ targets:
         product: FirebaseFirestore
       - package: GoogleSignIn
         product: GoogleSignIn
+      - package: MarkdownUI
+        product: MarkdownUI
     info:
       path: Autoloop/Info.plist
       properties:
