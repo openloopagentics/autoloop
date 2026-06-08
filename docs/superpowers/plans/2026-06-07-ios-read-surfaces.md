@@ -143,7 +143,7 @@ Create `Data/Listeners.swift`. Mirror `web/src/dashboard/hooks.ts`. These are sm
 Provide collection listeners (each ordered by document id, mapping snapshot docs → model via `init(id:data:)`):
 - Project-level: `loops` (`teams/{t}/projects/{s}/loops`), `goals`, `scenarios`, `documents`, `messages`.
 - Loop-scoped via `basePath(teamId:slug:loopId:)` + collection name: `phases`, `tasks`, `scores`, `testRuns`, `revisions`. (`loopId == nil` → project-direct path, exactly as `basePath` already handles.)
-- `sessionLog`: loop-scoped `sessions` collection → `[SessionDoc]`.
+- `sessionLog`: loop-scoped `sessions` collection → `[SessionDoc]` (per a single loop id). The Session Log UI (Task 13) fans this across **all** loops, so expose it as a per-loop listener the Messages store can instantiate one-per-loop, not a single subscription tied to the selected loop.
 - Lazy (created on demand by Loops detail): `commits(phaseId:loopId:)` and `taskCommits(taskId:loopId:)` — these query `…/phases/{phaseId}/commits` and a `commits` collection filtered by `taskId` respectively; read `hooks.ts` `useCommits`/`useTaskCommits` for exact paths/filters.
 
 - [ ] **Step 1:** Implement a reusable `CollectionStore<T>` (start/stop, `@Published data/loading/error`) wrapping `QueryListener`, plus thin factory helpers building the right `Query` for each collection above.
@@ -169,6 +169,7 @@ func testMergeDropsRemovedScopes() {
 ```
 Run → FAIL.
 - [ ] **Step 2 (green):** Implement `mergeScopes` (generic) + `AllScopeStore<T>` that: derives scope keys from the current `loops` (`"__main__"` + each loop id), starts/stops one `QueryListener` per scope, stamps `loopId`, stores `byScope`, and republishes `mergeScopes(...)` on every change; on loop-set change it adds/removes per-scope listeners. Re-run → PASS.
+  - Note: in the web, `useAllTestRuns`/`useAllBugs` stamp `loopId` onto each doc but `useAllScores` does **not** (Score has no `loopId`). Stamping uniformly is fine — `Score.asRec` ignores `loopId`, so no `loopId` field is needed on `Score`.
 - [ ] **Step 3:** Build + full suite. Commit: `feat(ios): all-scope fan-out merge for bugs/scores/testRuns with tests`
 
 ---
