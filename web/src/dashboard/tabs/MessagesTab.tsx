@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ErrorNote } from "../components/ErrorNote";
+import { Markdown } from "../components/Markdown";
 import { SessionLogTab } from "./SessionLogTab";
 import type { Message } from "../types";
 
@@ -66,7 +67,7 @@ export function MessagesTab({
               <ul className="msglist">
                 {messages.map((msg) => (
                   <li key={msg.id} className={`msg msg--${msg.author}`}>
-                    <span className="msg-text">{msg.text}</span>
+                    <Markdown className="msg-text">{msg.text}</Markdown>
                     {msg.createdAt !== undefined && <span className="msg-time dim tnum">{relativeTime(msg.createdAt)}</span>}
                     {msg.author === "user" && msg.status !== undefined && (
                       <span className={`msgstatus msgstatus--${msg.status}`}>{msg.status === "pending" ? "Sent" : "Delivered"}</span>
