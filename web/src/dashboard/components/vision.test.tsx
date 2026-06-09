@@ -71,12 +71,14 @@ describe("RevisionTimeline", () => {
 });
 
 describe("DocumentsSection", () => {
-  it("links url docs and shows markdown content", () => {
+  it("links url docs and renders markdown content as HTML", () => {
     render(<DocumentsSection documents={[
       { id: "spec", kind: "spec", title: "Spec", format: "url", content: "https://x/s" },
-      { id: "vision", kind: "vision", title: "Vision", format: "markdown", content: "# V" },
+      { id: "vision", kind: "vision", title: "Vision", format: "markdown", content: "# Hello\n\nbody text" },
     ]} />);
     expect(screen.getByRole("link", { name: /Spec/ })).toHaveAttribute("href", "https://x/s");
-    expect(screen.getByText("# V")).toBeInTheDocument();
+    // markdown is rendered: "# Hello" becomes an <h1>, not literal text
+    expect(screen.getByRole("heading", { name: "Hello" })).toBeInTheDocument();
+    expect(screen.getByText("body text")).toBeInTheDocument();
   });
 });

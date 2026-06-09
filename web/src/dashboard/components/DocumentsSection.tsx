@@ -1,3 +1,4 @@
+import { Markdown } from "./Markdown";
 import type { DocumentRec } from "../types";
 
 export function DocumentsSection({ documents }: { documents: DocumentRec[] }) {
@@ -17,7 +18,7 @@ export function DocumentsSection({ documents }: { documents: DocumentRec[] }) {
             </div>
             {d.format === "url"
               ? <span className="docrow-url dim mono">{d.content}</span>
-              : <pre className="doc-pre mono">{d.content}</pre>}
+              : <Markdown>{d.content ?? ""}</Markdown>}
           </div>
         ))}
       </div>
