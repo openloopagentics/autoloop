@@ -366,6 +366,51 @@ export function evaluateLock(lock, isAlive, selfSessionPid) {
   return "live-other";
 }
 
+export const RELAUNCH_MAX = 3;                       // > 3 relaunches in 30 min ⇒ stop (crash loop)
+export const RELAUNCH_WINDOW_MS = 30 * 60 * 1000;
+
+export function stampsPath(env, key) { return join(autoloopHome(env), "run", `${key}.stamps.json`); }
+export function readStamps(path) {
+  if (!existsSync(path)) return [];
+  try { const v = JSON.parse(readFileSync(path, "utf8")); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
+/** true ⇒ STOP relaunching: RELAUNCH_MAX stamps already inside the rolling window
+ *  (the relaunch being considered would be the >3rd within 30 minutes). */
+export function backoffExceeded(stamps, nowMs, max = RELAUNCH_MAX, windowMs = RELAUNCH_WINDOW_MS) {
+  return (stamps ?? []).filter((t) => nowMs - t < windowMs).length >= max;
+}
+
+/** Pure decision for the SessionEnd shim. "ours" may proceed — that session is ending anyway. */
+export function decideSessionEndRelaunch({ lockState, resumable, backoff }) {
+  if (lockState === "live-other") return { relaunch: false, reason: "another live session holds the lock" };
+  if (!resumable) return { relaunch: false, reason: "no non-terminal, non-paused loop (loop resume --check failed)" };
+  if (backoff) return { relaunch: false, reason: `backoff: more than ${RELAUNCH_MAX} relaunches in 30 minutes` };
+  return { relaunch: true, reason: "resumable loop, no live lock, under backoff" };
+}
+
+/** Pure decision for the wake job: paused loop + pending message + no live lock. */
+export function decideWake({ lockState, loopStatus, hasPendingMessages }) {
+  if (lockState === "live-other" || lockState === "ours") return { wake: false, reason: "a live session holds the lock" };
+  if (loopStatus !== "paused") return { wake: false, reason: `loop status is ${loopStatus ?? "none"} — wake only resumes paused loops` };
+  if (!hasPendingMessages) return { wake: false, reason: "no pending user messages" };
+  return { wake: true, reason: "paused loop with pending messages and no live lock" };
+}
+
+/** Launch the headless driver, fully detached (nohup-equivalent): stdin /dev/null, output
+ *  appended to ~/.autoloop/logs/<slug>.log, detached + unref so the parent can exit.
+ *  acceptEdits + the installed permissions.allow list — NEVER --dangerously-skip-permissions. */
+export function launchHeadless({ cwd, slug, env, spawnImpl, log }) {
+  const logDir = join(autoloopHome(env), "logs");
+  mkdirSync(logDir, { recursive: true });
+  const logFile = join(logDir, `${slug}.log`);
+  const out = openSync(logFile, "a");
+  const child = spawnImpl("claude", ["-p", "/autoloop", "--permission-mode", "acceptEdits"],
+    { cwd, detached: true, stdio: ["ignore", out, out] });
+  child.unref?.();
+  log(`autoloop: relaunched headless driver (pid ${child.pid ?? "?"}) — log: ${logFile}`);
+}
+
 /**
  * Run an autoloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1042,5 +1042,35 @@ describe("lock acquire / lock release", () => {
     expect(await run(["lock", "release"], deps(s))).toBe(0);
     expect(existsSync(s.lockFile)).toBe(false);
     expect(await run(["lock", "release"], deps(s))).toBe(0);
+  });
+});
+
+describe("relaunch decisions (pure)", () => {
+  it("backoffExceeded: blocks the 4th relaunch within a rolling 30-min window", () => {
+    const now = 1_000_000_000;
+    const min = 60_000;
+    expect(backoffExceeded([], now)).toBe(false);
+    expect(backoffExceeded([now - 1 * min, now - 2 * min], now)).toBe(false);     // 2 recent → a 3rd is fine
+    expect(backoffExceeded([now - 1 * min, now - 2 * min, now - 3 * min], now)).toBe(true); // 3 recent → 4th blocked
+    expect(backoffExceeded([now - 31 * min, now - 40 * min, now - 50 * min], now)).toBe(false); // all outside window
+  });
+
+  it("decideSessionEndRelaunch: relaunch only when no live foreign lock, resumable, and under backoff", () => {
+    expect(decideSessionEndRelaunch({ lockState: "live-other", resumable: true, backoff: false }).relaunch).toBe(false);
+    expect(decideSessionEndRelaunch({ lockState: "none", resumable: false, backoff: false }).relaunch).toBe(false);
+    expect(decideSessionEndRelaunch({ lockState: "none", resumable: true, backoff: true }).relaunch).toBe(false);
+    expect(decideSessionEndRelaunch({ lockState: "none", resumable: true, backoff: false }).relaunch).toBe(true);
+    expect(decideSessionEndRelaunch({ lockState: "dead", resumable: true, backoff: false }).relaunch).toBe(true);
+    // "ours" = the lock belongs to THIS ending session — it may hand off to a relaunch
+    expect(decideSessionEndRelaunch({ lockState: "ours", resumable: true, backoff: false }).relaunch).toBe(true);
+  });
+
+  it("decideWake: wake only when no live lock AND loop is paused AND messages are pending", () => {
+    expect(decideWake({ lockState: "live-other", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(false);
+    expect(decideWake({ lockState: "none", loopStatus: "running", hasPendingMessages: true }).wake).toBe(false);
+    expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: false }).wake).toBe(false);
+    expect(decideWake({ lockState: "none", loopStatus: undefined, hasPendingMessages: true }).wake).toBe(false);
+    expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
+    expect(decideWake({ lockState: "dead", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
   });
 });
