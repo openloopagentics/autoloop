@@ -63,3 +63,15 @@ aren't lost when the batch ships.
 14. **Firebase channel-id charset** — loopIds may contain `.`/`_` which
     `hosting:channel:deploy` disallows; skill step is best-effort so it just
     skips, but a sanitize hint in the prose would help.
+
+## From plan 5 (product map)
+
+15. **Stale panel during replay** — a side panel opened live stays open while
+    scrubbing (clicks disabled but pickedNode not cleared). One-liner: clear
+    pickedNode when replay starts (MapTab).
+16. **Untested seam** — no test pins "components excluded from replay"
+    (correct by construction today; a refactor could regress silently).
+17. **PRODUCT_MAP_MAX_BYTES uses UTF-16 length** vs the server's byte cap —
+    multibyte docs near 100KB may disagree client/server. Cosmetic.
+18. **Live tasks have no hue band** (no loopId on live task docs) while live
+    bugs do. Cosmetic asymmetry.
