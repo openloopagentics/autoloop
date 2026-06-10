@@ -142,6 +142,19 @@ autoloop task set <taskId> --status completed
 After closing the task:
 - If a phase is fully done: `autoloop phase set <phaseId> --status completed`
 - If a scenario is unmet: `autoloop revise --scenario <s> --reason "<why>" --change <op>:<id>`
+- If this task's work surfaced a **learning that changes the vision** — a new scenario
+  discovered while testing, a threshold that proved wrong, a new goal implied by user
+  messages — record it as a vision change with the learning as the reason:
+
+  ```bash
+  autoloop vision propose --op upsert-scenario --target <id> --file payload.json \
+    --reason "<the learning that motivated this change>" --origin-loop <loopId>
+  ```
+
+  (`payload.json` holds the goal/scenario body, same shape as a direct PUT.) Then keep
+  building immediately — autonomous-with-veto: the change applies now and the user can
+  reject it from the dashboard later. If the proposal added a **new scenario**, add a
+  task tagged to it to the remaining plan so it gets built and tested this loop.
 - **Poll for messages** — run the pull/ack loop below. The subagent may have run for
   several minutes; messages that arrived during that window are waiting here.
 
@@ -166,7 +179,9 @@ done
 ### 3a. Scenario verification sweep (do this BEFORE closing)
 
 Before closing the loop, account for **every scenario that belongs to this loop
-iteration** — i.e. the union of `scenarioIds` across all of this loop's tasks.
+iteration** — i.e. the union of `scenarioIds` across all of this loop's tasks,
+**including any scenarios this loop added via `autoloop vision propose`** — proposed
+scenarios join the plan and are swept like any other.
 For each such scenario, confirm there is:
 1. a **test-run** with `failed = 0` (a real automated test that passes), AND
 2. a **score** with `composite >= threshold`.
@@ -329,6 +344,13 @@ alive, a stop must leave you polling so the user's next dashboard message is pic
 - **Report in this session.** All `autoloop` CLI calls happen here, not in subagents.
 - **Best-effort.** If an `autoloop` command warns, note it once and continue.
 - **Honest scoring.** Don't inflate composites; an unmet scenario driving a revision is the loop working correctly.
+- **Vision growth goes through `vision propose`.** Whenever a loop's learnings warrant
+  expanding or tightening the vision (a new scenario discovered while testing, a
+  threshold that proved wrong, a new goal implied by user messages), it MUST use
+  `autoloop vision propose --reason "<the learning>"` — **never** bare `goal`/`scenario`
+  PUT verbs (`goal set` / `scenario set` / direct PUTs remain only for `vision import`
+  at setup). This records why + what changed, with one-click user veto. Newly proposed
+  scenarios join the plan as tasks tagged to them.
 - **No silent truncation.** If a cap stops the loop, the summary must say which scenarios remain unmet.
 - **test-run is required.** A score alone does not make a scenario met. Always submit `autoloop test-run` before `autoloop score` for every scenario a task advances. Skipping test-run means the scenario will show as "unmet" in the UI regardless of the composite.
 - **Real tests, real numbers.** Every scenario in the loop needs an executable automated test that actually verifies it. The `--passed`/`--failed` counts must come from running that test — never fabricated. Implementing a feature without a test for its scenario leaves the scenario unmet, which is the defect we're avoiding.
