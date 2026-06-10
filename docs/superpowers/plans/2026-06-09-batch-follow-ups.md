@@ -49,3 +49,17 @@ aren't lost when the batch ships.
 11. **Unbounded feed queries** — `useVisionChanges` (like `useIdeas`/
     `useTeamNotifications`) has no `limit()`; long-lived projects load every
     change ever. Codebase-wide pattern; fix together if ever needed.
+
+## From plan 4 (preview + trends)
+
+12. **`previewUrl`/`commit.url` accept any URL scheme** — `z.string().url()`
+    passes `javascript:`/`data:` URLs rendered as anchors. Mitigated
+    (member-only writers, noopener noreferrer); an `https?:` refine on both
+    fields would tighten it.
+13. **Commits refetch fans out window-wide** — any loop's task-set change
+    re-runs one-shot commit reads for every window loop (plan's own code;
+    bounded at 20). Revisit if read volume matters, esp. with product-map
+    reusing the layer.
+14. **Firebase channel-id charset** — loopIds may contain `.`/`_` which
+    `hosting:channel:deploy` disallows; skill step is best-effort so it just
+    skips, but a sanitize hint in the prose would help.
