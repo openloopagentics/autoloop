@@ -788,6 +788,12 @@ export async function run(argv, deps = {}) {
         const cfg = loadConfig(cwd);
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
+        if (flags.check) {
+          // silent probe for the wake shim: exit 0 iff pending user messages exist.
+          // GET only — pulling NEVER acks; any failure ⇒ 1 (can't confirm pending).
+          const res = await getJson(url, { env, fetchImpl });
+          return res?.ok && Array.isArray(res.body?.messages) && res.body.messages.length > 0 ? 0 : 1;
+        }
         return fetchJson({ method: "GET", url }, { env, fetchImpl, log, err });
       }
       case "messages ack": {

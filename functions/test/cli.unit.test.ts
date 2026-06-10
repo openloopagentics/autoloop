@@ -623,6 +623,28 @@ describe("messages pull/ack/send verbs", () => {
     expect(code).toBe(0);
     expect(c.url).toBe("http://api/v1/teams/acme/projects/web/messages");
   });
+
+  it("messages pull --check exits 0 silently when pending messages exist (GET only, no ack)", async () => {
+    const dir = initDir(); const c = cap({ ok: true, messages: [{ id: "m1", text: "hi" }] });
+    const logs: string[] = [];
+    expect(await run(["messages", "pull", "--check"], base(dir, c, logs))).toBe(0);
+    expect(logs.length).toBe(0);                       // silent
+    expect(c.calls.length).toBe(1);                    // exactly ONE call …
+    expect(c.calls[0].init.method).toBe("GET");        // … and it's a GET (never acks)
+    expect(c.calls[0].url).toBe("http://api/v1/teams/acme/projects/web/messages");
+  });
+
+  it("messages pull --check exits 1 when there are no pending messages", async () => {
+    const dir = initDir(); const c = cap({ ok: true, messages: [] });
+    expect(await run(["messages", "pull", "--check"], base(dir, c))).toBe(1);
+  });
+
+  it("messages pull --check exits 1 on a network error", async () => {
+    const dir = initDir();
+    const code = await run(["messages", "pull", "--check"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("net"); } });
+    expect(code).toBe(1);
+  });
 });
 
 describe("report() pendingMessages notice", () => {
