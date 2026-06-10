@@ -5,7 +5,7 @@ import {
 import { auth, db } from "../firebase";
 import type { Notification } from "../notifications/types";
 import { basePath } from "./loopView";
-import type { Bug, Commit, DocumentRec, Goal, Loop, Message, Phase, Project, Revision, Scenario, Score, SessionDoc, Task, Team, TeamRef, TestRun } from "./types";
+import type { Bug, Commit, DocumentRec, Goal, Loop, Message, Phase, Project, Revision, Scenario, Score, SessionDoc, Task, Team, TeamRef, TestRun, Verification } from "./types";
 
 interface Result<T> { data: T; loading: boolean; error: string | null; }
 
@@ -159,6 +159,20 @@ export function useTestRuns(teamId: string, slug: string, loopId?: string): Resu
     const q = query(collection(db, ...basePath(teamId, slug, loopId), "testRuns"), orderBy(documentId()));
     return onSnapshot(q,
       (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as TestRun[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug, loopId]);
+  return { data, loading, error };
+}
+
+export function useVerifications(teamId: string, slug: string, loopId?: string): Result<Verification[]> {
+  const [data, setData] = useState<Verification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, ...basePath(teamId, slug, loopId), "verifications"), orderBy(documentId()));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Verification[]); setLoading(false); },
       (e) => { setError(e.message); setLoading(false); });
   }, [teamId, slug, loopId]);
   return { data, loading, error };
