@@ -401,6 +401,53 @@ describe("event + vision verbs (request shapes)", () => {
     await run(["test-run", "s1", "--task", "t1", "--passed", "1", "--failed", "0", "--summary", "inline", "--summary-file", "sum.md"], base(dir, c));
     expect(JSON.parse(c.init.body).summary).toBe("# from file");
   });
+
+  it("vision propose POSTs op/targetId/payload/reason to the project-level URL", async () => {
+    const dir = initDir(); const c = cap();
+    writeFileSync(join(dir, "payload.json"), JSON.stringify({
+      goalId: "g1", title: "New scenario", rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] },
+    }));
+    expect(await run(["vision", "propose", "--op", "upsert-scenario", "--target", "s9",
+      "--file", "payload.json", "--reason", "found while testing login"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/vision-changes");
+    expect(c.init.method).toBe("POST");
+    expect(JSON.parse(c.init.body)).toMatchObject({
+      op: "upsert-scenario", targetId: "s9", reason: "found while testing login",
+      payload: { goalId: "g1", title: "New scenario" },
+    });
+  });
+
+  it("vision propose stays project-level even with currentLoopId set, and carries --origin-loop", async () => {
+    const dir = tmp(); const c = cap();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: "l1", phases: {}, tasks: {} });
+    writeFileSync(join(dir, "p.json"), JSON.stringify({ title: "G" }));
+    await run(["vision", "propose", "--op", "upsert-goal", "--target", "g1", "--file", "p.json",
+      "--reason", "r", "--origin-loop", "l1"], base(dir, c));
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/vision-changes"); // no /loops/l1 segment
+    expect(JSON.parse(c.init.body).originLoopId).toBe("l1");
+  });
+
+  it("vision propose requires --reason", async () => {
+    const dir = initDir();
+    const code = await run(["vision", "propose", "--op", "upsert-goal", "--target", "g1", "--file", "p.json"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+
+  it("vision propose rejects an unknown --op", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "p.json"), JSON.stringify({ title: "G" }));
+    const code = await run(["vision", "propose", "--op", "delete-goal", "--target", "g1", "--file", "p.json", "--reason", "r"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+
+  it("vision propose errors on an unreadable --file", async () => {
+    const dir = initDir();
+    const code = await run(["vision", "propose", "--op", "upsert-goal", "--target", "g1", "--file", "missing.json", "--reason", "r"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
 });
 
 describe("bug add/set verbs", () => {

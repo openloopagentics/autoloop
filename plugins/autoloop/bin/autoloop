@@ -668,6 +668,26 @@ export async function run(argv, deps = {}) {
         }
         return worst; // best-effort: 0 unless strict and some report failed
       }
+      case "vision propose": {
+        oneFlag("op", flags.op); oneFlag("target", flags.target); oneFlag("file", flags.file); oneFlag("reason", flags.reason);
+        if ([flags.op, flags.target, flags.file, flags.reason].some((v) => typeof v !== "string")) {
+          throw new UsageError("vision propose requires --op <upsert-goal|upsert-scenario> --target <id> --file <payload.json> --reason <text>");
+        }
+        if (!["upsert-goal", "upsert-scenario"].includes(flags.op)) {
+          throw new UsageError(`--op must be upsert-goal|upsert-scenario, got '${flags.op}'`);
+        }
+        validateId("target", flags.target);
+        let payload;
+        try { payload = JSON.parse(readFileSync(join(cwd, flags.file), "utf8")); }
+        catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
+        const body = { op: flags.op, targetId: flags.target, payload, reason: flags.reason };
+        if (flags["origin-loop"]) { validateId("origin-loop", flags["origin-loop"]); body.originLoopId = flags["origin-loop"]; }
+        const cfg = loadConfig(cwd);
+        // Project-level on purpose (no loopSeg): vision changes are project vision, never loop-scoped.
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/vision-changes`;
+        return report({ method: "POST", url, body },
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
       case "messages pull": {
         const cfg = loadConfig(cwd);
         const api = resolveApiUrl(cfg, env, flags.url);
