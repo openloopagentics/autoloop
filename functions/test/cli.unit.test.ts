@@ -589,3 +589,61 @@ describe("back-compat: pre-rename daloop names still work", () => {
     expect(auth).toBe("Bearer dl_legacy"); // legacy key forwarded via the AUTOLOOP_* fallback
   });
 });
+
+describe("verify verb", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {}, ...extra });
+    return dir;
+  }
+  const cap = () => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => ({ ok: true, id: "01XYZ" }) }; }; return c; };
+  const base = (dir: string, c: any) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: c.fetchImpl });
+
+  it("verify POSTs scenarioId + uppercase ULID testRunId + verdict", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["verify", "s1", "--test-run", "01ARZ3NDEKTSV4RRFFQ69G5FAV", "--verdict", "confirmed"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/verifications");
+    expect(c.init.method).toBe("POST");
+    expect(JSON.parse(c.init.body)).toMatchObject({ scenarioId: "s1", testRunId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", verdict: "confirmed" });
+  });
+
+  it("verify is loop-scoped when currentLoopId is set", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    await run(["verify", "s1", "--test-run", "01A", "--verdict", "refuted"], base(dir, c));
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1/verifications");
+  });
+
+  it("verify includes --task and --summary in the body", async () => {
+    const dir = initDir(); const c = cap();
+    await run(["verify", "s1", "--test-run", "01A", "--verdict", "confirmed", "--task", "t1", "--summary", "npm test → 6/6"], base(dir, c));
+    expect(JSON.parse(c.init.body)).toMatchObject({ taskId: "t1", summary: "npm test → 6/6" });
+  });
+
+  it("verify reads --summary-file and it wins over --summary", async () => {
+    const dir = initDir(); const c = cap();
+    writeFileSync(join(dir, "ver.md"), "# replayed\n6/6");
+    await run(["verify", "s1", "--test-run", "01A", "--verdict", "confirmed", "--summary", "inline", "--summary-file", "ver.md"], base(dir, c));
+    expect(JSON.parse(c.init.body).summary).toBe("# replayed\n6/6");
+  });
+
+  it("verify rejects an unknown verdict without calling fetch", async () => {
+    const dir = initDir();
+    const code = await run(["verify", "s1", "--test-run", "01A", "--verdict", "passed"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+
+  it("verify requires --test-run", async () => {
+    const dir = initDir();
+    const code = await run(["verify", "s1", "--verdict", "confirmed"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+
+  it("event verbs surface the server id (autoloop: id <ULID>)", async () => {
+    const dir = initDir(); const c = cap(); const errs: string[] = [];
+    await run(["test-run", "s1", "--task", "t1", "--passed", "1", "--failed", "0"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: c.fetchImpl });
+    expect(errs.some((m) => m.includes("id 01XYZ"))).toBe(true);
+  });
+});
