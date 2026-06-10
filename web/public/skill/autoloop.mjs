@@ -105,6 +105,7 @@ export async function report(req, deps) {
   if (res.ok) {
     try {
       const b = await res.json();
+      if (typeof b?.id === "string") err(`autoloop: id ${b.id}`);
       if (Array.isArray(b?.pendingMessages) && b.pendingMessages.length) {
         err(`autoloop: 📨 ${b.pendingMessages.length} message(s) from the user — run \`autoloop messages pull\``);
       }
@@ -271,7 +272,7 @@ export async function run(argv, deps = {}) {
   try {
     // Single-word verbs may take a positional arg (e.g. `score <scenarioId>`), so they
     // must NOT fold the positional into the dispatch key. Two-word verbs (e.g. `phase start`) do.
-    const ONE_WORD = new Set(["init", "commit", "score", "test-run", "revise"]);
+    const ONE_WORD = new Set(["init", "commit", "score", "test-run", "revise", "verify"]);
     const dispatchKey = ONE_WORD.has(cmd) ? cmd : `${cmd} ${sub ?? ""}`.trim();
     switch (dispatchKey) {
       case "init": {
@@ -544,6 +545,24 @@ export async function run(argv, deps = {}) {
         }
         const cfg = loadConfig(cwd);
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/testRuns`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "verify": {
+        oneFlag("test-run", flags["test-run"]); oneFlag("verdict", flags.verdict);
+        const scenarioId = positionals[1]; validateId("scenarioId", scenarioId);
+        if (typeof flags["test-run"] !== "string") throw new UsageError("verify requires --test-run <testRunId>");
+        if (!["confirmed", "refuted"].includes(flags.verdict)) throw new UsageError(`--verdict must be confirmed|refuted, got '${flags.verdict}'`);
+        // testRunId is a server ULID (uppercase) — deliberately NOT validateId'd.
+        const body = { scenarioId, testRunId: String(flags["test-run"]), verdict: flags.verdict };
+        if (flags.task) { validateId("task", flags.task); body.taskId = flags.task; }
+        if (flags["summary-file"]) {
+          try { body.summary = readFileSync(join(cwd, flags["summary-file"]), "utf8"); }
+          catch (e) { throw new UsageError(`could not read --summary-file '${flags["summary-file"]}': ${e.message}`); }
+        } else if (flags.summary) {
+          body.summary = flags.summary;
+        }
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/verifications`;
         return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "revise": {
