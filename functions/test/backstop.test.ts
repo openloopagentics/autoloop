@@ -3,6 +3,7 @@ import "./helpers.js";
 import { seedMember } from "./helpers.js";
 import { db } from "../src/firestore.js";
 import { upsertLoop } from "../src/services/loops.js";
+import { upsertProject } from "../src/services/projects.js";
 import { upsertPhase } from "../src/services/phases.js";
 import { upsertTask } from "../src/services/tasks.js";
 
@@ -89,5 +90,42 @@ describe("terminal backstop — loop close", () => {
     expect((await loopDoc("phases/p1").get()).data()!.status).toBe("running");
     const loop = (await db().doc("teams/team1/projects/acme/loops/l1").get()).data()!;
     expect(loop.currentPhaseId).toBe("p1"); // pointers untouched
+  });
+});
+
+describe("terminal backstop — project-direct (implicit main loop)", () => {
+  const projDoc = (p: string) => db().doc(`teams/team1/projects/acme/${p}`);
+
+  async function seedProjectDirectTree() {
+    await seedProject();
+    await upsertPhase("team1", "acme", "p1", { name: "P", order: 1, status: "running" });
+    await upsertTask("team1", "acme", "t1", { phaseId: "p1", title: "T", order: 1, status: "running" });
+  }
+
+  it("project terminal transition sweeps project-direct phases/tasks and nulls the project pointers", async () => {
+    await seedProjectDirectTree();
+    await upsertProject("team1", "acme", { status: "completed" });
+    expect((await projDoc("tasks/t1").get()).data()!.status).toBe("completed");
+    const p = (await projDoc("phases/p1").get()).data()!;
+    expect(p.status).toBe("completed");
+    expect(p.endedAt).not.toBeNull();
+    const proj = (await db().doc("teams/team1/projects/acme").get()).data()!;
+    expect(proj.currentPhaseId).toBeNull();
+    expect(proj.currentTaskId).toBeNull();
+  });
+
+  it("non-terminal project writes sweep nothing", async () => {
+    await seedProjectDirectTree();
+    await upsertProject("team1", "acme", { status: "paused" });
+    expect((await projDoc("tasks/t1").get()).data()!.status).toBe("running");
+    expect((await projDoc("phases/p1").get()).data()!.status).toBe("running");
+  });
+
+  it("re-PUTting completed is idempotent (no transition, no sweep)", async () => {
+    await seedProjectDirectTree();
+    await upsertProject("team1", "acme", { status: "completed" });
+    const before = await projDoc("tasks/t1").get();
+    await upsertProject("team1", "acme", { status: "completed" });
+    expect((await projDoc("tasks/t1").get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
   });
 });
