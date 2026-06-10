@@ -37,6 +37,9 @@ export async function upsertLoop(teamId: string, slug: string, loopId: string, b
     if (body.name !== undefined) data.name = body.name;
     if (body.order !== undefined) data.order = body.order;
     if (body.status !== undefined) data.status = body.status;
+    // null is stored as-is (the web hides the link for null OR absent) — exactly how
+    // commits.ts stores commit.url; never FieldValue.delete(). Omitted ⇒ byte-stable doc.
+    if (body.previewUrl !== undefined) data.previewUrl = body.previewUrl;
     // endedAt = the FIRST terminal transition; once set it is never updated.
     if (isTerminal(newStatus) && !existing.endedAt) data.endedAt = FieldValue.serverTimestamp();
 

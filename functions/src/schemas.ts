@@ -175,6 +175,7 @@ export const loopBody = z.object({
   name: z.string().min(1).optional(),
   order: z.number().int().optional(),
   status: status.optional(),
+  previewUrl: z.string().url().nullable().optional(),
 });
 export type LoopBody = z.infer<typeof loopBody>;
 

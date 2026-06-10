@@ -44,6 +44,51 @@ describe("PUT /v1/teams/:teamId/projects/:slug/loops/:loopId", () => {
   });
 });
 
+describe("loop.previewUrl", () => {
+  async function createLoop(loopId = "l1") {
+    await createProject();
+    await request(app).put(`/v1/teams/team1/projects/acme/loops/${loopId}`).set(authHeader())
+      .send({ goal: "g", order: 1, status: "running" });
+  }
+
+  it("stores a valid preview URL", async () => {
+    await createLoop();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/loops/l1").set(authHeader())
+      .send({ previewUrl: "https://app--l1-abc.web.app" });
+    expect(res.status).toBe(200);
+    expect((await db().doc("teams/team1/projects/acme/loops/l1").get()).data()!.previewUrl)
+      .toBe("https://app--l1-abc.web.app");
+  });
+
+  it("stores null on clear (null is stored, not deleted)", async () => {
+    await createLoop();
+    await request(app).put("/v1/teams/team1/projects/acme/loops/l1").set(authHeader())
+      .send({ previewUrl: "https://app--l1-abc.web.app" });
+    const res = await request(app).put("/v1/teams/team1/projects/acme/loops/l1").set(authHeader())
+      .send({ previewUrl: null });
+    expect(res.status).toBe(200);
+    const d = (await db().doc("teams/team1/projects/acme/loops/l1").get()).data()!;
+    expect("previewUrl" in d).toBe(true);
+    expect(d.previewUrl).toBeNull();
+  });
+
+  it("400s on an invalid URL", async () => {
+    await createLoop();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/loops/l1").set(authHeader())
+      .send({ previewUrl: "not a url" });
+    expect(res.status).toBe(400);
+  });
+
+  it("omits the key entirely when not provided (byte-stable)", async () => {
+    await createLoop();
+    // an unrelated update must not introduce the key
+    await request(app).put("/v1/teams/team1/projects/acme/loops/l1").set(authHeader())
+      .send({ status: "paused" });
+    const d = (await db().doc("teams/team1/projects/acme/loops/l1").get()).data()!;
+    expect("previewUrl" in d).toBe(false);
+  });
+});
+
 describe("loop-scoped routes (full HTTP path)", () => {
   const rubric = { criteria: [{ id: "correctness", name: "C", weight: 1, max: 5 }] };
   it("phase/task/commit/score land under loops/l1 with per-loop derived ids", async () => {
