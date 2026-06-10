@@ -345,6 +345,43 @@ describe("loop start/set + loop-aware URLs", () => {
     await run(["task", "start", "t1", "--phase", "p1", "--name", "T", "--order", "1"], base(dir, c));
     expect(c.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t1");
   });
+
+  it("loop set --preview-url PUTs previewUrl (no status required)", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["loop", "set", "l1", "--preview-url", "https://app--l1-abc.web.app"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1");
+    expect(c.init.method).toBe("PUT");
+    expect(JSON.parse(c.init.body)).toEqual({ previewUrl: "https://app--l1-abc.web.app" });
+  });
+
+  it('loop set --preview-url "" sends null (clear)', async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["loop", "set", "l1", "--preview-url", ""], base(dir, c))).toBe(0);
+    expect(JSON.parse(c.init.body)).toEqual({ previewUrl: null });
+  });
+
+  it("loop set with both flags sends both fields", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["loop", "set", "l1", "--status", "running", "--preview-url", "https://x.web.app"], base(dir, c))).toBe(0);
+    expect(JSON.parse(c.init.body)).toEqual({ status: "running", previewUrl: "https://x.web.app" });
+  });
+
+  it("loop set with no settable flag errors before any network call", async () => {
+    const dir = initDir();
+    const code = await run(["loop", "set", "l1"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {},
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    });
+    expect(code).toBe(1);
+  });
+
+  it("terminal --status still clears currentLoopId; --preview-url alone does not", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    await run(["loop", "set", "l1", "--preview-url", "https://x.web.app"], base(dir, c));
+    expect(loadConfig(dir).currentLoopId).toBe("l1");          // untouched
+    await run(["loop", "set", "l1", "--status", "completed"], base(dir, c));
+    expect(loadConfig(dir).currentLoopId).toBeNull();          // side effect preserved
+  });
 });
 
 describe("event + vision verbs (request shapes)", () => {

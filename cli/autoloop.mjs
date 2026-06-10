@@ -362,16 +362,25 @@ export async function run(argv, deps = {}) {
       }
       case "loop set": {
         const loopId = positionals[2]; validateId("loopId", loopId);
-        if (!flags.status) throw new UsageError("loop set requires --status <s>");
-        validateStatus(flags.status);
+        const body = {};
+        if (flags.status) {
+          validateStatus(flags.status);
+          body.status = flags.status;
+        }
+        if (flags["preview-url"] !== undefined) {
+          const v = oneFlag("preview-url", flags["preview-url"]);
+          if (typeof v !== "string") throw new UsageError('--preview-url requires a value (use "" to clear)');
+          body.previewUrl = v === "" ? null : v; // empty string clears (stored as null)
+        }
+        if (Object.keys(body).length === 0) throw new UsageError("loop set requires at least one of --status/--preview-url");
         const cfg = loadConfig(cwd);
         const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
-        if (TERMINAL_STATUSES.includes(flags.status)) {
+        if (flags.status && TERMINAL_STATUSES.includes(flags.status)) {
           cfg.currentLoopId = null;
           saveConfig(cwd, cfg);
         }
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}`;
-        return report({ method: "PUT", url, body: { status: flags.status } },
+        return report({ method: "PUT", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "goal set": {
