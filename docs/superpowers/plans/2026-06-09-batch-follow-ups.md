@@ -91,3 +91,4 @@ aren't lost when the batch ships.
 21. **Manual OS-wiring checklist (10 items)** in the resumable-loops plan
     Task 12 Step 4 — REMAINING for a human on a real macOS host with
     AUTOLOOP_API_KEY; record outcomes in the PR description.
+22. ~~Lock released between loops~~ — FIXED pre-merge in 0.17.2 (lock now held for the session lifetime).

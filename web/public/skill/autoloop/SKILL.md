@@ -38,7 +38,7 @@ BEFORE doing any setup:
 autoloop loop resume    # human header + the full state bundle as pretty JSON
 ```
 
-**Lock (only when `autoloop status` reports `relaunchInstalled: true`):** claim the
+**Lock:** Run `autoloop status`; when it reports `relaunchInstalled: true`: claim the
 project before driving it — `autoloop lock acquire`. If it exits 1, another live
 session is already driving this project: report that and end this session.
 
@@ -279,8 +279,12 @@ autoloop phase set <id> --status completed  # for every finished phase
 
 # Close the loop:
 autoloop loop set <loopId> --status completed   # or --status cancelled
-autoloop lock release   # only when relaunch machinery is installed — frees the project lock
 ```
+
+Release the lock (`autoloop lock release`) **ONLY when this session is actually
+ending** — at Step 4a's pause-handoff or on an explicit shutdown. When
+immediately starting the next loop (the default), **keep holding the lock**; it
+guards the whole session's driving lifetime, not one loop.
 
 **Deploy a preview and report its URL** (best-effort, before the summary).
 Deploy however **this project** deploys — do not assume a stack:
