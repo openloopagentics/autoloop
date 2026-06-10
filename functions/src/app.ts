@@ -23,6 +23,7 @@ import { ideasRouter } from "./routes/ideas.js";
 import { visionChangesRouter } from "./routes/visionChanges.js";
 import { userProjectsRouter } from "./routes/userProjects.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { stateRouter } from "./routes/loopState.js";
 
 export function makeApp() {
   // Initialize the Admin SDK before any handler runs, so the ID-token auth
@@ -54,6 +55,7 @@ export function makeApp() {
   teamRouter.use("/:slug/verifications", verificationsRouter);
   teamRouter.use("/:slug/bugs", bugsRouter);
   teamRouter.use("/:slug/messages", messagesRouter);
+  teamRouter.use("/:slug/state", stateRouter);
   teamRouter.use("/:slug/ideas", ideasRouter);
   teamRouter.use("/:slug/vision-changes", visionChangesRouter);
   // Loop-scoped variants reuse the SAME routers (mergeParams propagates :loopId).
@@ -67,6 +69,7 @@ export function makeApp() {
   teamRouter.use("/:slug/loops/:loopId/verifications", verificationsRouter);
   teamRouter.use("/:slug/loops/:loopId/bugs", bugsRouter);
   teamRouter.use("/:slug/loops/:loopId/sessions", sessionsRouter);
+  teamRouter.use("/:slug/loops/:loopId/state", stateRouter);
   teamRouter.use("/:slug/loops", loopsRouter); // loop entity
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);

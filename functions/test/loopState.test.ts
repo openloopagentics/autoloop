@@ -119,3 +119,35 @@ describe("getLoopState (service)", () => {
     await expect(getLoopState("team1", "acme", "ghost")).rejects.toMatchObject({ httpStatus: 404 });
   });
 });
+
+describe("GET state (API)", () => {
+  it("loop-scoped: 200 { ok, state } with the loop populated", async () => {
+    await seedLoopFixture();
+    const res = await request(app).get("/v1/teams/team1/projects/acme/loops/l1/state").set(authHeader());
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.state.loop).toMatchObject({ id: "l1", status: "running" });
+    expect(res.body.state.phases.map((p: { id: string }) => p.id)).toEqual(["p1", "p2"]);
+    expect(res.body.state.pendingMessages.length).toBe(1);
+  });
+
+  it("project-direct: 200 with state.loop null and project.currentLoopId passthrough", async () => {
+    await seedLoopFixture(); // loop exists, but we hit the project-direct route
+    const res = await request(app).get("/v1/teams/team1/projects/acme/state").set(authHeader());
+    expect(res.status).toBe(200);
+    expect(res.body.state.loop).toBeNull();
+    expect(res.body.state.project.currentLoopId).toBe("l1");
+  });
+
+  it("401s without an API key", async () => {
+    await seedLoopFixture();
+    expect((await request(app).get("/v1/teams/team1/projects/acme/loops/l1/state")).status).toBe(401);
+    expect((await request(app).get("/v1/teams/team1/projects/acme/state")).status).toBe(401);
+  });
+
+  it("404s on a missing loop and a missing project", async () => {
+    await createProject();
+    expect((await request(app).get("/v1/teams/team1/projects/acme/loops/ghost/state").set(authHeader())).status).toBe(404);
+    expect((await request(app).get("/v1/teams/team1/projects/ghost/state").set(authHeader())).status).toBe(404);
+  });
+});
