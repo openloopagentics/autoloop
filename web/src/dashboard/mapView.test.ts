@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildMap } from "./mapView";
+import { buildMap, hueForLoop } from "./mapView";
 import type { Bug, Goal, Scenario, Task } from "./types";
 
 const goals: Goal[] = [{ id: "g1", title: "Ship auth" }];
@@ -84,5 +84,16 @@ describe("buildMap edges", () => {
     expect(g.edges.some((e) => e.from === "s:ghost-scn")).toBe(false);  // t2's ghost scenario
     expect(g.edges.some((e) => e.to === "b:b3")).toBe(false);           // refless bug: node only
     expect(byId(g, "b:b3")).toBeDefined();
+  });
+});
+
+describe("hueForLoop", () => {
+  it("is deterministic and in [0, 360)", () => {
+    expect(hueForLoop("loop-2026-06-09")).toBe(hueForLoop("loop-2026-06-09"));
+    expect(hueForLoop("l1")).toBeGreaterThanOrEqual(0);
+    expect(hueForLoop("l1")).toBeLessThan(360);
+  });
+  it("differs for different loop ids", () => {
+    expect(hueForLoop("l1")).not.toBe(hueForLoop("l2"));
   });
 });

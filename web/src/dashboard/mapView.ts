@@ -26,6 +26,13 @@ export interface BuildMapInput {
   productMap?: string;           // Phase 3: raw product-map document content (JSON string)
 }
 
+/** Deterministic hue per loop so each loop's additions read as a growth ring (Phase 2). */
+export function hueForLoop(loopId: string): number {
+  let h = 0;
+  for (let i = 0; i < loopId.length; i++) h = (h * 31 + loopId.charCodeAt(i)) % 360;
+  return h;
+}
+
 /** Derive the product map DAG. Pure; defensive against agent-written data
  *  (edges referencing missing nodes are dropped, never thrown on). */
 export function buildMap(input: BuildMapInput): MapGraph {

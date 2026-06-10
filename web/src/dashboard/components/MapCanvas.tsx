@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ReactFlow, Background, MiniMap, Handle, Position, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
-import type { MapEdge, MapNode } from "../mapView";
+import { hueForLoop, type MapEdge, type MapNode } from "../mapView";
 
 const NODE_W = 168;
 const NODE_H = 44;
@@ -24,7 +24,8 @@ function layout(nodes: MapNode[], edges: MapEdge[]): Node[] {
 function MapNodeView({ data }: NodeProps) {
   const n = data as unknown as MapNode;
   return (
-    <div className={`mapnode mapnode--${n.type} map-${n.state}${n.done ? " mapnode--done" : ""}`}>
+    <div className={`mapnode mapnode--${n.type} map-${n.state}${n.done ? " mapnode--done" : ""}`}
+      style={n.loopId ? { borderLeft: `4px solid hsl(${hueForLoop(n.loopId)} 70% 55%)` } : undefined}>
       <Handle type="target" position={Position.Left} />
       <span className="mapnode-label">{n.label}</span>
       <Handle type="source" position={Position.Right} />
