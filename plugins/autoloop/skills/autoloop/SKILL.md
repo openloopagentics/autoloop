@@ -177,6 +177,28 @@ For any scenario missing either:
 Do not close the loop with implemented-but-untested scenarios silently sitting
 unmet. Either they have a passing test (met) or a revision explaining why not.
 
+**Independent verification (mandatory, after the sweep, before 3b):**
+
+1. Collect, for every scenario in this loop, its **latest test-run id** — each
+   `autoloop test-run` prints `autoloop: id <ULID>`; record it when you submit —
+   plus the exact command and test file/names from that run's `--summary`
+   (already mandatory per Traceability).
+2. Dispatch **one verifier subagent** with a clean context. Its prompt contains
+   ONLY the list of `{scenarioId, testRunId, command, expected pass/fail}` plus
+   repo access. It replays each command and reports the actual pass/fail counts
+   per scenario. It does not see the implementation conversation and calls no
+   `autoloop` commands.
+3. For each scenario, submit the verdict yourself:
+
+```bash
+autoloop verify <scenarioId> --test-run <testRunId> --verdict confirmed|refuted \
+  [--task <taskId>] --summary "<command> → <actual result>"
+```
+
+4. A `refuted` verdict means the scenario is **unmet** regardless of its score —
+   record a revision (the existing unmet path) and do not count it met in the
+   closing summary.
+
 ### 3b. Close the loop
 
 ```bash
@@ -281,6 +303,7 @@ alive, a stop must leave you polling so the user's next dashboard message is pic
 - **test-run is required.** A score alone does not make a scenario met. Always submit `autoloop test-run` before `autoloop score` for every scenario a task advances. Skipping test-run means the scenario will show as "unmet" in the UI regardless of the composite.
 - **Real tests, real numbers.** Every scenario in the loop needs an executable automated test that actually verifies it. The `--passed`/`--failed` counts must come from running that test — never fabricated. Implementing a feature without a test for its scenario leaves the scenario unmet, which is the defect we're avoiding.
 - **No scenario left behind.** Before closing a loop, run the Step 3a sweep: every scenario tagged to this loop's tasks must end either met (passing test + score) or with a revision explaining why not. Never close a loop with implemented-but-untested scenarios silently unmet.
+- **Verification is independent.** The verifier subagent never implements code and the implementer never verifies; refuted = unmet.
 - **Traceability is mandatory.** Every test-run names the exact test (file + test name) and command in its `--summary`; every bug links `--scenario` + `--task` and records the catching test, commit sha, and expected-vs-actual in `--description`; fixed bugs cite the fixing commit. Vague "tests pass" summaries or bugs with no scenario/test/commit reference must be redone.
 - **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
 - **Pause ≠ exit.** A stop/pause message parks you in Step 4 polling for the next message — it never ends the session. Only an explicit shutdown/exit message (or context exhaustion) ends it. While the session is alive, always be polling so a dashboard message lands. The next message may be any prompt, not the word "resume" — act on whatever it says.
