@@ -1390,3 +1390,26 @@ a.docrow-title:hover { color: var(--accent); }
   background: color-mix(in oklab, var(--st-failed) 12%, transparent);
   border: 1px solid color-mix(in oklab, var(--st-failed) 30%, transparent);
 }
+
+/* ---- Product map (Map tab) ---- */
+.mapwrap { height: 540px; border: 1px solid var(--border, #2a2a2a); border-radius: 8px; overflow: hidden; }
+.mapnode { width: 168px; box-sizing: border-box; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid #5a5a5a; background: #1c1f24; font-size: 12px; line-height: 1.3; }
+.mapnode-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mapnode--goal { font-weight: 600; }
+.mapnode--component { border-style: dashed; }            /* Phase 3: distinct shape */
+.mapnode.map-met { border-color: #2e9e44; background: rgba(46, 158, 68, .14); }
+.mapnode.map-unmet, .mapnode.map-neutral { border-color: #6a6a6a; }
+.mapnode.map-bugged { border-color: #d24545; background: rgba(210, 69, 69, .14); }
+.mapnode.map-active { border-color: #e8a13a; background: rgba(232, 161, 58, .14);
+  animation: mapnode-pulse 1.6s ease-in-out infinite; }
+.mapnode--done { opacity: .45; }
+@keyframes mapnode-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 161, 58, .55); }
+  50%      { box-shadow: 0 0 0 7px rgba(232, 161, 58, 0); }
+}
+[data-motion="off"] .mapnode.map-active { animation: none; }
+@media (prefers-reduced-motion: reduce) { .mapnode.map-active { animation: none; } }
+.map-panel { position: relative; margin-top: 12px; }
+.map-panel-close { position: absolute; top: 8px; right: 10px; background: none; border: none; cursor: pointer; }
+.map-warning { border-color: #e8a13a; font-size: 13px; }
