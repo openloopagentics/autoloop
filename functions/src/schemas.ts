@@ -64,6 +64,17 @@ export const bugBody = z.object({
 });
 export type BugBody = z.infer<typeof bugBody>;
 
+const ideaStatus = z.enum(["proposed", "accepted", "rejected", "done"]);
+export const ideaBody = z.object({
+  title: z.string().min(1).optional(),       // required-on-create in the service
+  rationale: z.string().max(CONTENT_MAX_BYTES, "idea.rationale exceeds 100KB").optional(),
+  status: ideaStatus.optional(),             // required-on-create in the service
+  order: z.number().int().optional(),        // required-on-create in the service
+  originLoopId: id.optional(),
+  builtInLoopId: id.optional(),
+});
+export type IdeaBody = z.infer<typeof ideaBody>;
+
 export const goalBody = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),

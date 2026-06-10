@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody, verificationBody } from "../src/schemas.js";
+import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody, verificationBody, ideaBody } from "../src/schemas.js";
 
 describe("idPattern", () => {
   it("accepts safe slugs and rejects unsafe ones", () => {
@@ -126,6 +126,36 @@ describe("verificationBody", () => {
   });
   it("drops unknown keys (plain z.object)", () => {
     const parsed = verificationBody.parse({ scenarioId: "s1", testRunId: "01A", verdict: "confirmed", createdAt: "nope" });
+    expect("createdAt" in parsed).toBe(false);
+  });
+});
+
+describe("ideaBody", () => {
+  it("accepts a minimal proposed idea", () => {
+    expect(ideaBody.safeParse({ title: "Dark mode", status: "proposed", order: 100 }).success).toBe(true);
+  });
+  it("accepts the optional fields", () => {
+    expect(ideaBody.safeParse({ title: "X", rationale: "users asked", status: "accepted", order: 1, originLoopId: "loop-1", builtInLoopId: "loop-2" }).success).toBe(true);
+  });
+  it("accepts a partial body (all fields optional — required-on-create is the service's job)", () => {
+    expect(ideaBody.safeParse({ status: "rejected" }).success).toBe(true);
+  });
+  it("rejects an unknown status", () => {
+    expect(ideaBody.safeParse({ title: "X", status: "maybe", order: 1 }).success).toBe(false);
+  });
+  it("rejects a non-integer order", () => {
+    expect(ideaBody.safeParse({ title: "X", status: "proposed", order: 1.5 }).success).toBe(false);
+  });
+  it("rejects a non-idPattern originLoopId", () => {
+    expect(ideaBody.safeParse({ title: "X", status: "proposed", order: 1, originLoopId: "Bad Id" }).success).toBe(false);
+  });
+  it("rejects a rationale over 100KB", () => {
+    const big = "x".repeat(100 * 1024 + 1);
+    expect(ideaBody.safeParse({ title: "X", status: "proposed", order: 1, rationale: big }).success).toBe(false);
+  });
+  it("drops unknown keys, including a client-supplied by (plain z.object)", () => {
+    const parsed = ideaBody.parse({ title: "X", status: "proposed", order: 1, by: "agent", createdAt: "nope" });
+    expect("by" in parsed).toBe(false);
     expect("createdAt" in parsed).toBe(false);
   });
 });
