@@ -58,3 +58,7 @@ export async function postMessage(teamId: string, slug: string, text: string): P
 export async function deleteProject(teamId: string, slug: string): Promise<void> {
   await ok(await fetch(u(teamId, slug), { method: "DELETE", headers: await headers() }));
 }
+
+export async function rejectVisionChange(teamId: string, slug: string, changeId: string): Promise<void> {
+  await ok(await fetch(u(teamId, slug, `/vision-changes/${changeId}/reject`), { method: "POST", headers: await headers() }));
+}

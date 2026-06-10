@@ -5,7 +5,7 @@ import {
 import { auth, db } from "../firebase";
 import type { Notification } from "../notifications/types";
 import { basePath } from "./loopView";
-import type { Bug, Commit, DocumentRec, Goal, Idea, Loop, Message, Phase, Project, Revision, Scenario, Score, SessionDoc, Task, Team, TeamRef, TestRun, Verification } from "./types";
+import type { Bug, Commit, DocumentRec, Goal, Idea, Loop, Message, Phase, Project, Revision, Scenario, Score, SessionDoc, Task, Team, TeamRef, TestRun, Verification, VisionChange } from "./types";
 
 interface Result<T> { data: T; loading: boolean; error: string | null; }
 
@@ -370,6 +370,20 @@ export function useIdeas(teamId: string, slug: string): Result<Idea[]> {
     const q = query(collection(db, "teams", teamId, "projects", slug, "ideas"), orderBy(documentId()));
     return onSnapshot(q,
       (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Idea[]); setLoading(false); },
+      (e) => { setError(e.message); setLoading(false); });
+  }, [teamId, slug]);
+  return { data, loading, error };
+}
+
+export function useVisionChanges(teamId: string, slug: string): Result<VisionChange[]> {
+  const [data, setData] = useState<VisionChange[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, "teams", teamId, "projects", slug, "visionChanges"), orderBy(documentId(), "desc"));
+    return onSnapshot(q,
+      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as VisionChange[]); setLoading(false); },
       (e) => { setError(e.message); setLoading(false); });
   }, [teamId, slug]);
   return { data, loading, error };

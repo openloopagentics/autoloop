@@ -27,6 +27,12 @@ export interface Verification {
 export interface RevisionChange { op: string; taskId: string; [k: string]: unknown; }
 export interface Revision { id: string; trigger?: { scenarioId?: string; reason?: string }; changes?: RevisionChange[]; }
 export interface DocumentRec { id: string; kind?: string; title?: string; format?: "markdown" | "url"; content?: string; }
+export interface VisionChange {
+  id: string; op?: "upsert-goal" | "upsert-scenario"; targetId?: string;
+  payload?: Record<string, unknown>; prior?: Record<string, unknown> | null;
+  reason?: string; originLoopId?: string; status?: "applied" | "rejected";
+  createdAt?: unknown; decidedAt?: unknown;
+}
 export interface Bug {
   id: string; title?: string; description?: string; scenarioId?: string; taskId?: string;
   severity?: "low" | "medium" | "high"; status?: "open" | "fixed";
