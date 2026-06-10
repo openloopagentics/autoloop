@@ -145,7 +145,8 @@ export function ProjectDetail() {
                   <MapTab loops={loopList} selectedId={selectedId} onSelect={setPicked}
                     goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data}
                     tasks={tasks.data} bugs={loopBugs.data} currentTaskId={selected?.currentTaskId}
-                    verifications={verifications.data} slices={mapSlices} projectCreatedAt={project.data?.createdAt} />
+                    verifications={verifications.data} slices={mapSlices} projectCreatedAt={project.data?.createdAt}
+                    productMap={documents.data.find((d) => d.id === "product-map")?.content} />
                 )}
                 {tab === "ideas" && <IdeasTab ideas={ideas.data} onPut={(id, body) => putUserIdea(teamId, slug, id, body)} />}
                 {tab === "messages" && <MessagesTab teamId={teamId} slug={slug} messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}

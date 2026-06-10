@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { buildMap } from "../mapView";
+import { buildMap, type MapNode } from "../mapView";
 import { mapAtTime, tsMillis, type LoopSlice } from "../mapTimeline";
 import { deriveScenarioState, type ScenarioState } from "../scenarioState";
 import { MapCanvas } from "../components/MapCanvas";
@@ -21,9 +21,10 @@ export interface MapTabProps {
   verifications?: Verification[];           // selected-loop scoped — feeds the ScenarioCard verification badge
   slices?: LoopSlice[];        // Phase 2: all-loops run data (useLoopTrend fetch layer)
   projectCreatedAt?: unknown;  // Phase 2: scrubber range start
+  productMap?: string;         // Phase 3: raw product-map document content (JSON string)
 }
 
-interface PanelData { goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; tasks: Task[]; bugs: Bug[]; verifications: Verification[]; }
+interface PanelData { goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; tasks: Task[]; bugs: Bug[]; verifications: Verification[]; nodes: MapNode[]; }
 
 function MapPanelBody({ id, data }: { id: string; data: PanelData }) {
   const sep = id.indexOf(":");
@@ -36,11 +37,15 @@ function MapPanelBody({ id, data }: { id: string; data: PanelData }) {
     const g = data.goals.find((x) => x.id === key);
     return g ? (<div className="map-goal"><h3>{g.title ?? g.id}</h3>{g.description && <p className="dim">{g.description}</p>}</div>) : null;
   }
+  if (ns === "c") {
+    const n = data.nodes.find((x) => x.id === id);
+    return n ? <div className="map-goal"><h3>{n.label}</h3><p className="dim">component</p></div> : null;
+  }
   return null;
 }
 
 export function MapTab(props: MapTabProps) {
-  const { loops, selectedId, onSelect, goals, scenarios, scores, testRuns, tasks, bugs, currentTaskId, verifications = [], slices, projectCreatedAt } = props;
+  const { loops, selectedId, onSelect, goals, scenarios, scores, testRuns, tasks, bugs, currentTaskId, verifications = [], slices, projectCreatedAt, productMap } = props;
   const [pickedNode, setPickedNode] = useState<string | null>(null);
 
   const openBugs = useMemo(() => bugs.filter((b) => (b.status ?? "open") === "open"), [bugs]);
@@ -50,8 +55,8 @@ export function MapTab(props: MapTabProps) {
     return m;
   }, [scenarios, scores, testRuns]);
   const graph = useMemo(
-    () => buildMap({ goals, scenarios, scenarioStates, tasks, currentTaskId, openBugs }),
-    [goals, scenarios, scenarioStates, tasks, currentTaskId, openBugs]);
+    () => buildMap({ goals, scenarios, scenarioStates, tasks, currentTaskId, openBugs, productMap }),
+    [goals, scenarios, scenarioStates, tasks, currentTaskId, openBugs, productMap]);
 
   const [scrubT, setScrubT] = useState<number | null>(null); // null = live
   const [playing, setPlaying] = useState(false);
@@ -79,6 +84,7 @@ export function MapTab(props: MapTabProps) {
   return (
     <section className="maptab">
       <LoopSelector loops={loops} selectedId={selectedId} onChange={onSelect} />
+      {graph.warning && <div className="card map-warning" role="note">{graph.warning}</div>}
       <MapCanvas nodes={shown.nodes} edges={shown.edges} onNodeClick={replay ? undefined : setPickedNode} />
       {slices !== undefined && (
         <MapScrubber min={minT} max={maxT} value={scrubT} playing={playing}
@@ -88,7 +94,7 @@ export function MapTab(props: MapTabProps) {
       {pickedNode && (
         <aside className="map-panel card" aria-label="map detail">
           <button type="button" className="map-panel-close" aria-label="close" onClick={() => setPickedNode(null)}>×</button>
-          <MapPanelBody id={pickedNode} data={{ goals, scenarios, scores, testRuns, tasks, bugs: openBugs, verifications }} />
+          <MapPanelBody id={pickedNode} data={{ goals, scenarios, scores, testRuns, tasks, bugs: openBugs, verifications, nodes: graph.nodes }} />
         </aside>
       )}
     </section>

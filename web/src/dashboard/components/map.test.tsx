@@ -74,6 +74,23 @@ describe("MapTab", () => {
   });
 });
 
+describe("MapTab product-map layer", () => {
+  it("renders component nodes and a label card on click", () => {
+    renderTab({ productMap: JSON.stringify({ nodes: [{ id: "api", label: "REST API", scenarioIds: ["login"] }] }) });
+    fireEvent.click(screen.getByText("c:api"));
+    expect(screen.getByText("REST API")).toBeInTheDocument();
+  });
+  it("shows a warning card (not a crash) on malformed content, and still renders the base graph", () => {
+    renderTab({ productMap: "{broken" });
+    expect(screen.getByRole("note")).toHaveTextContent(/not valid JSON/i);
+    expect(screen.getByText("s:login")).toBeInTheDocument();
+  });
+  it("shows no warning card without a product map", () => {
+    renderTab();
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+});
+
 describe("MapScrubber", () => {
   it("emits a numeric time mid-range and null (live) at max", () => {
     const onChange = vi.fn();
