@@ -232,10 +232,31 @@ done
 
 If a stop message arrives during the drain, go to the stopping path above.
 Otherwise, **immediately start the next loop.** Autoloop is a loop — running is
-the default, stopping is the exception. Generate 5 new improvement ideas based
-on what's already been built, open `loop start loop-YYYY-MM-DD-<n>` with the
-next order number, plan its tasks, and go back to Step 2. Do NOT ask the user
-whether to continue. Do NOT suggest the next round as an option. Just run it.
+the default, stopping is the exception.
+
+**Ideas backlog (durable between loops — the user steers it from the dashboard):**
+
+1. **Propose (at loop close):** run `autoloop idea list` first, then generate **at
+   least 5** improvement ideas from what this loop built and learned. Skip any idea
+   that semantically duplicates an existing non-rejected idea in the list. Record
+   each new one (defaults: `--status proposed --order 100`):
+   ```bash
+   autoloop idea add <idea-slug> --title "<imperative summary>" \
+     --rationale "<the learning that produced it>" --origin-loop <loopId>
+   ```
+2. **Pick (at the next loop start):** run `autoloop idea list`; build the FIRST
+   `accepted` idea, else the FIRST `proposed` idea (the list is already ordered:
+   accepted → proposed, by the user's priority). **Never build a `rejected` idea.**
+   The chosen idea's title + rationale seed the new loop's `--goal` and plan.
+3. **Mark done (when the idea ships):** when the loop that built it closes with its
+   scenarios met:
+   ```bash
+   autoloop idea set <idea-slug> --status done --built-in-loop <loopId>
+   ```
+
+Open `loop start loop-YYYY-MM-DD-<n>` with the next order number, plan its tasks,
+and go back to Step 2. Do NOT ask the user whether to continue. Do NOT suggest the
+next round as an option. Just run it.
 
 **The only valid reasons to stop building are:**
 1. The user sent a **stop/pause** message → go to **Step 4 (Paused)**, keep the

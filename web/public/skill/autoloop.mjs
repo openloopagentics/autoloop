@@ -124,12 +124,18 @@ export async function report(req, deps) {
 }
 
 /**
- * Fetch JSON from a GET endpoint and print the parsed result to stdout via log.
+ * Fetch JSON from a GET endpoint and print the result to stdout via log.
  * Best-effort: never throws; on failure prints a warning to err and returns 0.
- * deps: { env, fetchImpl, log, err }.
+ * deps: { env, fetchImpl, log, err, label?, render? } — label names the verb in
+ * warnings (default "messages pull"); render(body) formats the output (default:
+ * JSON of body.messages ?? body).
  */
 export async function fetchJson(req, deps) {
-  const { env = process.env, fetchImpl = fetch, log = (m) => console.log(m), err = (m) => console.error(m) } = deps;
+  const {
+    env = process.env, fetchImpl = fetch, log = (m) => console.log(m), err = (m) => console.error(m),
+    label = "messages pull",
+    render = (body) => JSON.stringify(body.messages ?? body, null, 2),
+  } = deps;
   const key = env.AUTOLOOP_API_KEY;
   if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
 
@@ -140,21 +146,21 @@ export async function fetchJson(req, deps) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     });
   } catch (e) {
-    err(`autoloop: messages pull failed (network): ${e.message}`);
+    err(`autoloop: ${label} failed (network): ${e.message}`);
     return 0;
   }
 
   if (res.ok) {
     try {
       const body = await res.json();
-      log(JSON.stringify(body.messages ?? body, null, 2));
+      log(render(body));
     } catch (e) {
-      err(`autoloop: messages pull failed (parse): ${e.message}`);
+      err(`autoloop: ${label} failed (parse): ${e.message}`);
     }
     return 0;
   }
 
-  err(`autoloop: messages pull failed (${res.status})`);
+  err(`autoloop: ${label} failed (${res.status})`);
   return 0;
 }
 
@@ -475,6 +481,57 @@ export async function run(argv, deps = {}) {
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
         return report({ method: "PUT", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "idea add": {
+        const id = positionals[2]; validateId("ideaId", id);
+        if (typeof flags.title !== "string") throw new UsageError("idea add requires --title <t>");
+        const status = flags.status || "proposed";
+        if (!["proposed", "accepted", "rejected", "done"].includes(status)) throw new UsageError(`--status must be proposed|accepted|rejected|done, got '${status}'`);
+        const order = typeof flags.order === "string" ? Number(flags.order) : 100;
+        if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
+        const body = { title: flags.title, status, order };
+        if (typeof flags["rationale-file"] === "string") {
+          try { body.rationale = readFileSync(join(cwd, flags["rationale-file"]), "utf8"); }
+          catch (e) { throw new UsageError(`could not read --rationale-file '${flags["rationale-file"]}': ${e.message}`); }
+        } else if (typeof flags.rationale === "string") {
+          body.rationale = flags.rationale;
+        }
+        if (flags["origin-loop"]) { validateId("origin-loop", flags["origin-loop"]); body.originLoopId = flags["origin-loop"]; }
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/ideas/${id}`;
+        return report({ method: "PUT", url, body },
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "idea set": {
+        const id = positionals[2]; validateId("ideaId", id);
+        const body = {};
+        if (flags.status) {
+          if (!["proposed", "accepted", "rejected", "done"].includes(flags.status)) throw new UsageError(`--status must be proposed|accepted|rejected|done, got '${flags.status}'`);
+          body.status = flags.status;
+        }
+        if (typeof flags.title === "string") body.title = flags.title;
+        if (typeof flags.order === "string") {
+          const order = Number(flags.order);
+          if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
+          body.order = order;
+        }
+        if (typeof flags.rationale === "string") body.rationale = flags.rationale;
+        if (flags["origin-loop"]) { validateId("origin-loop", flags["origin-loop"]); body.originLoopId = flags["origin-loop"]; }
+        if (flags["built-in-loop"]) { validateId("built-in-loop", flags["built-in-loop"]); body.builtInLoopId = flags["built-in-loop"]; }
+        if (Object.keys(body).length === 0) throw new UsageError("idea set requires at least one of --status/--title/--order/--rationale/--origin-loop/--built-in-loop");
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/ideas/${id}`;
+        return report({ method: "PUT", url, body },
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "idea list": {
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/ideas`;
+        return fetchJson({ method: "GET", url }, {
+          env, fetchImpl, log, err, label: "idea list",
+          render: (b) => (b.ideas ?? []).map((i) => `[${i.status}] ${i.order} ${i.id} — ${i.title}`).join("\n") || "(no ideas)",
+        });
       }
       case "commit": {
         oneFlag("task", flags.task);
