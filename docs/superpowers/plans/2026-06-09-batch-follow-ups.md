@@ -75,3 +75,19 @@ aren't lost when the batch ships.
     multibyte docs near 100KB may disagree client/server. Cosmetic.
 18. **Live tasks have no hue band** (no loopId on live task docs) while live
     bugs do. Cosmetic asymmetry.
+
+## From plan 6 (resumable loops)
+
+19. **launchd wake job env gap (IMPORTANT — the manual checklist will hit
+    this):** `wakePlist` bakes no `EnvironmentVariables`, so under launchd
+    `hook wake` lacks `AUTOLOOP_API_KEY` (UsageError every 5 min, wake never
+    fires) and `launchHeadless` spawns bare `claude` which is rarely on
+    launchd's default PATH. Spec-level gap. Fix: bake `EnvironmentVariables`
+    (key + PATH) into the plist at install time and resolve `claude` to an
+    absolute path.
+20. **Pre-lock-era sessions unprotected** — a driver started before
+    `init --relaunch` holds no lock; a SessionEnd relaunch elsewhere could
+    spawn a competing driver. Inherent protocol limit; note in checklist runs.
+21. **Manual OS-wiring checklist (10 items)** in the resumable-loops plan
+    Task 12 Step 4 — REMAINING for a human on a real macOS host with
+    AUTOLOOP_API_KEY; record outcomes in the PR description.
