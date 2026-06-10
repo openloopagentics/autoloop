@@ -33,6 +33,12 @@ export interface Bug {
   createdAt?: unknown; updatedAt?: unknown; fixedAt?: unknown;
   loopId?: string; // client-attached: which loop the bug came from (undefined = project-direct)
 }
+export interface Idea {
+  id: string; title?: string; rationale?: string;
+  status?: "proposed" | "accepted" | "rejected" | "done"; order?: number;
+  by?: "agent" | "user"; originLoopId?: string; builtInLoopId?: string;
+  createdAt?: unknown; updatedAt?: unknown; decidedAt?: unknown;
+}
 export interface Message { id: string; text: string; author: "user" | "agent"; status?: "pending" | "delivered"; createdAt?: unknown; deliveredAt?: unknown; }
 
 export type SessionEntry =
