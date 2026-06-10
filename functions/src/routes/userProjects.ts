@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { db } from "../firestore.js";
 import { AppError } from "../errors.js";
-import { idPattern, projectBody, goalBody, scenarioBody, documentBody, messageBody } from "../schemas.js";
+import { idPattern, projectBody, goalBody, scenarioBody, documentBody, messageBody, ideaBody } from "../schemas.js";
 import { assertWebEditable } from "../services/visionOwner.js";
 import { applyProjectUpsert, deleteProject } from "../services/projects.js";
 import { applyGoalUpsert, deleteGoal } from "../services/goals.js";
 import { applyScenarioUpsert, deleteScenario } from "../services/scenarios.js";
 import { applyDocumentUpsert, deleteDocument } from "../services/documents.js";
 import { createMessage } from "../services/messages.js";
+import { upsertIdea } from "../services/ideas.js";
 
 export const userProjectsRouter = Router({ mergeParams: true });
 
@@ -135,5 +136,19 @@ userProjectsRouter.post("/:slug/messages", async (req, res, next) => {
     const { teamId, slug } = req.params as Record<string, string>;
     const id = await createMessage(teamId, slug, parsed.data.text, "user", (req as { uid?: string }).uid ?? "");
     res.status(200).json({ ok: true, id });
+  } catch (err) { next(err); }
+});
+
+// ideas: PUT /:slug/ideas/:ideaId — accept / reject / reorder / add.
+// Deliberately NO assertWebEditable: steering must work WHILE the loop owns the
+// project (visionOwner === "loop") — that is the whole point of the veto.
+userProjectsRouter.put("/:slug/ideas/:ideaId", async (req, res, next) => {
+  try {
+    ids(req, ["teamId", "slug", "ideaId"]);
+    const parsed = ideaBody.safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, "validation", parsed.error.issues[0].message);
+    const { teamId, slug, ideaId } = req.params as Record<string, string>;
+    await upsertIdea(teamId, slug, ideaId, parsed.data, "user"); // by from the auth path
+    res.status(200).json({ ok: true });
   } catch (err) { next(err); }
 });

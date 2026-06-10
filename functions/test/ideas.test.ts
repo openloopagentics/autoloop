@@ -1,10 +1,15 @@
 import { describe, it, expect } from "vitest";
+import express from "express";
 import "./helpers.js";
 import { seedMember, authHeader } from "./helpers.js";
 import { db } from "../src/firestore.js";
 import { upsertIdea, listIdeas } from "../src/services/ideas.js";
 import request from "supertest";
 import { makeApp } from "../src/app.js";
+import { makeRequireUser } from "../src/requireUser.js";
+import { requireMember } from "../src/requireMember.js";
+import { userProjectsRouter } from "../src/routes/userProjects.js";
+import { errorHandler } from "../src/errors.js";
 
 const app = makeApp();
 
@@ -168,5 +173,71 @@ describe("ideas agent API", () => {
     expect(res.body.ideas.map((i: { id: string }) => i.id)).toEqual(["a1", "p1", "r1"]);
     expect(typeof res.body.ideas[0].createdAt).toBe("string");
     expect(typeof res.body.ideas[0].decidedAt).toBe("string"); // accepted → decided
+  });
+});
+
+// ─── User-auth mini-app (mirrors messages.test.ts / userProjects.test.ts pattern) ───
+
+const stubVerify = async (t: string) => {
+  const m = t.match(/^good-(.+)$/);
+  if (!m) throw new Error("x");
+  return { uid: m[1] };
+};
+function userApp() {
+  const a = express();
+  a.use(express.json());
+  a.use("/v1/u/teams/:teamId/projects", makeRequireUser(stubVerify), requireMember, userProjectsRouter);
+  a.use(errorHandler);
+  return a;
+}
+const tok = (uid: string) => ({ Authorization: `Bearer good-${uid}` });
+
+async function seedUserMember(uid = "alice") {
+  await db().doc(`users/${uid}`).set({ email: `${uid}@x.com`, isAllowed: true });
+  await db().doc(`teams/team1/members/${uid}`).set({ uid, role: "member" });
+}
+
+describe("PUT /v1/u/teams/:teamId/projects/:slug/ideas/:ideaId — user steer", () => {
+  it("member 200: creates with by:'user' (client-supplied by ignored)", async () => {
+    await seedProject();
+    await seedUserMember();
+    const res = await request(userApp()).put("/v1/u/teams/team1/projects/acme/ideas/i1").set(tok("alice"))
+      .send({ title: "My idea", status: "proposed", order: 100, by: "agent" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true });
+    expect((await db().doc("teams/team1/projects/acme/ideas/i1").get()).data()!.by).toBe("user");
+  });
+
+  it("member 200: accepts an agent-proposed idea (partial update)", async () => {
+    await seedProject();
+    await seedUserMember();
+    await upsertIdea("team1", "acme", "i1", { title: "X", status: "proposed", order: 100 }, "agent");
+    const res = await request(userApp()).put("/v1/u/teams/team1/projects/acme/ideas/i1").set(tok("alice"))
+      .send({ status: "accepted" });
+    expect(res.status).toBe(200);
+    const d = (await db().doc("teams/team1/projects/acme/ideas/i1").get()).data()!;
+    expect(d.status).toBe("accepted");
+    expect(d.decidedAt).not.toBeNull();
+    expect(d.by).toBe("agent"); // creator unchanged
+  });
+
+  it("non-member 403", async () => {
+    await seedProject();
+    await seedUserMember();
+    await db().doc("users/bob").set({ email: "b@x.com", isAllowed: true });
+    const res = await request(userApp()).put("/v1/u/teams/team1/projects/acme/ideas/i1").set(tok("bob"))
+      .send({ status: "rejected" });
+    expect(res.status).toBe(403);
+  });
+
+  it("works WHILE the loop owns the vision (visionOwner === 'loop') — the veto, no assertWebEditable", async () => {
+    await seedProject();
+    await seedUserMember();
+    await db().doc("teams/team1/projects/acme").set({ visionOwner: "loop" }, { merge: true });
+    await upsertIdea("team1", "acme", "i1", { title: "X", status: "proposed", order: 100 }, "agent");
+    const res = await request(userApp()).put("/v1/u/teams/team1/projects/acme/ideas/i1").set(tok("alice"))
+      .send({ status: "rejected" });
+    expect(res.status).toBe(200); // a goal PUT would 409 here — ideas deliberately do not
+    expect((await db().doc("teams/team1/projects/acme/ideas/i1").get()).data()!.status).toBe("rejected");
   });
 });
