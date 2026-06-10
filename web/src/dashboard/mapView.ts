@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Bug, Goal, Scenario, Task } from "./types";
 import type { ScenarioState } from "./scenarioState";
 import { isTerminalStatus } from "./status";
@@ -24,6 +25,32 @@ export interface BuildMapInput {
   currentTaskId?: string | null;
   openBugs: Bug[];               // open bugs only (status !== "fixed")
   productMap?: string;           // Phase 3: raw product-map document content (JSON string)
+}
+
+export const PRODUCT_MAP_MAX_BYTES = 100 * 1024;
+const componentNode = z.object({
+  id: z.string().regex(/^[a-z0-9._-]+$/),
+  label: z.string().min(1),
+  kind: z.string().optional(),
+  scenarioIds: z.array(z.string()).optional(),
+});
+export const productMapSchema = z.object({
+  nodes: z.array(componentNode),
+  edges: z.array(z.object({ from: z.string(), to: z.string() })).optional(),
+});
+export type ProductMap = z.infer<typeof productMapSchema>;
+
+/** Parse + validate the agent-maintained product-map document. Never throws. */
+function parseProductMap(content: string): { map: ProductMap } | { warning: string } {
+  if (content.length > PRODUCT_MAP_MAX_BYTES) {
+    return { warning: "product-map document exceeds 100KB — architecture layer not rendered" };
+  }
+  let raw: unknown;
+  try { raw = JSON.parse(content); }
+  catch { return { warning: "product-map document is not valid JSON — architecture layer not rendered" }; }
+  const parsed = productMapSchema.safeParse(raw);
+  if (!parsed.success) return { warning: "product-map document does not match the expected shape — architecture layer not rendered" };
+  return { map: parsed.data };
 }
 
 /** Deterministic hue per loop so each loop's additions read as a growth ring (Phase 2). */
@@ -72,5 +99,32 @@ export function buildMap(input: BuildMapInput): MapGraph {
     else if (b.scenarioId) push(`s:${b.scenarioId}`, `b:${b.id}`);
   }
 
-  return { nodes, edges };
+  let warning: string | undefined;
+  if (input.productMap !== undefined) {
+    const parsed = parseProductMap(input.productMap);
+    if ("warning" in parsed) {
+      warning = parsed.warning;
+    } else {
+      const scnState = new Map(nodes.filter((n) => n.type === "scenario").map((n) => [n.id, n.state]));
+      for (const c of parsed.map.nodes) {
+        const states = (c.scenarioIds ?? [])
+          .map((sid) => scnState.get(`s:${sid}`))
+          .filter((s): s is MapNodeState => s !== undefined);
+        // Worst-of-scenarios: any bugged → bugged, else any unmet → unmet, else met; none → neutral.
+        const state: MapNodeState = states.length === 0 ? "neutral"
+          : states.includes("bugged") ? "bugged"
+          : states.includes("unmet") ? "unmet"
+          : "met";
+        nodes.push({ id: `c:${c.id}`, type: "component", label: c.label, state });
+      }
+      const allIds = new Set(nodes.map((n) => n.id));
+      for (const c of parsed.map.nodes) {
+        for (const sid of c.scenarioIds ?? []) if (allIds.has(`s:${sid}`)) edges.push({ from: `c:${c.id}`, to: `s:${sid}` });
+      }
+      for (const e of parsed.map.edges ?? []) {
+        if (allIds.has(`c:${e.from}`) && allIds.has(`c:${e.to}`)) edges.push({ from: `c:${e.from}`, to: `c:${e.to}` });
+      }
+    }
+  }
+  return warning === undefined ? { nodes, edges } : { nodes, edges, warning };
 }

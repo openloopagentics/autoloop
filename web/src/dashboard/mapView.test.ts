@@ -87,6 +87,57 @@ describe("buildMap edges", () => {
   });
 });
 
+describe("buildMap product-map layer", () => {
+  const pm = JSON.stringify({
+    nodes: [
+      { id: "web", label: "Web app", kind: "service", scenarioIds: ["login", "logout"] },
+      { id: "api", label: "REST API", kind: "service", scenarioIds: ["login"] },
+      { id: "infra", label: "Infra", kind: "service" },
+      { id: "ghosty", label: "Ghost refs", scenarioIds: ["nope"] },
+    ],
+    edges: [{ from: "web", to: "api" }, { from: "web", to: "missing" }],
+  });
+
+  it("adds c:-namespaced component nodes with worst-of-scenarios state", () => {
+    const g = graph({ productMap: pm });
+    // login is bugged (open high b1) → web (login+logout) bugged; api (login) bugged too
+    expect(byId(g, "c:web")?.state).toBe("bugged");
+    expect(byId(g, "c:web")?.type).toBe("component");
+    // no high bug on logout-only ⇒ exercise unmet: a component on only logout
+    const g2 = graph({ productMap: JSON.stringify({ nodes: [{ id: "x", label: "X", scenarioIds: ["logout"] }] }) });
+    expect(byId(g2, "c:x")?.state).toBe("unmet");
+    const g3 = graph({ productMap: JSON.stringify({ nodes: [{ id: "y", label: "Y", scenarioIds: ["login"] }] }), openBugs: [] });
+    expect(byId(g3, "c:y")?.state).toBe("met"); // no bugs → login is met
+  });
+  it("components with no (resolvable) scenarios are neutral", () => {
+    const g = graph({ productMap: pm });
+    expect(byId(g, "c:infra")?.state).toBe("neutral");
+    expect(byId(g, "c:ghosty")?.state).toBe("neutral"); // dangling scenarioId ignored
+  });
+  it("builds component→scenario and component→component edges, dropping dangling ones", () => {
+    const g = graph({ productMap: pm });
+    expect(g.edges.some((e) => e.from === "c:web" && e.to === "s:login")).toBe(true);
+    expect(g.edges.some((e) => e.from === "c:web" && e.to === "c:api")).toBe(true);
+    expect(g.edges.some((e) => e.to === "c:missing")).toBe(false);
+    expect(g.edges.some((e) => e.to === "s:nope")).toBe(false);
+  });
+  it("invalid JSON ⇒ warning, base graph intact, never throws", () => {
+    const g = graph({ productMap: "{not json" });
+    expect(g.warning).toMatch(/not valid JSON/i);
+    expect(byId(g, "s:login")).toBeDefined();
+    expect(g.nodes.some((n) => n.type === "component")).toBe(false);
+  });
+  it("schema-invalid content ⇒ warning", () => {
+    expect(graph({ productMap: '{"nodes":[{"id":"NO SPACES","label":""}]}' }).warning).toMatch(/expected shape/i);
+  });
+  it("oversized content (>100KB) ⇒ warning without parsing", () => {
+    expect(graph({ productMap: "x".repeat(100 * 1024 + 1) }).warning).toMatch(/100KB/);
+  });
+  it("no productMap ⇒ no warning key", () => {
+    expect(graph().warning).toBeUndefined();
+  });
+});
+
 describe("hueForLoop", () => {
   it("is deterministic and in [0, 360)", () => {
     expect(hueForLoop("loop-2026-06-09")).toBe(hueForLoop("loop-2026-06-09"));
