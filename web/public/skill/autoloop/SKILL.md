@@ -231,6 +231,22 @@ autoloop phase set <id> --status completed  # for every finished phase
 autoloop loop set <loopId> --status completed   # or --status cancelled
 ```
 
+**Deploy a preview and report its URL** (best-effort, before the summary).
+Deploy however **this project** deploys — do not assume a stack:
+
+- Firebase-hosted project → the documented recipe is a preview channel:
+  `firebase hosting:channel:deploy <loopId>` — copy the channel URL it prints.
+- Anything else → use the project's own deploy/preview story (npm script, CI
+  preview, static host, …).
+
+```bash
+autoloop loop set <loopId> --preview-url "<url>"   # the URL the deploy PRINTED
+```
+
+If the project has **no deploy story**, skip this step and say so in the
+summary. **Never fabricate a URL** — only report a URL an actual deploy
+printed. (`--preview-url ""` clears a stale link.)
+
 Print a brief **"N/M scenarios met"** summary: which met/unmet, composites,
 open bugs, revisions, and the dashboard URL (https://daloop-42b47.web.app).
 
