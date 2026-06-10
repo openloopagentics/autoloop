@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody, verificationBody, ideaBody } from "../src/schemas.js";
+import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody, verificationBody, ideaBody, visionChangeBody } from "../src/schemas.js";
 
 describe("idPattern", () => {
   it("accepts safe slugs and rejects unsafe ones", () => {
@@ -157,6 +157,36 @@ describe("ideaBody", () => {
     const parsed = ideaBody.parse({ title: "X", status: "proposed", order: 1, by: "agent", createdAt: "nope" });
     expect("by" in parsed).toBe(false);
     expect("createdAt" in parsed).toBe(false);
+  });
+});
+
+describe("visionChangeBody", () => {
+  const base = { op: "upsert-goal", targetId: "g1", payload: { title: "G" }, reason: "learned X" };
+  it("accepts a minimal change", () => {
+    expect(visionChangeBody.safeParse(base).success).toBe(true);
+  });
+  it("accepts an optional originLoopId", () => {
+    expect(visionChangeBody.safeParse({ ...base, originLoopId: "loop-2026-06-09" }).success).toBe(true);
+  });
+  it("accepts upsert-scenario", () => {
+    expect(visionChangeBody.safeParse({ ...base, op: "upsert-scenario" }).success).toBe(true);
+  });
+  it("rejects an unknown op (no deletes)", () => {
+    expect(visionChangeBody.safeParse({ ...base, op: "delete-goal" }).success).toBe(false);
+  });
+  it("rejects an empty reason", () => {
+    expect(visionChangeBody.safeParse({ ...base, reason: "" }).success).toBe(false);
+  });
+  it("rejects a missing payload", () => {
+    expect(visionChangeBody.safeParse({ op: "upsert-goal", targetId: "g1", reason: "r" }).success).toBe(false);
+  });
+  it("rejects a non-idPattern targetId", () => {
+    expect(visionChangeBody.safeParse({ ...base, targetId: "Bad Id" }).success).toBe(false);
+  });
+  it("drops unknown keys (plain z.object)", () => {
+    const parsed = visionChangeBody.parse({ ...base, status: "rejected", prior: { x: 1 } });
+    expect("status" in parsed).toBe(false);
+    expect("prior" in parsed).toBe(false);
   });
 });
 

@@ -151,6 +151,17 @@ export const revisionBody = z.object({
   changes: z.array(z.object({ op: z.enum(["add", "replace", "reorder", "drop"]), taskId: id }).passthrough()).min(1),
 });
 
+// Vision change: propose-and-apply event. `payload` is re-validated per-op in the
+// service with goalBody/scenarioBody so error messages match direct upserts.
+export const visionChangeBody = z.object({
+  op: z.enum(["upsert-goal", "upsert-scenario"]),
+  targetId: id,
+  payload: z.record(z.string(), z.unknown()),
+  reason: z.string().min(1),
+  originLoopId: id.optional(),
+});
+export type VisionChangeBody = z.infer<typeof visionChangeBody>;
+
 export type GoalBody = z.infer<typeof goalBody>;
 export type ScenarioBody = z.infer<typeof scenarioBody>;
 export type TaskBody = z.infer<typeof taskBody>;
