@@ -41,4 +41,20 @@ describe("PUT /v1/teams/:teamId/projects/:slug/documents/:docId", () => {
     const proj = (await db().doc("teams/team1/projects/acme").get()).data()!;
     expect(proj.visionOwner).toBe("loop");
   });
+  it("accepts format json and stores it", async () => {
+    await createProject();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/documents/product-map").set(authHeader())
+      .send({ kind: "product-map", title: "Product map", format: "json", content: '{"nodes":[],"edges":[]}' });
+    expect(res.status).toBe(200);
+    const d = (await db().doc("teams/team1/projects/acme/documents/product-map").get()).data()!;
+    expect(d.format).toBe("json");
+    expect(d.content).toBe('{"nodes":[],"edges":[]}');
+  });
+
+  it("rejects an unknown format", async () => {
+    await createProject();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/documents/d2").set(authHeader())
+      .send({ kind: "notes", title: "N", format: "yaml", content: "x" });
+    expect(res.status).toBe(400);
+  });
 });

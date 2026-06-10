@@ -7,7 +7,7 @@ export const idPattern = /^[a-z0-9._-]+$/;
 
 const status = z.enum(STATUSES);
 
-const contentFormat = z.enum(["markdown", "url"]);
+const contentFormat = z.enum(["markdown", "url", "json"]);
 const CONTENT_MAX_BYTES = 100 * 1024;
 
 const design = z.object({
