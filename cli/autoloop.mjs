@@ -411,6 +411,15 @@ export function launchHeadless({ cwd, slug, env, spawnImpl, log }) {
   log(`autoloop: relaunched headless driver (pid ${child.pid ?? "?"}) — log: ${logFile}`);
 }
 
+/** Append one line to ~/.autoloop/logs/hooks.log — diagnosable, never fails the hook. */
+export function hookLog(env, tag, msg, nowMs = Date.now()) {
+  try {
+    mkdirSync(join(autoloopHome(env), "logs"), { recursive: true });
+    writeFileSync(join(autoloopHome(env), "logs", "hooks.log"),
+      `[${new Date(nowMs).toISOString()}] ${tag}: ${msg}\n`, { flag: "a" });
+  } catch { /* never fail the hook over logging */ }
+}
+
 /**
  * Run an autoloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.
@@ -595,6 +604,37 @@ export async function run(argv, deps = {}) {
         const path = lockPath(env, cfg.teamId, cfg.projectSlug);
         if (existsSync(path)) { rmSync(path); log(`autoloop: lock released → ${path}`); }
         else log("autoloop: no lock to release");
+        return 0;
+      }
+      case "hook session-end": {
+        // SessionEnd shim — fires when the Claude Code session actually TERMINATES.
+        // (Deliberately NOT Stop: Stop fires at the end of every turn while the session is
+        // still alive — wiring it would spawn a competing driver against a live session.)
+        // Best-effort: ALWAYS exit 0; a failing hook must never break Claude Code.
+        const hook = readHookStdin();                  // { session_id, cwd, ... }
+        const projDir = hook?.cwd || cwd;
+        let cfg;
+        try { cfg = loadConfig(projDir); } catch (e) { hookLog(env, "session-end", `skip: ${e.message}`, now()); return 0; }
+        const key = `${cfg.teamId}-${cfg.projectSlug}`;
+        const lockFile = lockPath(env, cfg.teamId, cfg.projectSlug);
+        // "ours" = the lock pid is THIS ending session's claude ancestor — it may hand off.
+        const self = findClaudeSessionPid(process.pid, psLookup);
+        const lockState = evaluateLock(readLock(lockFile), isAlive, self.pid ?? null);
+
+        const stamps = readStamps(stampsPath(env, key)).filter((t) => now() - t < RELAUNCH_WINDOW_MS);
+        const backoff = backoffExceeded(stamps, now());
+        // resumable? — the same probe as `loop resume --check`, in-process
+        const fetched = await fetchResumeState(cfg, env, fetchImpl);
+        const resumable = !!fetched && isResumable(fetched.state);
+
+        const d = decideSessionEndRelaunch({ lockState, resumable, backoff });
+        hookLog(env, "session-end", `lock=${lockState} resumable=${resumable} backoff=${backoff} → ${d.relaunch ? "RELAUNCH" : "skip"} (${d.reason})`, now());
+        if (!d.relaunch) return 0;
+
+        if (existsSync(lockFile)) rmSync(lockFile);    // release: this session is gone; the relaunch re-acquires
+        mkdirSync(join(autoloopHome(env), "run"), { recursive: true });
+        writeFileSync(stampsPath(env, key), JSON.stringify([...stamps, now()]));
+        launchHeadless({ cwd: projDir, slug: cfg.projectSlug, env, spawnImpl, log });
         return 0;
       }
       case "goal set": {

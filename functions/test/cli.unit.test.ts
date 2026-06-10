@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { tmpdir } from "node:os";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
 import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake } from "../../cli/autoloop.mjs";
@@ -1072,5 +1072,67 @@ describe("relaunch decisions (pure)", () => {
     expect(decideWake({ lockState: "none", loopStatus: undefined, hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
     expect(decideWake({ lockState: "dead", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
+  });
+});
+
+describe("hook session-end", () => {
+  const RESUMABLE = { ok: true, state: { loop: { id: "l1", goal: "g", order: 1, status: "running" }, project: { slug: "web", currentLoopId: "l1" }, phases: [], tasks: [], scenarios: [], openBugs: [], pendingMessages: [] } };
+  const PAUSED = { ok: true, state: { ...RESUMABLE.state, loop: { ...RESUMABLE.state.loop, status: "paused" } } };
+
+  function setup() {
+    const home = tmp(); const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentLoopId: "l1", loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
+    const spawned: any[] = [];
+    const spawnImpl = (cmd: string, args: string[], opts: any) => { spawned.push({ cmd, args, opts }); return { pid: 999, unref: () => {} }; };
+    mkdirSync(join(home, ".autoloop", "run"), { recursive: true }); // tests write the lockfile directly
+    return { home, dir, spawned, spawnImpl, lockFile: join(home, ".autoloop", "run", "acme-web.lock"), stampsFile: join(home, ".autoloop", "run", "acme-web.stamps.json") };
+  }
+  const deps = (s: ReturnType<typeof setup>, over: Record<string, unknown> = {}) => ({
+    cwd: s.dir, env: { AUTOLOOP_API_KEY: "al_k", HOME: s.home },
+    log: () => {}, err: () => {},
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => RESUMABLE }),
+    spawnImpl: s.spawnImpl, isAlive: () => false, psLookup: () => null, now: () => 1_000_000_000,
+    ...over,
+  });
+
+  it("relaunches the headless driver, releases the lock, stamps the backoff file", async () => {
+    const s = setup();
+    writeFileSync(s.lockFile, JSON.stringify({ pid: 111 })); // dead (isAlive false)
+    expect(await run(["hook", "session-end"], deps(s))).toBe(0);
+    expect(s.spawned.length).toBe(1);
+    expect(s.spawned[0].cmd).toBe("claude");
+    expect(s.spawned[0].args).toEqual(["-p", "/autoloop", "--permission-mode", "acceptEdits"]);
+    expect(s.spawned[0].opts).toMatchObject({ cwd: s.dir, detached: true });
+    expect(existsSync(s.lockFile)).toBe(false);                                  // released
+    expect(JSON.parse(readFileSync(s.stampsFile, "utf8"))).toEqual([1_000_000_000]); // stamped
+  });
+
+  it("does NOT relaunch when another LIVE session holds the lock", async () => {
+    const s = setup();
+    writeFileSync(s.lockFile, JSON.stringify({ pid: 111 }));
+    expect(await run(["hook", "session-end"], deps(s, { isAlive: () => true }))).toBe(0);
+    expect(s.spawned.length).toBe(0);
+    expect(existsSync(s.lockFile)).toBe(true); // someone else's lock — untouched
+  });
+
+  it("does NOT relaunch when the loop is paused (loop resume --check semantics)", async () => {
+    const s = setup();
+    expect(await run(["hook", "session-end"], deps(s, { fetchImpl: async () => ({ ok: true, status: 200, json: async () => PAUSED }) }))).toBe(0);
+    expect(s.spawned.length).toBe(0);
+  });
+
+  it("stops relaunching when backoff is exceeded (3 stamps in window) and logs it", async () => {
+    const s = setup();
+    mkdirSync(join(s.home, ".autoloop", "run"), { recursive: true });
+    writeFileSync(s.stampsFile, JSON.stringify([999_990_000, 999_980_000, 999_970_000]));
+    expect(await run(["hook", "session-end"], deps(s))).toBe(0);
+    expect(s.spawned.length).toBe(0);
+    expect(readFileSync(join(s.home, ".autoloop", "logs", "hooks.log"), "utf8")).toMatch(/backoff/);
+  });
+
+  it("exits 0 quietly when the project is not initialized (hook must never break the session)", async () => {
+    const s = setup();
+    expect(await run(["hook", "session-end"], deps(s, { cwd: tmp() }))).toBe(0);
+    expect(s.spawned.length).toBe(0);
   });
 });
