@@ -447,6 +447,12 @@ export async function run(argv, deps = {}) {
           catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
           format = "markdown";
         } else { format = "url"; content = flags.url; }
+        if (flags.format) {
+          if (!["markdown", "url", "json"].includes(flags.format)) {
+            throw new UsageError(`--format must be markdown|url|json, got '${flags.format}'`);
+          }
+          format = flags.format;
+        }
         const docId = flags.id ? (validateId("docId", flags.id), flags.id) : slugify(flags.title);
         // NOTE: --url is overloaded here (it's the DOCUMENT url, not an API-base override),
         // so resolve the API base from cfg/env only — pass `undefined` as the flag override.

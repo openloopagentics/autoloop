@@ -294,6 +294,29 @@ describe("goal/scenario/task/doc verbs (request shapes)", () => {
     expect(c.url).toBe("http://api/v1/teams/acme/projects/web/tasks/t1");
     expect(JSON.parse(c.init.body)).toMatchObject({ status: "completed" });
   });
+
+  it("doc add --format json overrides the --file ⇒ markdown inference", async () => {
+    const dir = initDir(); const c = cap();
+    writeFileSync(join(dir, "map.json"), '{"nodes":[],"edges":[]}');
+    expect(await run(["doc", "add", "--id", "product-map", "--kind", "product-map", "--title", "Product map",
+      "--format", "json", "--file", "map.json"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/documents/product-map");
+    expect(JSON.parse(c.init.body)).toMatchObject({ kind: "product-map", title: "Product map", format: "json", content: '{"nodes":[],"edges":[]}' });
+  });
+
+  it("doc add without --format keeps the --file ⇒ markdown inference", async () => {
+    const dir = initDir(); const c = cap();
+    writeFileSync(join(dir, "notes.md"), "# Notes");
+    expect(await run(["doc", "add", "--kind", "notes", "--title", "Notes", "--file", "notes.md"], base(dir, c))).toBe(0);
+    expect(JSON.parse(c.init.body)).toMatchObject({ format: "markdown", content: "# Notes" });
+  });
+
+  it("doc add rejects an unknown --format without calling the API", async () => {
+    const dir = initDir();
+    const code = await run(["doc", "add", "--kind", "n", "--title", "N", "--format", "yaml", "--url", "https://x.com"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
 });
 
 describe("loop start/set + loop-aware URLs", () => {
