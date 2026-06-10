@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { tmpdir } from "node:os";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
 import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake } from "../../cli/autoloop.mjs";
@@ -1133,6 +1133,57 @@ describe("hook session-end", () => {
   it("exits 0 quietly when the project is not initialized (hook must never break the session)", async () => {
     const s = setup();
     expect(await run(["hook", "session-end"], deps(s, { cwd: tmp() }))).toBe(0);
+    expect(s.spawned.length).toBe(0);
+  });
+});
+
+describe("hook wake", () => {
+  function setup() {
+    const home = tmp(); const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentLoopId: "l1", loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
+    const spawned: any[] = [];
+    const spawnImpl = (cmd: string, args: string[], opts: any) => { spawned.push({ cmd, args, opts }); return { pid: 999, unref: () => {} }; };
+    mkdirSync(join(home, ".autoloop", "run"), { recursive: true }); // tests write the lockfile directly
+    return { home, dir, spawned, spawnImpl, lockFile: join(home, ".autoloop", "run", "acme-web.lock") };
+  }
+  // Route the two GETs by URL: …/state → loop status; …/messages → pending list.
+  const fetchFor = (loopStatus: string, messages: unknown[]) => async (url: string) => ({
+    ok: true, status: 200,
+    json: async () => url.endsWith("/messages")
+      ? { ok: true, messages }
+      : { ok: true, state: { loop: { id: "l1", goal: "g", order: 1, status: loopStatus }, project: { slug: "web", currentLoopId: "l1" }, phases: [], tasks: [], scenarios: [], openBugs: [], pendingMessages: [] } },
+  });
+  const deps = (s: ReturnType<typeof setup>, fetchImpl: any, over: Record<string, unknown> = {}) => ({
+    cwd: s.dir, env: { AUTOLOOP_API_KEY: "al_k", HOME: s.home },
+    log: () => {}, err: () => {}, fetchImpl, spawnImpl: s.spawnImpl,
+    isAlive: () => false, psLookup: () => null, now: () => 1_000_000_000, ...over,
+  });
+
+  it("wakes a paused loop with pending messages and no lock", async () => {
+    const s = setup();
+    expect(await run(["hook", "wake"], deps(s, fetchFor("paused", [{ id: "m1", text: "go" }])))).toBe(0);
+    expect(s.spawned.length).toBe(1);
+    expect(s.spawned[0].args).toEqual(["-p", "/autoloop", "--permission-mode", "acceptEdits"]);
+    expect(s.spawned[0].opts.cwd).toBe(s.dir); // launchd bakes WorkingDirectory; the shim uses cwd
+  });
+
+  it("clears a DEAD lock before waking", async () => {
+    const s = setup();
+    writeFileSync(s.lockFile, JSON.stringify({ pid: 111 })); // dead
+    expect(await run(["hook", "wake"], deps(s, fetchFor("paused", [{ id: "m1", text: "go" }])))).toBe(0);
+    expect(s.spawned.length).toBe(1);
+    expect(existsSync(s.lockFile)).toBe(false);
+  });
+
+  it("does NOT wake when a live lock exists / loop not paused / no pending messages", async () => {
+    const s = setup();
+    writeFileSync(s.lockFile, JSON.stringify({ pid: 111 }));
+    await run(["hook", "wake"], deps(s, fetchFor("paused", [{ id: "m1", text: "go" }]), { isAlive: () => true }));
+    expect(s.spawned.length).toBe(0);
+    rmSync(s.lockFile);
+    await run(["hook", "wake"], deps(s, fetchFor("running", [{ id: "m1", text: "go" }])));
+    expect(s.spawned.length).toBe(0);
+    await run(["hook", "wake"], deps(s, fetchFor("paused", [])));
     expect(s.spawned.length).toBe(0);
   });
 });

@@ -637,6 +637,28 @@ export async function run(argv, deps = {}) {
         launchHeadless({ cwd: projDir, slug: cfg.projectSlug, env, spawnImpl, log });
         return 0;
       }
+      case "hook wake": {
+        // launchd interval shim (every 5 min; WorkingDirectory = project dir, baked into the
+        // plist because launchd jobs have no cwd context). Linux runs the same verb from cron.
+        let cfg;
+        try { cfg = loadConfig(cwd); } catch (e) { hookLog(env, "wake", `skip: ${e.message}`, now()); return 0; }
+        const lockFile = lockPath(env, cfg.teamId, cfg.projectSlug);
+        const lockState = evaluateLock(readLock(lockFile), isAlive, null); // no claude ancestor under launchd
+
+        const fetched = await fetchResumeState(cfg, env, fetchImpl);     // `loop resume` JSON
+        const loopStatus = fetched?.state?.loop?.status;
+        // pending messages — same probe as `messages pull --check`, in-process (GET only, never acks)
+        const api = resolveApiUrl(cfg, env, undefined);
+        const msgs = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`, { env, fetchImpl });
+        const hasPendingMessages = !!(msgs?.ok && Array.isArray(msgs.body?.messages) && msgs.body.messages.length > 0);
+
+        const d = decideWake({ lockState, loopStatus, hasPendingMessages });
+        hookLog(env, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
+        if (!d.wake) return 0;
+        if (lockState === "dead") rmSync(lockFile);    // steal the stale lock; the new session re-acquires
+        launchHeadless({ cwd, slug: cfg.projectSlug, env, spawnImpl, log });
+        return 0;
+      }
       case "goal set": {
         const id = positionals[2]; validateId("goalId", id);
         const cfg = loadConfig(cwd);
