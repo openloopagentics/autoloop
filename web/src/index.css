@@ -1044,6 +1044,16 @@ a.docrow-title:hover { color: var(--accent); }
 .rollup-label { font-size: 11px; color: var(--fg-meta); text-transform: uppercase; letter-spacing: .08em; }
 .rollup-status { align-items: flex-start; }
 
+.trends { display: flex; flex-direction: column; gap: 8px; }
+.trends-row { display: flex; flex-wrap: wrap; gap: 20px; }
+.trend { display: flex; flex-direction: column; gap: 2px; }
+.trend-label { font-size: 11px; color: var(--fg-meta); text-transform: uppercase; letter-spacing: .08em; }
+.trend-line { stroke: var(--accent); }
+.trend-line--alt { stroke: var(--fg-meta); }
+.trend-minmax { font-size: 11px; }
+.trend-latest { font-size: 13px; color: var(--fg); font-weight: 600; }
+.trends-caption { font-size: 11px; }
+
 /* ==========================================================================
    LOOP SNAPSHOT
    ========================================================================== */

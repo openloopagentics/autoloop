@@ -6,6 +6,8 @@ import {
 } from "./hooks";
 import { postMessage, putUserIdea } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor, effectiveProjectStatus } from "./loopView";
+import { useLoopTrend } from "./useLoopTrend";
+import { buildTrend } from "./trendView";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Tabs, isTabKey, type TabKey } from "./components/Tabs";
 import { TaskItem } from "./components/TaskItem";
@@ -69,6 +71,11 @@ export function ProjectDetail() {
   const messages = useMessages(teamId, slug);
   const ideas = useIdeas(teamId, slug);
 
+  const trend = useLoopTrend(teamId, slug, hasProjectDirectData);
+  // Empty until every slice arrives — TrendsStrip hides itself below 2 points,
+  // so partial fan-out data never renders a misleading half-trend.
+  const trendPoints = trend.loading ? [] : buildTrend(trend.data, scenarios.data);
+
   const agentActive = loops.data.some((l) => l.status === "running") || (loops.data.length === 0 && project.data?.status === "running");
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
@@ -76,7 +83,7 @@ export function ProjectDetail() {
 
   // Surface (don't swallow) load errors from any of the project's data sources.
   const dataError = loops.error || phases.error || tasks.error || scores.error || testRuns.error
-    || revisions.error || verifications.error || bugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || null;
+    || revisions.error || verifications.error || bugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || trend.error || null;
   // Show a spinner only on a source's FIRST load (loading + still empty), so switching
   // loops — which keeps prior data until the new snapshot arrives — doesn't flash.
   const tabLoading =
@@ -104,7 +111,8 @@ export function ProjectDetail() {
               <>
                 {tab === "dashboard" && (
                   <DashboardTab loops={loopList} selected={selected} status={projStatus}
-                    phases={phases.data} tasks={tasks.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data} />
+                    phases={phases.data} tasks={tasks.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data}
+                    trendPoints={trendPoints} />
                 )}
                 {tab === "vision" && (
                   <VisionTab teamId={teamId} slug={slug} editable={editable}
