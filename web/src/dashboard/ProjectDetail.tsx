@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas,
 } from "./hooks";
 import { postMessage, putUserIdea } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor, effectiveProjectStatus } from "./loopView";
@@ -20,6 +20,7 @@ import { VisionTab } from "./tabs/VisionTab";
 import { LoopsTab } from "./tabs/LoopsTab";
 import { TestsTab } from "./tabs/TestsTab";
 import { BugsTab } from "./tabs/BugsTab";
+import { MapTab } from "./tabs/MapTab";
 import { IdeasTab } from "./tabs/IdeasTab";
 import { MessagesTab } from "./tabs/MessagesTab";
 import type { Phase, Task } from "./types";
@@ -66,6 +67,7 @@ export function ProjectDetail() {
   const revisions = useRevisions(teamId, slug, loopArg);
   const verifications = useVerifications(teamId, slug, loopArg); // selected-loop scope — Vision badges follow the loop selection (test-runs there are cross-loop); documented limitation
   const bugs = useAllBugs(teamId, slug); // all bugs across every loop — not loop-scoped
+  const loopBugs = useBugs(teamId, slug, loopArg); // Map tab: bugs scoped to the selected loop
   const allScores = useAllScores(teamId, slug);     // scenarios are project-level → met-state spans all loops
   const allTestRuns = useAllTestRuns(teamId, slug); // all test runs across every loop
   const messages = useMessages(teamId, slug);
@@ -83,7 +85,7 @@ export function ProjectDetail() {
 
   // Surface (don't swallow) load errors from any of the project's data sources.
   const dataError = loops.error || phases.error || tasks.error || scores.error || testRuns.error
-    || revisions.error || verifications.error || bugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || trend.error || null;
+    || revisions.error || verifications.error || bugs.error || loopBugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || trend.error || null;
   // Show a spinner only on a source's FIRST load (loading + still empty), so switching
   // loops — which keeps prior data until the new snapshot arrives — doesn't flash.
   const tabLoading =
@@ -93,6 +95,7 @@ export function ProjectDetail() {
     : tab === "bugs" ? (bugs.loading && bugs.data.length === 0)
     : tab === "ideas" ? (ideas.loading && ideas.data.length === 0)
     : tab === "messages" ? (messages.loading && messages.data.length === 0)
+    : tab === "map" ? (goals.loading && goals.data.length === 0)
     : (scenarios.loading && scenarios.data.length === 0); // vision
 
   return (
@@ -127,6 +130,12 @@ export function ProjectDetail() {
                 )}
                 {tab === "tests" && <TestsTab scenarios={scenarios.data} testRuns={allTestRuns.data} />}
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
+                {tab === "map" && (
+                  <MapTab loops={loopList} selectedId={selectedId} onSelect={setPicked}
+                    goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data}
+                    tasks={tasks.data} bugs={loopBugs.data} currentTaskId={selected?.currentTaskId}
+                    verifications={verifications.data} />
+                )}
                 {tab === "ideas" && <IdeasTab ideas={ideas.data} onPut={(id, body) => putUserIdea(teamId, slug, id, body)} />}
                 {tab === "messages" && <MessagesTab teamId={teamId} slug={slug} messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}
               </>

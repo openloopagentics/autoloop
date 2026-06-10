@@ -8,7 +8,7 @@ import { TaskItem } from "../components/TaskItem";
 import { BugItem } from "../components/BugItem";
 import { EmptyState } from "../components/EmptyState";
 import type { SelectableLoop } from "../loopView";
-import type { Bug, Goal, Scenario, Score, Task, TestRun } from "../types";
+import type { Bug, Goal, Scenario, Score, Task, TestRun, Verification } from "../types";
 
 export interface MapTabProps {
   loops: SelectableLoop[]; selectedId: string; onSelect: (id: string) => void;
@@ -16,15 +16,16 @@ export interface MapTabProps {
   scores: Score[]; testRuns: TestRun[];     // project-wide (all loops) — scenarios are project-level vision
   tasks: Task[]; bugs: Bug[];               // selected-loop scoped (same convention as the Loops tab)
   currentTaskId?: string | null;
+  verifications?: Verification[];           // selected-loop scoped — feeds the ScenarioCard verification badge
 }
 
-interface PanelData { goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; tasks: Task[]; bugs: Bug[]; }
+interface PanelData { goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; tasks: Task[]; bugs: Bug[]; verifications: Verification[]; }
 
 function MapPanelBody({ id, data }: { id: string; data: PanelData }) {
   const sep = id.indexOf(":");
   const ns = id.slice(0, sep);
   const key = id.slice(sep + 1);
-  if (ns === "s") { const s = data.scenarios.find((x) => x.id === key); return s ? <ScenarioCard scenario={s} scores={data.scores} testRuns={data.testRuns} /> : null; }
+  if (ns === "s") { const s = data.scenarios.find((x) => x.id === key); return s ? <ScenarioCard scenario={s} scores={data.scores} testRuns={data.testRuns} verifications={data.verifications} /> : null; }
   if (ns === "t") { const t = data.tasks.find((x) => x.id === key); return t ? <TaskItem task={t} commits={[]} /> : null; }
   if (ns === "b") { const b = data.bugs.find((x) => x.id === key); return b ? <BugItem bug={b} /> : null; }
   if (ns === "g") {
@@ -35,7 +36,7 @@ function MapPanelBody({ id, data }: { id: string; data: PanelData }) {
 }
 
 export function MapTab(props: MapTabProps) {
-  const { loops, selectedId, onSelect, goals, scenarios, scores, testRuns, tasks, bugs, currentTaskId } = props;
+  const { loops, selectedId, onSelect, goals, scenarios, scores, testRuns, tasks, bugs, currentTaskId, verifications = [] } = props;
   const [pickedNode, setPickedNode] = useState<string | null>(null);
 
   const openBugs = useMemo(() => bugs.filter((b) => (b.status ?? "open") === "open"), [bugs]);
@@ -57,7 +58,7 @@ export function MapTab(props: MapTabProps) {
       {pickedNode && (
         <aside className="map-panel card" aria-label="map detail">
           <button type="button" className="map-panel-close" aria-label="close" onClick={() => setPickedNode(null)}>×</button>
-          <MapPanelBody id={pickedNode} data={{ goals, scenarios, scores, testRuns, tasks, bugs: openBugs }} />
+          <MapPanelBody id={pickedNode} data={{ goals, scenarios, scores, testRuns, tasks, bugs: openBugs, verifications }} />
         </aside>
       )}
     </section>

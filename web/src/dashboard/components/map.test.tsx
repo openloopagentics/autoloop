@@ -31,6 +31,7 @@ function renderTab(overrides: Partial<Parameters<typeof MapTab>[0]> = {}) {
     bugs={[{ id: "b1", title: "500 on login", status: "open", severity: "low", scenarioId: "login" },
            { id: "bf", title: "Old fixed", status: "fixed" }]}
     currentTaskId="t2"
+    verifications={[{ id: "01V", scenarioId: "login", testRunId: "01B", verdict: "confirmed" }]}
     {...overrides} />);
 }
 
@@ -52,6 +53,7 @@ describe("MapTab", () => {
     const panel = screen.getByRole("complementary", { name: /map detail/i });
     expect(panel).toBeInTheDocument();
     expect(screen.getByText("Login works")).toBeInTheDocument(); // ScenarioCard title
+    expect(screen.getByTitle("Independently verified")).toBeInTheDocument(); // verification badge threads through
     fireEvent.click(screen.getByRole("button", { name: /close/i }));
     expect(screen.queryByRole("complementary")).toBeNull();
   });
