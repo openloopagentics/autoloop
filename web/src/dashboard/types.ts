@@ -6,6 +6,7 @@ export interface Loop {
   id: string; goal?: string; name?: string; order?: number; status?: string;
   startedAt?: unknown; endedAt?: unknown;
   currentPhaseId?: string | null; currentTaskId?: string | null;
+  previewUrl?: string | null; // agent-reported preview deploy; null and absent both mean "no link"
 }
 export interface Phase { id?: string; name?: string; order?: number; status?: string; startedAt?: unknown; endedAt?: unknown; }
 export interface CommitTokens { input: number; output: number; cacheRead: number; cacheWrite: number; total: number; }

@@ -31,6 +31,12 @@ describe("buildLoopList", () => {
     expect(list).toHaveLength(1);
     expect(list[0].isMain).toBe(true);
   });
+  it("passes previewUrl through to the selectable loop; synthesized main has none", () => {
+    const list = buildLoopList(
+      [{ id: "l1", order: 1, status: "completed", previewUrl: "https://p.web.app" }], project, true);
+    expect(list.find((l) => l.id === "l1")?.previewUrl).toBe("https://p.web.app");
+    expect(list.find((l) => l.isMain)?.previewUrl).toBeUndefined();
+  });
 });
 
 describe("defaultSelectedLoop", () => {

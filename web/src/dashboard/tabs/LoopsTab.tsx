@@ -12,6 +12,6 @@ export function LoopsTab({ teamId, slug, loops, scenarios, selectedId, selected,
   return (
     <LoopList teamId={teamId} slug={slug} loops={loops} scenarios={scenarios} selectedId={selectedId} onSelect={onSelect}
       detail={selected && <LoopDetail phases={phases} tasks={tasks} testRuns={testRuns} revisions={revisions} verifications={verifications}
-        currentTaskId={selected.currentTaskId} renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />} />
+        currentTaskId={selected.currentTaskId} previewUrl={selected.previewUrl} renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />} />
   );
 }

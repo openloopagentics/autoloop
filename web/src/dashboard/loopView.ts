@@ -7,6 +7,7 @@ export interface SelectableLoop {
   id: string; isMain: boolean;
   goal?: string; name?: string; status?: string; order?: number;
   currentPhaseId?: string | null; currentTaskId?: string | null;
+  previewUrl?: string | null;
 }
 
 /** Firestore path segments for a (loop-scoped or project-direct) collection root. */
@@ -23,6 +24,7 @@ export function buildLoopList(loops: Loop[], project: Project | null | undefined
     .map((l) => ({
       id: l.id, isMain: false, goal: l.goal, name: l.name, status: l.status, order: l.order,
       currentPhaseId: l.currentPhaseId, currentTaskId: l.currentTaskId,
+      previewUrl: l.previewUrl,
     }));
   if (hasProjectDirectData) {
     list.push({
