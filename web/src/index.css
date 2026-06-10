@@ -1346,3 +1346,35 @@ a.docrow-title:hover { color: var(--accent); }
 .slog-tool-name { color: var(--fg-soft); min-width: 60px; }
 .slog-tool-summary { color: var(--fg-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
 .slog-more { font-size: 11px; padding-left: 16px; cursor: pointer; }
+
+/* ==========================================================================
+   VISION CHANGES FEED (Vision tab)
+   ========================================================================== */
+.vchanges { margin-top: 24px; }
+.vchanges-details > summary { cursor: pointer; }
+.vchanges-list { display: grid; gap: 8px; margin-top: 8px; }
+.vchange { padding: var(--card-pad); }
+.vchange-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vchange-op { font-size: 11.5px; }
+.vchange-title { font-weight: 600; }
+.vchange-reason { margin: 4px 0 0; font-size: 12.5px; line-height: 1.55; }
+.vchange-time { font-size: 11.5px; }
+.vchange--rejected .vchange-title,
+.vchange--rejected .vchange-reason { text-decoration: line-through; opacity: 0.6; }
+
+/* vision change status pill (mirrors .ideastatus) */
+.vchange-status {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px; border-radius: var(--radius-full);
+  font-size: 11px; font-weight: 500; letter-spacing: .02em; white-space: nowrap; flex-shrink: 0;
+}
+.vchange-status--applied {
+  color: var(--st-completed);
+  background: color-mix(in oklab, var(--st-completed) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--st-completed) 30%, transparent);
+}
+.vchange-status--rejected {
+  color: var(--st-failed);
+  background: color-mix(in oklab, var(--st-failed) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--st-failed) 30%, transparent);
+}
