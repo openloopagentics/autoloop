@@ -38,6 +38,10 @@ BEFORE doing any setup:
 autoloop loop resume    # human header + the full state bundle as pretty JSON
 ```
 
+**Lock (only when `autoloop status` reports `relaunchInstalled: true`):** claim the
+project before driving it — `autoloop lock acquire`. If it exits 1, another live
+session is already driving this project: report that and end this session.
+
 If the state shows a **non-terminal loop** (`state.loop.status` is not
 completed/failed/cancelled):
 
@@ -59,10 +63,6 @@ completed/failed/cancelled):
 
 If there is no non-terminal loop (the CLI prints `no active loop`), proceed to
 Step 1 as normal.
-
-**Lock (only when `autoloop status` reports `relaunchInstalled: true`):** claim the
-project before driving it — `autoloop lock acquire`. If it exits 1, another live
-session is already driving this project: report that and end this session.
 
 ## Step 1 — Setup (once per run)
 
@@ -217,7 +217,9 @@ done
 ```
 
 - If any message is a **stop/pause**: finish the current task cleanly, then go to
-  **Step 4 (Paused — wait for resume)**. Do NOT end the session.
+  **Step 4 (Paused — wait for resume)**. Do NOT end the session except via
+  Step 4a's pause-handoff (when `relaunchInstalled: true`, that path releases the
+  lock and exits deliberately — the wake job becomes the listener).
 - If any message changes scope or direction: adjust the remaining task plan accordingly.
 
 **Now go back to 2a for the next task.**
@@ -339,12 +341,15 @@ and go back to Step 2. Do NOT ask the user whether to continue. Do NOT suggest t
 next round as an option. Just run it.
 
 **The only valid reasons to stop building are:**
-1. The user sent a **stop/pause** message → go to **Step 4 (Paused)**, keep the
-   session alive and polling. (This is a pause, not an exit.)
+1. The user sent a **stop/pause** message → go to **Step 4 (Paused)** — with
+   relaunch machinery installed the paused session hands off to the wake job and
+   exits (4a); without it, it stays alive polling (4b). (This is a pause, not a
+   permanent exit.)
 2. The user gave an explicit iteration count and you've reached it (e.g. "run 3 rounds").
 3. Genuine context or token exhaustion — you physically cannot continue.
 
-**Only end the session** on an explicit **shutdown/exit/quit/"we're done"** message.
+**Only end the session** on an explicit **shutdown/exit/quit/"we're done"** message —
+or via Step 4a's deliberate pause-handoff exit when `relaunchInstalled: true`.
 
 Anything else — "a sensible cap", "one round is enough", "the app looks good" —
 is a rationalization. Ignore it and start the next loop.
