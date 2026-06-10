@@ -720,8 +720,8 @@ completed/failed/cancelled):
   then `autoloop messages ack <id>`. A message may change scope or direction —
   honor it before picking up the next task.
 - Then continue the normal **Step 2** per-task loop from that next task
-  (re-run `autoloop init --session-log` so the session-log hook points at this
-  session).
+  (re-run `autoloop session-log` so the session-log hook points at this
+  session — the bare team-less verb; `init --session-log` without `--team` exits 1).
 - If `state.loop.status` is `paused`: resume into **Step 4 (Paused)** instead —
   unless a pending message says to resume or change course, in which case do
   what it says.
@@ -744,7 +744,7 @@ Expected: `IDENTICAL`.
 
 - [ ] **Step 4: Skill-vs-CLI prose check**
 
-Verify every command named in the new Step 0 exists in the CLI: `loop resume`, `messages ack`, `init --session-log` (driver-hygiene review rule). `grep -n "loop resume" cli/autoloop.mjs` must hit the dispatch case.
+Verify every command named in the new Step 0 exists in the CLI: `loop resume`, `messages ack`, `session-log` (driver-hygiene review rule; the bare `session-log` verb is the reachable one — the `case "init --session-log"` label is dead code). `grep -n "loop resume" cli/autoloop.mjs` must hit the dispatch case.
 
 - [ ] **Step 5: Commit**
 

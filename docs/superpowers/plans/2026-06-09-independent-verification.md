@@ -786,7 +786,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ### Task 8: CLI `verify` verb (+ surface returned event ids)
 
-`verify` is a one-word verb taking a positional `<scenarioId>`, like `score`/`test-run`. The driver flow needs each test-run's server ULID to pass as `--test-run`, but `report()` currently swallows the response body — so this task also makes `report()` print `autoloop: id <ULID>` (on the informational `err` channel, like the pending-messages notice) whenever the response carries an id. **Note:** this `report()` line is the minimal enabling change for the spec's driver flow ("collect each scenario's latest test-run id"); the spec does not name it explicitly — see the plan's ambiguity notes.
+`verify` is a one-word verb taking a positional `<scenarioId>`, like `score`/`test-run`. The driver flow needs each test-run's server ULID to pass as `--test-run`, but `report()` currently swallows the response body — so this task also makes `report()` print `autoloop: id <ULID>` (on the informational `err` channel, like the pending-messages notice) whenever the response carries an id. **Note:** this `report()` line is the minimal enabling change for the spec's driver flow ("collect each scenario's latest test-run id"); the spec does not name it explicitly, but without it the driver cannot learn the ULID it must pass to `autoloop verify --test-run`. Deliberate, reviewed scope addition.
 
 **Files:**
 - Modify: `cli/autoloop.mjs` (add `"verify"` to `ONE_WORD` ~line 274; add the `case "verify"` after `case "test-run"` ~line 548; add the id print in `report()` ~line 105)
@@ -1392,4 +1392,4 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - CI replay (GitHub Actions posting verifications with an API key) — the event shape already supports it (`by: "ci"`).
 - Gating met-state on verification (verification is evidence, not a gate).
 - Verifying scores/rubric judgments (only test-runs are mechanically replayable).
-- An all-loops verification aggregator hook (`useAllVerifications`) — the spec defines only the single-scope `useVerifications`; see the ambiguity notes in the plan's hand-off summary.
+- An all-loops verification aggregator hook (`useAllVerifications`) — the spec defines only the single-scope `useVerifications` ("like `useTestRuns`"). Known consequence: the Vision tab derives latest test-runs from `useAllTestRuns` (cross-loop) but receives only the selected-loop/main-scope verifications, so a verification recorded in a different loop than the selected one won't badge there. Deliberate, documented limitation; fast-follow candidate.

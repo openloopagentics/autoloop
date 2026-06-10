@@ -1021,7 +1021,7 @@ CSS append to `web/src/index.css`:
 import type { LoopSlice } from "./mapTimeline";
 ```
 
-2. After the `const trendPoints = …` line (trends plan Task 7), map `LoopRunData[]` → `LoopSlice[]`. The `main` slice arrives as `loop.id === MAIN_ID` and maps to `loopId: undefined` (project-direct: no hue band, unscoped node ids — matching the `mapTimeline` convention); `taskCommits` is dropped (the map needs no token data). `undefined` while loading keeps the scrubber hidden until every slice has arrived:
+2. After the `const trendPoints = …` line (trends plan Task 6), map `LoopRunData[]` → `LoopSlice[]`. The `main` slice arrives as `loop.id === MAIN_ID` and maps to `loopId: undefined` (project-direct: no hue band, unscoped node ids — matching the `mapTimeline` convention); `taskCommits` is dropped (the map needs no token data). `undefined` while loading keeps the scrubber hidden until every slice has arrived:
 
 ```tsx
   // Map tab replay data: undefined until the trend fan-out has fully arrived
