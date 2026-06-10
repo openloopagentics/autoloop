@@ -24,3 +24,18 @@ aren't lost when the batch ships.
 5. **CLI bare-flag leniency on `--summary`/`--task`** (verify + the
    pre-existing score/test-run pattern): bare flags leak booleans to the
    server (400) instead of a local UsageError. Inherited inconsistency.
+
+## From plan 2 (ideas backlog)
+
+6. **`idea list` doesn't surface rationales** — output is `[status] order id —
+   title` only, but the skill's Pick step says the chosen idea's *rationale*
+   seeds the loop plan, and dedup is judged from titles alone. Across session
+   death the rationale is unreachable by the agent. Tiny fix: `idea list
+   --json` (fetchJson default render) or append truncated rationale per line.
+   Spec-level gap, not an implementation defect.
+7. **`ideaIdFor` doesn't strip `_`** — `__weird__` yields a Firestore-reserved
+   doc id (`__.*__`) that would 500. Extend the strip class to `[-._]+`.
+8. **Missing-status band default diverges** server (band 9/last) vs web
+   (proposed/band 1) — unreachable via the API; only hand-written docs.
+9. **Latency-compensation flicker**: a just-added idea sorts to its band's end
+   until serverTimestamp commits (web null-createdAt sorts last). Cosmetic.
