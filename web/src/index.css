@@ -819,6 +819,28 @@ ul { margin: 0; padding: 0; list-style: none; }
   border: 1px solid var(--border-soft);
 }
 
+/* verification badge (independent replay — evidence layer on top of met/unmet) */
+.verifybadge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: var(--radius-full);
+  font-size: 11px; font-weight: 500; white-space: nowrap; flex-shrink: 0;
+}
+.verifybadge--confirmed {
+  color: var(--st-completed);
+  background: color-mix(in oklab, var(--st-completed) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--st-completed) 30%, transparent);
+}
+.verifybadge--refuted {
+  color: var(--st-failed);
+  background: color-mix(in oklab, var(--st-failed) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--st-failed) 30%, transparent);
+}
+.verifybadge--unverified {
+  color: var(--fg-meta);
+  background: color-mix(in oklab, var(--fg-meta) 10%, transparent);
+  border: 1px solid var(--border-soft);
+}
+
 /* light tint on the whole card for met/unmet */
 .scncard.scn-met   { border-color: color-mix(in oklab, var(--st-completed) 28%, var(--border)); }
 .scncard.scn-unmet { border-color: color-mix(in oklab, var(--st-blocked)   22%, var(--border)); }

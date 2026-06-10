@@ -12,6 +12,17 @@ describe("TestRunsSection", () => {
     rerender(<TestRunsSection testRuns={[]} />);
     expect(container.firstChild).toBeNull();
   });
+  it("shows ✓ Verified / ✗ Refuted per the latest verification, nothing when unverified", () => {
+    const runs = [{ id: "01A", passed: 8, failed: 0 }];
+    const { rerender } = render(<TestRunsSection testRuns={runs}
+      verifications={[{ id: "01V", testRunId: "01A", verdict: "confirmed" }]} />);
+    expect(screen.getByText("✓ Verified")).toBeInTheDocument();
+    rerender(<TestRunsSection testRuns={runs}
+      verifications={[{ id: "01V", testRunId: "01A", verdict: "confirmed" }, { id: "01W", testRunId: "01A", verdict: "refuted" }]} />);
+    expect(screen.getByText("✗ Refuted")).toBeInTheDocument(); // latest (01W) wins
+    rerender(<TestRunsSection testRuns={runs} verifications={[]} />);
+    expect(screen.queryByText(/Verified|Refuted/)).toBeNull(); // nothing when unverified
+  });
 });
 
 describe("LoopRow", () => {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllScores, useAllTestRuns, useMessages,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications,
 } from "./hooks";
 import { postMessage } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor, effectiveProjectStatus } from "./loopView";
@@ -61,6 +61,7 @@ export function ProjectDetail() {
   const scores = useScores(teamId, slug, loopArg);
   const testRuns = useTestRuns(teamId, slug, loopArg);
   const revisions = useRevisions(teamId, slug, loopArg);
+  const verifications = useVerifications(teamId, slug, loopArg);
   const bugs = useAllBugs(teamId, slug); // all bugs across every loop — not loop-scoped
   const allScores = useAllScores(teamId, slug);     // scenarios are project-level → met-state spans all loops
   const allTestRuns = useAllTestRuns(teamId, slug); // all test runs across every loop
@@ -73,7 +74,7 @@ export function ProjectDetail() {
 
   // Surface (don't swallow) load errors from any of the project's data sources.
   const dataError = loops.error || phases.error || tasks.error || scores.error || testRuns.error
-    || revisions.error || bugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || null;
+    || revisions.error || verifications.error || bugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || null;
   // Show a spinner only on a source's FIRST load (loading + still empty), so switching
   // loops — which keeps prior data until the new snapshot arrives — doesn't flash.
   const tabLoading =
@@ -104,12 +105,13 @@ export function ProjectDetail() {
                 )}
                 {tab === "vision" && (
                   <VisionTab teamId={teamId} slug={slug} editable={editable}
-                    goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data} documents={documents.data} />
+                    goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data} documents={documents.data}
+                    verifications={verifications.data} />
                 )}
                 {tab === "loops" && (
                   <LoopsTab teamId={teamId} slug={slug} loops={loopList} scenarios={scenarios.data}
                     selectedId={selectedId} selected={selected} onSelect={setPicked}
-                    phases={phases.data} tasks={tasks.data} testRuns={testRuns.data} revisions={revisions.data}
+                    phases={phases.data} tasks={tasks.data} testRuns={testRuns.data} revisions={revisions.data} verifications={verifications.data}
                     renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />
                 )}
                 {tab === "tests" && <TestsTab scenarios={scenarios.data} testRuns={allTestRuns.data} />}

@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ScenariosMetBanner } from "./ScenariosMetBanner";
 import { ScenarioCard } from "./ScenarioCard";
+import { ScenarioTable } from "./ScenarioTable";
 import { PlanSection } from "./PlanSection";
 import { PhaseItem } from "./PhaseItem";
 import { TaskItem } from "./TaskItem";
 import { RevisionTimeline } from "./RevisionTimeline";
 import { DocumentsSection } from "./DocumentsSection";
-import type { Scenario, Score, TestRun } from "../types";
+import type { Scenario, Score, TestRun, Verification } from "../types";
 
 const scn: Scenario = { id: "login", goalId: "g1", title: "Login works", threshold: 80, rubric: { criteria: [{ id: "c", name: "Correctness", weight: 1, max: 5 }] } };
 
@@ -32,6 +33,36 @@ describe("ScenarioCard", () => {
   it("shows unmet when below threshold", () => {
     render(<ScenarioCard scenario={scn} scores={[{ id: "01A", scenarioId: "login", composite: 50 }]} testRuns={runs} />);
     expect(screen.getByText(/unmet/i)).toBeInTheDocument();
+  });
+});
+
+describe("scenario verification badges", () => {
+  const scores: Score[] = [{ id: "01A", scenarioId: "login", composite: 92 }];
+  const runs: TestRun[] = [{ id: "01A", scenarioId: "login", passed: 6, failed: 0 }];
+  const confirmed: Verification[] = [{ id: "01V", scenarioId: "login", testRunId: "01A", verdict: "confirmed" }];
+
+  it("ScenarioCard shows a small ✓ when the latest test-run is confirmed", () => {
+    render(<ScenarioCard scenario={scn} scores={scores} testRuns={runs} verifications={confirmed} />);
+    expect(screen.getByTitle("Independently verified")).toHaveTextContent("✓");
+  });
+  it("ScenarioCard shows ⚠ Unverified when the latest run has no verification", () => {
+    render(<ScenarioCard scenario={scn} scores={scores} testRuns={runs} verifications={[]} />);
+    expect(screen.getByText("⚠ Unverified")).toBeInTheDocument();
+  });
+  it("ScenarioCard shows ✗ when the latest run is refuted; met-state text is unchanged", () => {
+    render(<ScenarioCard scenario={scn} scores={scores} testRuns={runs}
+      verifications={[{ id: "01V", scenarioId: "login", testRunId: "01A", verdict: "refuted" }]} />);
+    expect(screen.getByTitle("Independent replay refuted this result")).toHaveTextContent("✗");
+    expect(screen.getByText("met")).toBeInTheDocument(); // verification is evidence, not a gate
+  });
+  it("ScenarioCard treats a verification of an OLDER run as unverified", () => {
+    const twoRuns: TestRun[] = [...runs, { id: "01B", scenarioId: "login", passed: 6, failed: 0 }];
+    render(<ScenarioCard scenario={scn} scores={scores} testRuns={twoRuns} verifications={confirmed} />);
+    expect(screen.getByText("⚠ Unverified")).toBeInTheDocument(); // 01B is latest, unverified
+  });
+  it("ScenarioTable renders the compact badge in the status cell", () => {
+    render(<ScenarioTable scenarios={[scn]} scores={scores} testRuns={runs} verifications={confirmed} />);
+    expect(screen.getByTitle("Independently verified")).toHaveTextContent("✓");
   });
 });
 

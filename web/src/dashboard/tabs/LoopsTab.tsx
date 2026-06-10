@@ -2,16 +2,16 @@ import type { ReactNode } from "react";
 import { LoopList } from "../components/LoopList";
 import { LoopDetail } from "../components/LoopDetail";
 import type { SelectableLoop } from "../loopView";
-import type { Phase, Task, Scenario, TestRun, Revision } from "../types";
+import type { Phase, Task, Scenario, TestRun, Revision, Verification } from "../types";
 
-export function LoopsTab({ teamId, slug, loops, scenarios, selectedId, selected, onSelect, phases, tasks, testRuns, revisions, renderLegacyPhase, renderTask }: {
+export function LoopsTab({ teamId, slug, loops, scenarios, selectedId, selected, onSelect, phases, tasks, testRuns, revisions, verifications, renderLegacyPhase, renderTask }: {
   teamId: string; slug: string; loops: SelectableLoop[]; scenarios: Scenario[]; selectedId: string; selected: SelectableLoop | undefined;
-  onSelect: (id: string) => void; phases: Phase[]; tasks: Task[]; testRuns: TestRun[]; revisions: Revision[];
+  onSelect: (id: string) => void; phases: Phase[]; tasks: Task[]; testRuns: TestRun[]; revisions: Revision[]; verifications: Verification[];
   renderLegacyPhase: (p: Phase) => ReactNode; renderTask: (t: Task, isCurrent: boolean) => ReactNode;
 }) {
   return (
     <LoopList teamId={teamId} slug={slug} loops={loops} scenarios={scenarios} selectedId={selectedId} onSelect={onSelect}
-      detail={selected && <LoopDetail phases={phases} tasks={tasks} testRuns={testRuns} revisions={revisions}
+      detail={selected && <LoopDetail phases={phases} tasks={tasks} testRuns={testRuns} revisions={revisions} verifications={verifications}
         currentTaskId={selected.currentTaskId} renderLegacyPhase={renderLegacyPhase} renderTask={renderTask} />} />
   );
 }
