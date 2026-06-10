@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync, readdirSync, rmSync, openSync } from "node:fs";
 import { join, basename } from "node:path";
 import { pathToFileURL } from "node:url";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 
 export const STATUSES = ["queued", "running", "blocked", "paused", "completed", "failed", "cancelled"];
 export const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
@@ -312,6 +312,60 @@ function installSessionLogHook(env, log) {
   log(`autoloop: real-time session-log hooks (PostToolUse + SubagentStop) installed → ${settingsPath} (CLI: ${stableCli})`);
 }
 
+// ── Phase 2: relaunch machinery ─────────────────────────────────────────────
+// New home for host-side state: ~/.autoloop/{autoloop-cli.mjs, run/, logs/}.
+// Deliberate divergence from the session-log hook's ~/.claude/autoloop-cli.mjs
+// stable copy — that one stays where it is and converges later.
+
+export function autoloopHome(env) {
+  const home = env.HOME || env.USERPROFILE || "";
+  if (!home) throw new UsageError("HOME not set");
+  return join(home, ".autoloop");
+}
+export function lockPath(env, teamId, slug) { return join(autoloopHome(env), "run", `${teamId}-${slug}.lock`); }
+
+export function readLock(path) {
+  if (!existsSync(path)) return null;
+  try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; } // corrupt ⇒ treat as absent
+}
+
+/** Liveness = kill -0. */
+export function defaultIsAlive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
+
+/** ps lookup for the ancestor walk: pid → { ppid, comm } | null. */
+export function defaultPsLookup(pid) {
+  try {
+    const out = execFileSync("ps", ["-o", "ppid=,comm=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    const m = out.match(/^\s*(\d+)\s+(.*)$/);
+    return m ? { ppid: Number(m[1]), comm: m[2] } : null;
+  } catch { return null; }
+}
+
+/**
+ * Walk our own ancestor chain (via ps -o ppid=) to the nearest `claude` process — the
+ * Claude Code SESSION pid, not this short-lived CLI child. found:false ⇒ pid is the
+ * direct parent (caller warns; --pid overrides for hook shims that have session context).
+ */
+export function findClaudeSessionPid(startPid, psLookup) {
+  const parent = psLookup(startPid)?.ppid ?? null;
+  let pid = parent;
+  for (let hops = 0; pid && pid > 1 && hops < 20; hops++) {
+    const info = psLookup(pid);
+    if (!info) break;
+    if (basename(info.comm || "") === "claude") return { pid, found: true };
+    pid = info.ppid;
+  }
+  return { pid: parent, found: false };
+}
+
+/** Classify a lockfile: "none" | "dead" (steal) | "ours" (this session) | "live-other". */
+export function evaluateLock(lock, isAlive, selfSessionPid) {
+  if (!lock || typeof lock.pid !== "number") return "none";
+  if (!isAlive(lock.pid)) return "dead";
+  if (selfSessionPid !== null && lock.pid === selfSessionPid) return "ours";
+  return "live-other";
+}
+
 /**
  * Run an autoloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.
@@ -323,6 +377,12 @@ export async function run(argv, deps = {}) {
     gitRun,
     log = (m) => console.log(m),
     err = (m) => console.error(m),
+    psLookup = defaultPsLookup,
+    isAlive = defaultIsAlive,
+    spawnImpl = spawn,
+    execImpl = execFileSync,
+    platform = process.platform,
+    now = Date.now,
   } = deps;
 
   // Back-compat: accept the pre-rename DALOOP_* env vars as fallbacks for AUTOLOOP_*.
@@ -462,6 +522,34 @@ export async function run(argv, deps = {}) {
         if (!state.loop || TERMINAL_STATUSES.includes(state.loop.status)) err("autoloop: no active loop");
         log(resumeHeader(state));
         log(JSON.stringify(state, null, 2));
+        return 0;
+      }
+      case "lock acquire": {
+        const cfg = loadConfig(cwd);
+        let pid;
+        if (flags.pid !== undefined) {
+          pid = Number(flags.pid);
+          if (!Number.isInteger(pid) || pid <= 0) throw new UsageError(`--pid must be a positive integer, got '${flags.pid}'`);
+        } else {
+          const found = findClaudeSessionPid(process.pid, psLookup);
+          if (!found.pid) throw new UsageError("could not determine a session pid — pass --pid <n>");
+          if (!found.found) err("autoloop: no `claude` ancestor found — recording the direct parent pid (pass --pid to override)");
+          pid = found.pid;
+        }
+        const path = lockPath(env, cfg.teamId, cfg.projectSlug);
+        const state = evaluateLock(readLock(path), isAlive, pid);
+        if (state === "live-other") { err(`autoloop: lock held by live pid ${readLock(path).pid} — not acquiring`); return 1; }
+        if (state === "dead") err(`autoloop: stealing stale lock (recorded pid is dead)`);
+        mkdirSync(join(autoloopHome(env), "run"), { recursive: true });
+        writeFileSync(path, JSON.stringify({ pid, acquiredAt: new Date(now()).toISOString() }) + "\n");
+        log(`autoloop: lock acquired (pid ${pid}) → ${path}`);
+        return 0;
+      }
+      case "lock release": {
+        const cfg = loadConfig(cwd);
+        const path = lockPath(env, cfg.teamId, cfg.projectSlug);
+        if (existsSync(path)) { rmSync(path); log(`autoloop: lock released → ${path}`); }
+        else log("autoloop: no lock to release");
         return 0;
       }
       case "goal set": {

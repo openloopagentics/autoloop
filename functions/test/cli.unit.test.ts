@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { tmpdir } from "node:os";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -958,5 +958,89 @@ describe("firstNonTerminalTask / isResumable (pure)", () => {
     expect(isResumable(mk("paused"))).toBe(false);
     expect(isResumable(mk("completed"))).toBe(false);
     expect(isResumable(mk(null))).toBe(false); // project-direct: loop is null ⇒ not --check-resumable
+  });
+});
+
+describe("lock primitives (pure)", () => {
+  it("findClaudeSessionPid walks ancestors to the nearest claude process", () => {
+    const tree: Record<number, { ppid: number; comm: string }> = {
+      100: { ppid: 90, comm: "node" },                       // the CLI itself
+      90: { ppid: 80, comm: "/bin/zsh" },                    // Bash-tool shell
+      80: { ppid: 1, comm: "claude" },                       // the session
+    };
+    const ps = (pid: number) => tree[pid] ?? null;
+    expect(findClaudeSessionPid(100, ps)).toEqual({ pid: 80, found: true });
+  });
+  it("falls back to the direct parent when no claude ancestor exists", () => {
+    const tree: Record<number, { ppid: number; comm: string }> = {
+      100: { ppid: 90, comm: "node" }, 90: { ppid: 1, comm: "/bin/zsh" },
+    };
+    expect(findClaudeSessionPid(100, (p: number) => tree[p] ?? null)).toEqual({ pid: 90, found: false });
+  });
+  it("evaluateLock classifies none/dead/ours/live-other", () => {
+    const alive = () => true, dead = () => false;
+    expect(evaluateLock(null, alive, 1)).toBe("none");
+    expect(evaluateLock({ pid: 42 }, dead, 1)).toBe("dead");
+    expect(evaluateLock({ pid: 42 }, alive, 42)).toBe("ours");
+    expect(evaluateLock({ pid: 42 }, alive, 1)).toBe("live-other");
+    expect(evaluateLock({ pid: 42 }, alive, null)).toBe("live-other");
+  });
+});
+
+describe("lock acquire / lock release", () => {
+  function setup(extra: Record<string, unknown> = {}) {
+    const home = tmp(); const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {}, ...extra });
+    return { home, dir, lockFile: join(home, ".autoloop", "run", "acme-web.lock") };
+  }
+  const deps = (s: { home: string; dir: string }, over: Record<string, unknown> = {}) => ({
+    cwd: s.dir, env: { AUTOLOOP_API_KEY: "al_k", HOME: s.home },
+    log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("no network in lock verbs"); },
+    ...over,
+  });
+
+  it("acquire --pid writes the lockfile under ~/.autoloop/run/<teamId>-<slug>.lock", async () => {
+    const s = setup();
+    expect(await run(["lock", "acquire", "--pid", "4242"], deps(s))).toBe(0);
+    expect(JSON.parse(readFileSync(s.lockFile, "utf8")).pid).toBe(4242);
+  });
+
+  it("acquire fails (exit 1) when a DIFFERENT live pid holds the lock", async () => {
+    const s = setup();
+    await run(["lock", "acquire", "--pid", "111"], deps(s, { isAlive: () => true }));
+    const errs: string[] = [];
+    expect(await run(["lock", "acquire", "--pid", "222"], deps(s, { isAlive: () => true, err: (m: string) => errs.push(m) }))).toBe(1);
+    expect(JSON.parse(readFileSync(s.lockFile, "utf8")).pid).toBe(111); // unchanged
+    expect(errs.join(" ")).toMatch(/held by live pid 111/);
+  });
+
+  it("acquire steals the lock when the recorded pid is dead", async () => {
+    const s = setup();
+    await run(["lock", "acquire", "--pid", "111"], deps(s));
+    expect(await run(["lock", "acquire", "--pid", "222"], deps(s, { isAlive: () => false }))).toBe(0);
+    expect(JSON.parse(readFileSync(s.lockFile, "utf8")).pid).toBe(222);
+  });
+
+  it("acquire re-acquire by the SAME pid succeeds (ours)", async () => {
+    const s = setup();
+    await run(["lock", "acquire", "--pid", "111"], deps(s, { isAlive: () => true }));
+    expect(await run(["lock", "acquire", "--pid", "111"], deps(s, { isAlive: () => true }))).toBe(0);
+  });
+
+  it("acquire without --pid records the claude ancestor found via psLookup", async () => {
+    const s = setup();
+    const tree: Record<number, { ppid: number; comm: string }> = {
+      [process.pid]: { ppid: 7000, comm: "node" }, 7000: { ppid: 6000, comm: "zsh" }, 6000: { ppid: 1, comm: "claude" },
+    };
+    expect(await run(["lock", "acquire"], deps(s, { psLookup: (p: number) => tree[p] ?? null }))).toBe(0);
+    expect(JSON.parse(readFileSync(s.lockFile, "utf8")).pid).toBe(6000);
+  });
+
+  it("release removes the lockfile; release with no lock is a no-op exit 0", async () => {
+    const s = setup();
+    await run(["lock", "acquire", "--pid", "111"], deps(s));
+    expect(await run(["lock", "release"], deps(s))).toBe(0);
+    expect(existsSync(s.lockFile)).toBe(false);
+    expect(await run(["lock", "release"], deps(s))).toBe(0);
   });
 });
