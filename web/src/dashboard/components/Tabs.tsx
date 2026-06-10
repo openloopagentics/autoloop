@@ -1,4 +1,4 @@
-export type TabKey = "dashboard" | "vision" | "loops" | "tests" | "bugs" | "messages";
+export type TabKey = "dashboard" | "vision" | "loops" | "tests" | "bugs" | "ideas" | "messages";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
@@ -6,6 +6,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "loops", label: "Loops" },
   { key: "tests", label: "Tests" },
   { key: "bugs", label: "Bugs" },
+  { key: "ideas", label: "Ideas" },
   { key: "messages", label: "Messages" },
 ];
 

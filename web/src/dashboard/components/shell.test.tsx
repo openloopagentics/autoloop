@@ -8,7 +8,7 @@ describe("Tabs", () => {
   it("renders the four tabs, marks the active one, and fires onChange", () => {
     const onChange = vi.fn();
     render(<Tabs active="dashboard" onChange={onChange} />);
-    for (const t of ["Dashboard", "Vision", "Loops", "Bugs"]) expect(screen.getByRole("tab", { name: t })).toBeInTheDocument();
+    for (const t of ["Dashboard", "Vision", "Loops", "Tests", "Bugs", "Ideas", "Messages"]) expect(screen.getByRole("tab", { name: t })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Dashboard" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "Loops" }));
     expect(onChange).toHaveBeenCalledWith("loops");

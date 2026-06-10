@@ -44,7 +44,7 @@ describe("IdeasTab", () => {
       { id: "p2", title: "P2", status: "proposed", order: 100, createdAt: { toMillis: () => 2 } },
     ];
     render(<IdeasTab ideas={tied} onPut={onPut} />);
-    fireEvent.click(screen.getAllByRole("button", { name: "↑" })[1]); // move p2 up
+    fireEvent.click(screen.getAllByRole("button", { name: /move up/i })[1]); // move p2 up
     await waitFor(() => expect(onPut).toHaveBeenCalled());
     const orders = Object.fromEntries((onPut.mock.calls as [string, { order: number }][]).map(([id, body]) => [id, body.order]));
     expect(orders.p2).toBeLessThan(orders.p1 ?? Infinity); // p2 now sorts first

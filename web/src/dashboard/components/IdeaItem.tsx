@@ -20,8 +20,8 @@ export function IdeaItem({ idea, canMoveUp, canMoveDown, onPut, onMove }: {
           <span className="idearow-actions">
             <button type="button" className="btn btn-sm" onClick={() => void onPut(idea.id, { status: "accepted" })}>Accept</button>
             <button type="button" className="btn btn-sm btn-danger" onClick={() => void onPut(idea.id, { status: "rejected" })}>Reject</button>
-            <button type="button" className="btn btn-sm btn-ghost" disabled={!canMoveUp} onClick={() => onMove(idea.id, "up")}>↑</button>
-            <button type="button" className="btn btn-sm btn-ghost" disabled={!canMoveDown} onClick={() => onMove(idea.id, "down")}>↓</button>
+            <button type="button" className="btn btn-sm btn-ghost" disabled={!canMoveUp} aria-label="Move up" title="Move up" onClick={() => onMove(idea.id, "up")}>↑</button>
+            <button type="button" className="btn btn-sm btn-ghost" disabled={!canMoveDown} aria-label="Move down" title="Move down" onClick={() => onMove(idea.id, "down")}>↓</button>
           </span>
         )}
       </div>

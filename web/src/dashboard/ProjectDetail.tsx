@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas,
 } from "./hooks";
-import { postMessage } from "./api";
+import { postMessage, putUserIdea } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor, effectiveProjectStatus } from "./loopView";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Tabs, isTabKey, type TabKey } from "./components/Tabs";
@@ -18,6 +18,7 @@ import { VisionTab } from "./tabs/VisionTab";
 import { LoopsTab } from "./tabs/LoopsTab";
 import { TestsTab } from "./tabs/TestsTab";
 import { BugsTab } from "./tabs/BugsTab";
+import { IdeasTab } from "./tabs/IdeasTab";
 import { MessagesTab } from "./tabs/MessagesTab";
 import type { Phase, Task } from "./types";
 
@@ -66,6 +67,7 @@ export function ProjectDetail() {
   const allScores = useAllScores(teamId, slug);     // scenarios are project-level → met-state spans all loops
   const allTestRuns = useAllTestRuns(teamId, slug); // all test runs across every loop
   const messages = useMessages(teamId, slug);
+  const ideas = useIdeas(teamId, slug);
 
   const agentActive = loops.data.some((l) => l.status === "running") || (loops.data.length === 0 && project.data?.status === "running");
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
@@ -74,7 +76,7 @@ export function ProjectDetail() {
 
   // Surface (don't swallow) load errors from any of the project's data sources.
   const dataError = loops.error || phases.error || tasks.error || scores.error || testRuns.error
-    || revisions.error || verifications.error || bugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || null;
+    || revisions.error || verifications.error || bugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || null;
   // Show a spinner only on a source's FIRST load (loading + still empty), so switching
   // loops — which keeps prior data until the new snapshot arrives — doesn't flash.
   const tabLoading =
@@ -82,6 +84,7 @@ export function ProjectDetail() {
     : tab === "loops" ? (phases.loading && phases.data.length === 0)
     : tab === "tests" ? (scenarios.loading && scenarios.data.length === 0) && (allTestRuns.loading && allTestRuns.data.length === 0)
     : tab === "bugs" ? (bugs.loading && bugs.data.length === 0)
+    : tab === "ideas" ? (ideas.loading && ideas.data.length === 0)
     : tab === "messages" ? (messages.loading && messages.data.length === 0)
     : (scenarios.loading && scenarios.data.length === 0); // vision
 
@@ -116,6 +119,7 @@ export function ProjectDetail() {
                 )}
                 {tab === "tests" && <TestsTab scenarios={scenarios.data} testRuns={allTestRuns.data} />}
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
+                {tab === "ideas" && <IdeasTab ideas={ideas.data} onPut={(id, body) => putUserIdea(teamId, slug, id, body)} />}
                 {tab === "messages" && <MessagesTab teamId={teamId} slug={slug} messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}
               </>
             )}
