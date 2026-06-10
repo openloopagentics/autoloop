@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
   useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas,
 } from "./hooks";
 import { postMessage, putUserIdea } from "./api";
-import { buildLoopList, defaultSelectedLoop, loopArgFor, effectiveProjectStatus } from "./loopView";
+import { buildLoopList, defaultSelectedLoop, loopArgFor, effectiveProjectStatus, MAIN_ID } from "./loopView";
 import { useLoopTrend } from "./useLoopTrend";
+import type { LoopSlice } from "./mapTimeline";
 import { buildTrend } from "./trendView";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Tabs, isTabKey, type TabKey } from "./components/Tabs";
@@ -78,6 +79,16 @@ export function ProjectDetail() {
   // so partial fan-out data never renders a misleading half-trend.
   const trendPoints = trend.loading ? [] : buildTrend(trend.data, scenarios.data);
 
+  // Map tab replay data: undefined until the trend fan-out has fully arrived
+  // (MapTab hides the scrubber when slices === undefined).
+  const mapSlices: LoopSlice[] | undefined = useMemo(
+    () => trend.loading ? undefined
+        : trend.data.map((d) => ({
+            loopId: d.loop.id === MAIN_ID ? undefined : d.loop.id,
+            tasks: d.tasks, bugs: d.bugs, scores: d.scores, testRuns: d.testRuns,
+          })),
+    [trend.loading, trend.data]);
+
   const agentActive = loops.data.some((l) => l.status === "running") || (loops.data.length === 0 && project.data?.status === "running");
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
@@ -134,7 +145,7 @@ export function ProjectDetail() {
                   <MapTab loops={loopList} selectedId={selectedId} onSelect={setPicked}
                     goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data}
                     tasks={tasks.data} bugs={loopBugs.data} currentTaskId={selected?.currentTaskId}
-                    verifications={verifications.data} />
+                    verifications={verifications.data} slices={mapSlices} projectCreatedAt={project.data?.createdAt} />
                 )}
                 {tab === "ideas" && <IdeasTab ideas={ideas.data} onPut={(id, body) => putUserIdea(teamId, slug, id, body)} />}
                 {tab === "messages" && <MessagesTab teamId={teamId} slug={slug} messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}

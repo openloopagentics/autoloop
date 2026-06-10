@@ -13,6 +13,7 @@ vi.mock("./MapCanvas", () => ({
 }));
 
 import { MapTab } from "../tabs/MapTab";
+import { MapScrubber } from "./MapScrubber";
 import type { SelectableLoop } from "../loopView";
 
 const loops: SelectableLoop[] = [
@@ -70,5 +71,43 @@ describe("MapTab", () => {
     renderTab({ goals: [] });
     expect(screen.getByText(/no goals yet/i)).toBeInTheDocument();
     expect(screen.queryByTestId("canvas")).toBeNull();
+  });
+});
+
+describe("MapScrubber", () => {
+  it("emits a numeric time mid-range and null (live) at max", () => {
+    const onChange = vi.fn();
+    render(<MapScrubber min={1000} max={5000} value={null} playing={false} onChange={onChange} onPlayPause={() => {}} />);
+    const slider = screen.getByRole("slider", { name: /map time/i });
+    fireEvent.change(slider, { target: { value: "3000" } });
+    expect(onChange).toHaveBeenCalledWith(3000);
+    fireEvent.change(slider, { target: { value: "5000" } });
+    expect(onChange).toHaveBeenCalledWith(null); // released at max ⇒ live
+  });
+  it("shows live label when value is null and toggles play/pause", () => {
+    const onPlayPause = vi.fn();
+    render(<MapScrubber min={0} max={100} value={null} playing={false} onChange={() => {}} onPlayPause={onPlayPause} />);
+    expect(screen.getByText(/live/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /play/i }));
+    expect(onPlayPause).toHaveBeenCalled();
+  });
+});
+
+describe("MapTab replay mode", () => {
+  const slices = [{
+    loopId: "l2",
+    tasks: [{ id: "t2", title: "Build login", status: "running", scenarioIds: ["login"], createdAt: 4000 }],
+    bugs: [], scores: [], testRuns: [],
+  }];
+  it("renders mapAtTime(T) while scrubbed: a task created after T disappears", () => {
+    renderTab({ slices, projectCreatedAt: 1000 });
+    expect(screen.getByText("t:t2")).toBeInTheDocument(); // live mode first
+    fireEvent.change(screen.getByRole("slider", { name: /map time/i }), { target: { value: "2000" } });
+    expect(screen.queryByText(/t2/)).toBeNull();          // not yet created at T=2000
+    expect(screen.getByText("s:login")).toBeInTheDocument();
+  });
+  it("hides the scrubber when no slices are provided (Phase 1 behavior unchanged)", () => {
+    renderTab();
+    expect(screen.queryByRole("slider")).toBeNull();
   });
 });
