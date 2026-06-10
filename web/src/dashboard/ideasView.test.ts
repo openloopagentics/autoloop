@@ -64,6 +64,9 @@ describe("ideaIdFor", () => {
   it("appends a short random suffix on collision", () => {
     expect(ideaIdFor("Dark mode", new Set(["dark-mode"]), () => "ab12")).toBe("dark-mode-ab12");
   });
+  it("strips leading/trailing dots", () => {
+    expect(ideaIdFor(".env support", new Set())).toBe("env-support");
+  });
   it("falls back to 'idea' for an unslugifiable title", () => {
     expect(ideaIdFor("!!!", new Set())).toBe("idea");
   });

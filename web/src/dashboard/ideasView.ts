@@ -42,6 +42,6 @@ export function ideaIdFor(
   taken: Set<string>,
   rand: () => string = () => Math.random().toString(36).slice(2, 6),
 ): string {
-  const slug = title.toLowerCase().trim().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "idea";
+  const slug = title.toLowerCase().trim().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "idea";
   return taken.has(slug) ? `${slug}-${rand()}` : slug;
 }
