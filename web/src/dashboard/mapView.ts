@@ -44,6 +44,7 @@ export function buildMap(input: BuildMapInput): MapGraph {
   for (const t of tasks) {
     const node: MapNode = { id: `t:${t.id}`, type: "task", label: t.title ?? t.id, state: t.id === currentTaskId ? "active" : "neutral" };
     if (t.status && isTerminalStatus(t.status)) node.done = true;
+    if (t.loopId) node.loopId = t.loopId;
     nodes.push(node);
   }
 
