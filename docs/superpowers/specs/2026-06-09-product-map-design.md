@@ -29,7 +29,8 @@ enum value, a reserved document, and a small `doc add --format` CLI override.
 - **Phase 3 — architecture layer.** The loop maintains a reserved document
   (`kind: "product-map"`, new `format: "json"`) describing components and their edges
   to scenarios; the Map renders component nodes inheriting met-state from their
-  scenarios. One additive `contentFormat` enum value + one driver-skill step.
+  scenarios. One additive `contentFormat` enum value + a small `doc add --format` CLI
+  override (3 copies synced) + a `DocumentsSection` json branch + one driver-skill step.
 
 **New web dependencies:** `@xyflow/react` (React Flow, MIT) and `dagre` (layout).
 Rejected alternatives: ELK (heavier, web-worker setup, overkill for a shallow DAG);
