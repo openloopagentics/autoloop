@@ -47,3 +47,29 @@ export async function applyVisionChange(teamId: string, slug: string, body: Visi
   });
   return changeId;
 }
+
+/**
+ * User veto: restore the target to `prior` (null ⇒ delete it) and mark the change
+ * rejected. Idempotent when already rejected. Deliberately does NOT touch visionOwner
+ * (the apply stamped it "loop"; nobody "helpfully" resets ownership on reject).
+ */
+export async function rejectVisionChange(teamId: string, slug: string, changeId: string): Promise<void> {
+  const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
+  const changeRef = projectRef.collection("visionChanges").doc(changeId);
+  await db().runTransaction(async (tx) => {
+    const changeSnap = await tx.get(changeRef);
+    if (!changeSnap.exists) throw new AppError(404, "not_found", "vision change does not exist");
+    const change = changeSnap.data()!;
+    if (change.status === "rejected") return; // idempotent
+    const isGoal = change.op === "upsert-goal";
+    const targetRef = projectRef.collection(isGoal ? "goals" : "scenarios").doc(change.targetId);
+    if (change.prior === null) {
+      tx.delete(targetRef); // the change created the target — rejecting removes it
+    } else {
+      // Wholesale restore (set WITHOUT merge) so fields the change ADDED are removed;
+      // re-stamp updatedAt so it isn't the stale prior value.
+      tx.set(targetRef, { ...change.prior, updatedAt: FieldValue.serverTimestamp() });
+    }
+    tx.set(changeRef, { status: "rejected", decidedAt: FieldValue.serverTimestamp() }, { merge: true });
+  });
+}

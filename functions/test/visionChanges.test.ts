@@ -3,8 +3,9 @@ import "./helpers.js";
 import { seedMember } from "./helpers.js";
 import { db } from "../src/firestore.js";
 import { goalBody, scenarioBody } from "../src/schemas.js";
-import { applyVisionChange } from "../src/services/visionChanges.js";
+import { applyVisionChange, rejectVisionChange } from "../src/services/visionChanges.js";
 import { upsertScenario } from "../src/services/scenarios.js";
+import { upsertGoal } from "../src/services/goals.js";
 
 const rubric = { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] };
 
@@ -107,5 +108,62 @@ describe("applyVisionChange", () => {
     }
     expect([...ids].sort()).toEqual(ids); // lexical sort == append order (ULID)
     expect((await changeDocs()).map((d) => d.id)).toEqual(ids);
+  });
+});
+
+describe("rejectVisionChange", () => {
+  it("404s when the change does not exist", async () => {
+    await seedProject();
+    await expect(rejectVisionChange("team1", "acme", "01GHOSTGHOSTGHOSTGHOSTGHST"))
+      .rejects.toMatchObject({ httpStatus: 404 });
+  });
+
+  it("restores prior WHOLESALE — added fields removed, updatedAt re-stamped, Timestamps round-trip", async () => {
+    await seedProject();
+    await upsertScenario("team1", "acme", "s1", { goalId: "g1", title: "S", rubric, threshold: 80 });
+    const before = (await db().doc("teams/team1/projects/acme/scenarios/s1").get()).data()!;
+    const id = await applyVisionChange("team1", "acme",
+      { op: "upsert-scenario", targetId: "s1", payload: { threshold: 90, description: "added" }, reason: "r" });
+    await rejectVisionChange("team1", "acme", id);
+    const s = (await db().doc("teams/team1/projects/acme/scenarios/s1").get()).data()!;
+    expect(s.threshold).toBe(80);
+    expect("description" in s).toBe(false); // set WITHOUT merge: the added field is gone
+    expect(s.title).toBe("S");
+    expect(s.goalId).toBe("g1");
+    expect(s.createdAt.toMillis()).toBe(before.createdAt.toMillis()); // Timestamp round-trip through prior
+    expect(s.updatedAt.toMillis()).toBeGreaterThanOrEqual(before.updatedAt.toMillis()); // re-stamped, not the stale prior value
+    const c = (await db().doc(`teams/team1/projects/acme/visionChanges/${id}`).get()).data()!;
+    expect(c.status).toBe("rejected");
+    expect(c.decidedAt).toBeDefined();
+  });
+
+  it("deletes the target when prior is null (the change created it)", async () => {
+    await seedProject();
+    const id = await applyVisionChange("team1", "acme", { op: "upsert-goal", targetId: "g9", payload: { title: "New goal" }, reason: "r" });
+    expect((await db().doc("teams/team1/projects/acme/goals/g9").get()).exists).toBe(true);
+    await rejectVisionChange("team1", "acme", id);
+    expect((await db().doc("teams/team1/projects/acme/goals/g9").get()).exists).toBe(false);
+    expect((await db().doc(`teams/team1/projects/acme/visionChanges/${id}`).get()).data()!.status).toBe("rejected");
+  });
+
+  it("re-reject is idempotent: no error, decidedAt unchanged, target NOT restored again", async () => {
+    await seedProject();
+    await upsertGoal("team1", "acme", "g1", { title: "Old" });
+    const id = await applyVisionChange("team1", "acme", { op: "upsert-goal", targetId: "g1", payload: { title: "New" }, reason: "r" });
+    await rejectVisionChange("team1", "acme", id);
+    const decided1 = (await db().doc(`teams/team1/projects/acme/visionChanges/${id}`).get()).data()!.decidedAt;
+    await upsertGoal("team1", "acme", "g1", { title: "Newer" }); // mutate after the reject
+    await rejectVisionChange("team1", "acme", id);               // second reject: no-op
+    const c = (await db().doc(`teams/team1/projects/acme/visionChanges/${id}`).get()).data()!;
+    expect(c.decidedAt.toMillis()).toBe(decided1.toMillis());
+    expect((await db().doc("teams/team1/projects/acme/goals/g1").get()).data()!.title).toBe("Newer"); // untouched
+  });
+
+  it("does NOT touch visionOwner — the project stays loop-owned after reject", async () => {
+    await seedProject();
+    const id = await applyVisionChange("team1", "acme", { op: "upsert-goal", targetId: "g1", payload: { title: "G" }, reason: "r" });
+    expect((await db().doc("teams/team1/projects/acme").get()).data()!.visionOwner).toBe("loop");
+    await rejectVisionChange("team1", "acme", id);
+    expect((await db().doc("teams/team1/projects/acme").get()).data()!.visionOwner).toBe("loop");
   });
 });
