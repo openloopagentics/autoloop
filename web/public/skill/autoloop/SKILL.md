@@ -60,6 +60,10 @@ completed/failed/cancelled):
 If there is no non-terminal loop (the CLI prints `no active loop`), proceed to
 Step 1 as normal.
 
+**Lock (only when `autoloop status` reports `relaunchInstalled: true`):** claim the
+project before driving it — `autoloop lock acquire`. If it exits 1, another live
+session is already driving this project: report that and end this session.
+
 ## Step 1 — Setup (once per run)
 
 ```bash
@@ -273,6 +277,7 @@ autoloop phase set <id> --status completed  # for every finished phase
 
 # Close the loop:
 autoloop loop set <loopId> --status completed   # or --status cancelled
+autoloop lock release   # only when relaunch machinery is installed — frees the project lock
 ```
 
 **Deploy a preview and report its URL** (best-effort, before the summary).
@@ -356,14 +361,10 @@ additionally shows as ✗ Refuted there — report such a scenario as unmet even
 though its met-state may still read met. Do not report a scenario as "met"
 based on the score alone.
 
-## Step 4 — Paused: keep polling, act on the next message
+## Step 4 — Paused
 
-A **stop/pause** message does NOT end your session. It parks the loop in a paused
-state where you **keep polling for the user's next message and act on whatever it
-says** — it will rarely be the literal word "resume"; it's any prompt (a new
-instruction, a scope change, "keep going", "fix the header", "build X next", etc.).
+A **stop/pause** message does NOT terminate the loop. On entering pause:
 
-On entering pause:
 ```bash
 autoloop messages ack <stopMsgId>
 autoloop loop set <loopId> --status paused
@@ -371,8 +372,37 @@ autoloop loop set <loopId> --status paused
 autoloop messages send --text "Paused. Send any message and I'll act on it and resume."
 ```
 
-Then poll indefinitely until a message arrives — the session stays alive the whole
-time, so a message sent from the dashboard reaches you here:
+**Check `autoloop status` and branch on `relaunchInstalled`:**
+
+### 4a. Relaunch machinery installed (`relaunchInstalled: true`)
+
+Drain briefly, then **exit the session** — the wake job is the listener now, not you.
+Burning tokens in an indefinite sleep-poll is exactly what the machinery replaces.
+
+```bash
+# Short drain window (4 polls × 30 s = 2 min) in case the user replies immediately:
+for i in 1 2 3 4; do
+  autoloop messages pull   # act on + ack anything that arrives; resume per the message
+  sleep 30
+done
+# Nothing arrived — hand off to the wake job and END this session:
+autoloop lock release
+```
+
+Then **end the session**. The launchd wake job (every 5 min) relaunches a headless
+driver when a dashboard message arrives for the paused loop; the new session's Step 0
+resume check rebuilds the plan and acts on the message. The SessionEnd hook will see
+the loop is `paused` and correctly NOT relaunch (pause is woken by messages only).
+
+**How the user actually stops Autoloop:** set the loop to a terminal status
+(send a shutdown message, or `autoloop loop set <loopId> --status cancelled`) — or
+remove the machinery entirely with `autoloop init --relaunch --uninstall`.
+
+### 4b. No relaunch machinery (`relaunchInstalled: false`) — fallback
+
+Keep the session alive and poll indefinitely — with no wake job, an exited session
+would orphan the loop:
+
 ```bash
 # Wait-for-next-message loop. Keep going; do NOT exit the session.
 while true; do
@@ -382,21 +412,16 @@ while true; do
 done
 ```
 
-When a message arrives:
+### Handling the message (both branches)
+
 1. `autoloop messages ack <id>` for each.
 2. **Do exactly what it says.** Treat it as a fresh user instruction:
-   - If it's a directive to keep building / continue / a new feature → `autoloop loop
-     set <loopId> --status running` (or `loop start` a new iteration), then go back
-     to **Step 2** and run it.
-   - If it changes scope/plan → adjust the plan, then resume Step 2.
-   - Only if it explicitly says to **shut down / exit / quit / we're done** → close
-     the loop terminally (Step 3b) and end the session.
-3. After handling, if you're building again you're back in the normal loop; if the
-   message was itself another pause, return to the wait-for-next-message loop above.
-
-**Never end the session on a plain stop/pause.** Ending is only for an explicit
-shutdown/exit message or genuine context exhaustion. As long as the session is
-alive, a stop must leave you polling so the user's next dashboard message is picked up.
+   - A directive to keep building / continue / a new feature → `autoloop loop set
+     <loopId> --status running` (or `loop start` a new iteration), then back to **Step 2**.
+   - A scope/plan change → adjust the plan, then resume Step 2.
+   - Only an explicit **shut down / exit / quit / we're done** → close the loop
+     terminally (Step 3b, including `lock release`) and end the session.
+3. Another pause → return to the start of Step 4.
 
 ## Rules
 
@@ -418,7 +443,13 @@ alive, a stop must leave you polling so the user's next dashboard message is pic
 - **Verification is independent.** The verifier subagent never implements code and the implementer never verifies; refuted = unmet.
 - **Traceability is mandatory.** Every test-run names the exact test (file + test name) and command in its `--summary`; every bug links `--scenario` + `--task` and records the catching test, commit sha, and expected-vs-actual in `--description`; fixed bugs cite the fixing commit. Vague "tests pass" summaries or bugs with no scenario/test/commit reference must be redone.
 - **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
-- **Pause ≠ exit.** A stop/pause message parks you in Step 4 polling for the next message — it never ends the session. Only an explicit shutdown/exit message (or context exhaustion) ends it. While the session is alive, always be polling so a dashboard message lands. The next message may be any prompt, not the word "resume" — act on whatever it says.
+- **Pause parks the loop, never orphans it.** With relaunch machinery installed
+  (`autoloop status` → `relaunchInstalled: true`), a paused session drains briefly,
+  releases the lock and EXITS — the 5-min wake job relaunches on the next dashboard
+  message. Without it, the session stays alive polling (Step 4b) — exiting would
+  orphan the loop. Either way the next message may be any prompt, not the word
+  "resume" — act on whatever it says. Only an explicit shutdown/exit message (or a
+  terminal loop status) actually stops Autoloop.
 
 ## Example (two tasks)
 
