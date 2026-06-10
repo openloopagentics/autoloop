@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -827,5 +827,114 @@ describe("idea add/set/list verbs", () => {
     expect(c.init.method).toBe("GET");
     expect(logs.join("\n")).toContain("[accepted] 50 a1 — A");
     expect(logs.join("\n")).toContain("[proposed] 100 p1 — P");
+  });
+});
+
+describe("loop resume", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, currentTaskId: null, currentLoopId: null, loops: {}, phases: {}, tasks: {}, ...extra });
+    return dir;
+  }
+  const state = (over: Record<string, unknown> = {}) => ({
+    loop: { id: "l1", goal: "g", order: 1, status: "running" },
+    project: { slug: "web", title: "W", status: "running", currentLoopId: "l1" },
+    phases: [{ id: "p1", name: "A", order: 1, status: "running" }, { id: "p2", name: "B", order: 2, status: "queued" }],
+    tasks: [
+      { id: "t1", phaseId: "p1", title: "T1", order: 1, status: "completed", scenarioIds: [] },
+      { id: "t3", phaseId: "p2", title: "T3", order: 1, status: "queued", scenarioIds: [] },
+      { id: "t2", phaseId: "p1", title: "T2", order: 2, status: "running", scenarioIds: [] },
+    ],
+    scenarios: [], openBugs: [], pendingMessages: [{ id: "m1", text: "hi", createdAt: null }],
+    ...over,
+  });
+  // capture every GET; respond per-URL via a map, default = the given body
+  const cap = (bodyByUrl: Record<string, unknown>, fallback: unknown) => {
+    const c: any = { calls: [] as string[] };
+    c.fetchImpl = async (url: string) => {
+      c.calls.push(url);
+      return { ok: true, status: 200, json: async () => (bodyByUrl[url] ?? fallback) };
+    };
+    return c;
+  };
+  const base = (dir: string, c: any, logs: string[] = [], errs: string[] = []) => ({
+    cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" },
+    log: (m: string) => logs.push(m), err: (m: string) => errs.push(m), fetchImpl: c.fetchImpl,
+  });
+
+  it("GETs the loop-scoped state from cfg.currentLoopId and prints header + pretty JSON", async () => {
+    const dir = initDir({ currentLoopId: "l1" });
+    const c = cap({}, { ok: true, state: state() });
+    const logs: string[] = [];
+    expect(await run(["loop", "resume"], base(dir, c, logs))).toBe(0);
+    expect(c.calls).toEqual(["http://api/v1/teams/acme/projects/web/loops/l1/state"]);
+    const out = logs.join("\n");
+    expect(out).toContain("loop l1 — running");
+    expect(out).toContain("1/3 tasks terminal, 1 pending messages");
+    expect(out).toContain("next: t2 — T2 (phase p1)"); // phase order then task order
+    expect(out).toContain('"pendingMessages"');        // pretty JSON bundle
+  });
+
+  it("an explicit positional loopId wins over cfg.currentLoopId", async () => {
+    const dir = initDir({ currentLoopId: "l1" });
+    const c = cap({}, { ok: true, state: state({ loop: { id: "l9", goal: "g", order: 9, status: "running" } }) });
+    expect(await run(["loop", "resume", "l9"], base(dir, c))).toBe(0);
+    expect(c.calls).toEqual(["http://api/v1/teams/acme/projects/web/loops/l9/state"]);
+  });
+
+  it("falls back to the server project's currentLoopId when cfg has none (two GETs)", async () => {
+    const dir = initDir(); // currentLoopId: null
+    const c = cap({
+      "http://api/v1/teams/acme/projects/web/state": { ok: true, state: state({ loop: null }) },
+    }, { ok: true, state: state() });
+    expect(await run(["loop", "resume"], base(dir, c))).toBe(0);
+    expect(c.calls).toEqual([
+      "http://api/v1/teams/acme/projects/web/state",
+      "http://api/v1/teams/acme/projects/web/loops/l1/state",
+    ]);
+  });
+
+  it("prints 'no active loop' (still exit 0) when the loop is terminal", async () => {
+    const dir = initDir({ currentLoopId: "l1" });
+    const c = cap({}, { ok: true, state: state({ loop: { id: "l1", goal: "g", order: 1, status: "completed" } }) });
+    const logs: string[] = []; const errs: string[] = [];
+    expect(await run(["loop", "resume"], base(dir, c, logs, errs))).toBe(0);
+    expect(errs.join(" ")).toMatch(/no active loop/);
+  });
+
+  it("--check: exit 0 and silent for a running loop; 1 for paused/terminal/none/network-error", async () => {
+    const dir = initDir({ currentLoopId: "l1" });
+    const logs: string[] = [];
+    const mk = (status: string) => cap({}, { ok: true, state: state({ loop: { id: "l1", goal: "g", order: 1, status } }) });
+    expect(await run(["loop", "resume", "--check"], base(dir, mk("running"), logs))).toBe(0);
+    expect(logs.length).toBe(0); // silent
+    expect(await run(["loop", "resume", "--check"], base(dir, mk("paused")))).toBe(1);
+    expect(await run(["loop", "resume", "--check"], base(dir, mk("completed")))).toBe(1);
+    const noLoop = cap({}, { ok: true, state: state({ loop: null }) });
+    expect(await run(["loop", "resume", "--check"], base(dir, noLoop))).toBe(1);
+    const boom = { fetchImpl: async () => { throw new Error("net down"); } };
+    expect(await run(["loop", "resume", "--check"], { ...base(dir, boom), fetchImpl: boom.fetchImpl })).toBe(1);
+  });
+});
+
+describe("firstNonTerminalTask / isResumable (pure)", () => {
+  it("orders by phase order then task order and skips terminal tasks", () => {
+    const s = {
+      phases: [{ id: "p2", order: 2 }, { id: "p1", order: 1 }],
+      tasks: [
+        { id: "a", phaseId: "p2", order: 1, status: "queued" },
+        { id: "b", phaseId: "p1", order: 2, status: "queued" },
+        { id: "c", phaseId: "p1", order: 1, status: "completed" },
+      ],
+    };
+    expect(firstNonTerminalTask(s)!.id).toBe("b");
+  });
+  it("isResumable: non-terminal AND non-paused only", () => {
+    const mk = (status: string | null) => ({ loop: status ? { status } : null });
+    expect(isResumable(mk("running"))).toBe(true);
+    expect(isResumable(mk("blocked"))).toBe(true);
+    expect(isResumable(mk("paused"))).toBe(false);
+    expect(isResumable(mk("completed"))).toBe(false);
+    expect(isResumable(mk(null))).toBe(false); // project-direct: loop is null ⇒ not --check-resumable
   });
 });
