@@ -15,7 +15,7 @@ import { scenariosRouter } from "./routes/scenarios.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { taskCommitsRouter } from "./routes/taskCommits.js";
 import { documentsRouter } from "./routes/documents.js";
-import { scoresRouter, testRunsRouter, revisionsRouter } from "./routes/events.js";
+import { scoresRouter, testRunsRouter, revisionsRouter, verificationsRouter } from "./routes/events.js";
 import { loopsRouter } from "./routes/loops.js";
 import { bugsRouter } from "./routes/bugs.js";
 import { messagesRouter } from "./routes/messages.js";
@@ -49,6 +49,7 @@ export function makeApp() {
   teamRouter.use("/:slug/scores", scoresRouter);
   teamRouter.use("/:slug/testRuns", testRunsRouter);
   teamRouter.use("/:slug/revisions", revisionsRouter);
+  teamRouter.use("/:slug/verifications", verificationsRouter);
   teamRouter.use("/:slug/bugs", bugsRouter);
   teamRouter.use("/:slug/messages", messagesRouter);
   // Loop-scoped variants reuse the SAME routers (mergeParams propagates :loopId).
@@ -59,6 +60,7 @@ export function makeApp() {
   teamRouter.use("/:slug/loops/:loopId/scores", scoresRouter);
   teamRouter.use("/:slug/loops/:loopId/testRuns", testRunsRouter);
   teamRouter.use("/:slug/loops/:loopId/revisions", revisionsRouter);
+  teamRouter.use("/:slug/loops/:loopId/verifications", verificationsRouter);
   teamRouter.use("/:slug/loops/:loopId/bugs", bugsRouter);
   teamRouter.use("/:slug/loops/:loopId/sessions", sessionsRouter);
   teamRouter.use("/:slug/loops", loopsRouter); // loop entity
