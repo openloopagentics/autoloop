@@ -43,9 +43,15 @@ No rules change; no new collections.
   previewUrl: z.string().url().nullable().optional(),
 ```
 
-`loops.ts` service: set/clear like other optional fields (`null` deletes the key,
-mirroring `commit.url` handling). CLI: `autoloop loop set <id> --preview-url <url>`
-(and `--preview-url ""` clears). Sync the three CLI copies.
+`loops.ts` service: `if (body.previewUrl !== undefined) data.previewUrl =
+body.previewUrl;` — i.e. **`null` is stored** (the web treats `null` and absent alike
+and hides the link), which is exactly how `commits.ts` handles `commit.url`; we do
+NOT use `FieldValue.delete()`. Omitting the field keeps the stored doc byte-stable.
+CLI: `autoloop loop set <id> --preview-url <url>` (and `--preview-url ""` sends
+`null` to clear). Note: `loop set` currently hard-requires `--status`
+(`UsageError` in the CLI) — relax to "at least one settable flag", preserving the
+existing terminal-status side effect (clearing `cfg.currentLoopId`) untouched. Sync
+the three CLI copies.
 
 ## Web
 
@@ -63,31 +69,43 @@ mirroring `commit.url` handling). CLI: `autoloop loop set <id> --preview-url <ur
 
 ```ts
 type LoopRunData = { loop: Loop; scores: Score[]; testRuns: TestRun[];
-                     bugs: Bug[];  commits: Commit[]; tasks: Task[] };
+                     bugs: Bug[];  taskCommits: Commit[]; tasks: Task[] };
 type TrendPoint = { loopId: string; order: number;
                     metCount: number; scenarioTotal: number;   // scenarios tagged in this loop's tasks
                     avgComposite: number | null;               // mean of latest composite per tagged scenario
                     bugsOpened: number; bugsFixed: number;
-                    tokensTotal: number };                     // Σ commit.tokens.total
+                    tokensTotal: number };                     // Σ taskCommit.tokens.total
 buildTrend(loops: LoopRunData[], scenarios: Scenario[]): TrendPoint[]  // ascending by loop.order
 ```
 
 - **Per-loop met:** a scenario counts met *within loop L* iff its latest score in L has
-  `composite >= threshold` AND its latest test-run in L has `failed === 0` — the
-  existing `scenarioState.ts` rule applied to a loop-scoped event subset. Refactor
-  `scenarioState` to expose its core predicate over a provided event set rather than
-  duplicating the logic (the current callers keep their behavior — pure refactor with
-  existing tests green).
+  `composite >= threshold` AND its latest test-run in L has `failed === 0`. No
+  refactor needed: `deriveScenarioState(scenario, scores, testRuns)` in
+  `scenarioState.ts` is already a pure predicate over whichever event arrays it is
+  given — `trendView` simply calls it with loop-scoped subsets.
 - Only scenarios tagged in the loop's `tasks[].scenarioIds` count toward that loop's
   `scenarioTotal` (a loop is judged on what it attempted).
 - `bugsFixed` counts bugs in L with `status === "fixed"`; `bugsOpened` counts all bugs
   in L (they were opened there).
+- **`tokensTotal` comes from task commits only.** Commits are nested
+  (`tasks/{taskId}/commits`), and only the task-commit service persists
+  `commit.tokens` — the legacy phase-commit path never stores tokens, and the CLI
+  attributes subagent usage exclusively through task commits. So
+  `tokensTotal = Σ tokens.total` over the loop's task commits (missing `tokens` ⇒ 0).
 
 **`useLoopTrend(teamId, slug)` hook:** takes the `useLoops` list, slices to the most
-recent 20 by `order`, and fans out per-loop listeners for scores/testRuns/bugs/commits/
-tasks using the existing loop-aware hooks' fetchers (including the implicit `main`
-loop's project-direct data via the existing `loopArgFor` convention). Loading until all
-slices arrive; errors surface like other tab errors.
+recent 20 by `order`, and fans out per-loop **listeners** for the four flat
+collections — scores/testRuns/bugs/tasks — reusing the per-scope accumulator pattern
+of the existing `useAllScores`/`useAllTestRuns`/`useAllBugs` hooks (`byScope` map +
+stale-scope filtering; those hooks are today *unbounded* across loops, so a 20-capped
+fan-out is more conservative than existing code). Task **commits** (the nested level)
+are fetched with **one-shot `getDocs` reads** keyed on each loop's tasks snapshot —
+not listeners — bounding listener count at 20 × 4 and accepting that token totals
+refresh on tasks changes rather than live-ticking (trends don't need realtime token
+movement). The implicit `main` loop's project-direct data participates via the
+existing `loopArgFor` convention and orders **first** (oldest — it predates loop-level
+adoption; `buildLoopList` synthesizes it without an `order`). Loading until all slices
+arrive; errors surface like other tab errors.
 
 **`TrendsStrip` component** on `DashboardTab`, under `RollupStrip`: four labeled
 sparklines — *Scenarios met* (`metCount/scenarioTotal`), *Avg composite*, *Bugs*
@@ -105,14 +123,16 @@ skip and say so in the summary (no fabricated URLs). Plugin bump; sync skill cop
 
 ## Testing
 
-- **API:** `previewUrl` stored, cleared via `null`, invalid URL 400, absent key when
-  omitted (byte-stable).
-- **CLI:** `loop set --preview-url` body; empty-string ⇒ `null` clear.
-- **Web:** `trendView` — per-loop met logic (incl. loop-scoped latest-event selection
-  by id), tagged-scenario totals, token summation with missing `tokens`, ascending
-  order; `scenarioState` refactor keeps existing snapshots green; `TrendsStrip` renders
-  4 sparklines, hides under 2 loops, labels the 20-loop window; preview link renders
-  with `rel="noopener noreferrer"` and absent when no URL.
+- **API:** `previewUrl` stored, `null` stored on clear, invalid URL 400, absent key
+  when omitted (byte-stable).
+- **CLI:** `loop set --preview-url` body; empty-string ⇒ `null` clear; `loop set`
+  without `--status` no longer errors (and terminal-status side effects unchanged).
+- **Web:** `trendView` — per-loop met via `deriveScenarioState` over loop-scoped
+  subsets (incl. latest-event selection by id), tagged-scenario totals, token
+  summation over task commits with missing `tokens`, `main` ordered first then
+  ascending `order`; `TrendsStrip` renders 4 sparklines, hides under 2 loops, labels
+  the 20-loop window; preview link renders with `rel="noopener noreferrer"`, hidden
+  when no URL or `null`.
 
 ## Back-compat
 

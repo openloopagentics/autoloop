@@ -145,7 +145,12 @@ New **Ideas tab** in `ProjectDetail` (after Bugs): `tabs/IdeasTab.tsx`.
   `putUserIdea(...)` in `dashboard/api.ts` (the `/v1/u/` PUT).
 - An **add idea** form (title + rationale) so the user can seed ideas; created with
   `status: proposed` (the loop treats user-proposed and agent-proposed alike — the user
-  expresses priority via Accept/reorder).
+  expresses priority via Accept/reorder). The form derives `ideaId` by slugifying the
+  title (the existing web slugify), appending a short random suffix on collision with
+  an existing idea.
+- Reorder ties: when neighbors share an `order` (e.g. two CLI defaults of 100), the
+  ↑/↓ handler renumbers the whole band (10, 20, 30, …) before swapping, so reorder is
+  never a silent no-op.
 - LoopSelector hidden on the Ideas tab (project-level data, like Messages).
 
 ## Driver skill (`plugins/autoloop/skills/autoloop/SKILL.md`)
@@ -166,7 +171,8 @@ Plugin version bump; sync `web/public/skill/autoloop/SKILL.md`.
 ## Testing
 
 - **API (Supertest + emulator):** idea upsert — required-on-create trio, partial
-  update, `decidedAt` stamped once on first accept/reject and stable across re-PUTs,
+  update, `decidedAt` stamped once on first accept/reject and stable across re-PUTs
+  (including when the idea is *created* directly as `accepted`/`rejected`),
   status enum rejection, 404 on missing project, `by` stamped `"agent"` on the key path
   and `"user"` on the `/v1/u/` path (and a client-supplied `by` ignored), GET list
   ordering (band → order → createdAt). `/v1/u/` PUT: member 200, non-member 403, works

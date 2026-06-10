@@ -15,7 +15,7 @@ The dashboard explains the build in lists and tabs; the graph is the one view wh
 discipline already forced into the contract (tasks carry `scenarioIds[]`, bugs carry
 `scenarioId`/`taskId`, events are replayable by sortable ULID) is exactly an edge list
 waiting to be drawn. Phases 1–2 need **zero backend change**; Phase 3 adds one additive
-enum value and a reserved document.
+enum value, a reserved document, and a small `doc add --format` CLI override.
 
 ## Architecture
 
@@ -87,15 +87,25 @@ buildMap(input: { goals, scenarios, scenarioStates,      // from scenarioState.t
   as a growth ring even in the LR layout. (A radial rings layout is explicitly a
   stretch goal, not committed.)
 - Data: reuses the bounded all-loops fan-out hook built for trends (`useLoopTrend`'s
-  fetch layer, window-capped and labeled the same way).
+  fetch layer, window-capped and labeled the same way). Note: the web `Goal`/
+  `Scenario`/`Task` types don't currently declare `createdAt` — the services stamp it
+  and the hooks spread the raw doc, so this is a one-line type extension per entity.
 
 ## Phase 3 — architecture layer
 
 ### Contract (additive)
 
-- `contentFormat` enum gains `"json"` (documents). Generic document rendering shows
-  `json` content in the existing code block style (the recent markdown/code documents
-  work). Purely additive: existing docs unaffected.
+- `contentFormat` enum gains `"json"` (documents). Generic document rendering needs a
+  **new** small branch in `DocumentsSection.tsx`: `format === "json"` ⇒ preformatted
+  code block (note: commit 59a0ef2's code-block heuristic was reverted by c824396 —
+  today all non-url docs go through react-markdown, which would mangle raw JSON, so
+  this branch is new work, not existing behavior). Purely additive: existing docs
+  unaffected.
+- **CLI change (+ sync of the three copies):** `doc add` today has no `--format`
+  flag (format is inferred: `--file` ⇒ `markdown`, `--url` ⇒ `url`), no positional
+  id (id comes from `--id` or slugified `--title`), and the file flag is `--file`,
+  not `--content-file`. Add an explicit `--format markdown|url|json` override to
+  `doc add`; everything else stays as-is.
 - **Reserved document:** id/kind `product-map`, `format: "json"`, content:
 
 ```json
@@ -120,9 +130,10 @@ any unmet → unmet, else met; no scenarios → neutral).
 
 Step 2e addition: after each task that adds or reshapes components, update the product
 map — read the current `product-map` document if any, merge nodes/edges, and
-`autoloop doc add product-map --kind product-map --format json --content-file map.json`
-(idempotent PUT; the doc verbs exist). Keep it coarse: components are modules/services/
-screens, not files. Plugin bump; sync skill copies.
+`autoloop doc add --id product-map --kind product-map --title "Product map"
+--format json --file map.json` (idempotent PUT; uses the `--format` override added
+above). Keep it coarse: components are modules/services/screens, not files. Plugin
+bump; sync skill copies.
 
 ## Testing
 
@@ -136,6 +147,11 @@ screens, not files. Plugin bump; sync skill copies.
   (third-party); we test our derivation and wiring.
 - **API (Phase 3 only):** documents accept `format: "json"` (enum), reject unknown
   formats — existing document tests extended.
+- **CLI (Phase 3 only):** `doc add --format json --file map.json` sends
+  `format: "json"` (override beats the `--file ⇒ markdown` inference); existing
+  inference unchanged without the flag; three copies synced.
+- **Web (Phase 3):** `DocumentsSection` renders `format: "json"` as a preformatted
+  code block, not through react-markdown.
 
 ## Back-compat
 

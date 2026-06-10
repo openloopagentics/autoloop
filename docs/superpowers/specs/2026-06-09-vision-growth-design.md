@@ -90,10 +90,18 @@ operational-transform machinery for this.
 
 **`functions/src/services/visionChanges.ts` (NEW)** —
 `applyVisionChange(teamId, slug, body)` and `rejectVisionChange(teamId, slug, changeId)`,
-both transactional as above. The apply path dispatches on `op` to the existing inner
-upsert helpers in `goals.ts` / `scenarios.ts` (exported for this; behavior unchanged).
+both transactional as above. The apply path does its own `tx.get(targetRef)` to capture
+`prior` **before** dispatching on `op` to the existing inner upsert helpers in
+`goals.ts` / `scenarios.ts` (already exported with the `(tx, …, owner)` shape; behavior
+unchanged). The helpers re-read the target inside the same transaction — a duplicate
+read is fine (Firestore transactions are snapshot-consistent and both reads precede all
+writes); we deliberately do **not** refactor the helpers to accept a pre-read snapshot.
 Restore-on-reject writes `prior` wholesale with `set` (no merge) so fields added by the
-change are removed, then re-stamps `updatedAt`.
+change are removed, then re-stamps `updatedAt`. Note `prior` round-trips Firestore
+`Timestamp` values (`createdAt` etc.) through the change doc — the admin SDK handles
+this, and tests cover the round-trip. Reject does **not** touch `visionOwner`: the
+project stays loop-owned (the apply stamped it); nobody "helpfully" resets ownership on
+reject.
 
 ## Validation (`functions/src/schemas.ts`)
 

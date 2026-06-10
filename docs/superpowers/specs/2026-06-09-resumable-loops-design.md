@@ -27,11 +27,11 @@ owning loop lifecycle was explicitly not chosen.
   `autoloop loop resume` that prints it, and a **Resume** section in the driver skill.
   Pure read — no schema or rules change.
 - **Phase 2** adds `autoloop init --relaunch`, installing host-side machinery in the
-  same way `init --session-log` already installs hooks: (a) a Claude Code **Stop hook**
-  that relaunches a headless session when the session ends while the current loop is
-  still non-terminal, and (b) a **launchd interval job** (macOS; documented cron
-  variant for Linux) that wakes a *paused* loop when a pending user message exists. A
-  **lockfile** prevents two sessions driving one project.
+  same way `init --session-log` already installs hooks: (a) a Claude Code
+  **SessionEnd hook** that relaunches a headless session when the session terminates
+  while the current loop is still non-terminal, and (b) a **launchd interval job**
+  (macOS; documented cron variant for Linux) that wakes a *paused* loop when a pending
+  user message exists. A **lockfile** prevents two sessions driving one project.
 
 ## Phase 1 — resume
 
@@ -87,30 +87,54 @@ If the state shows no non-terminal loop, proceed to normal Step 1 setup.
 
 ## Phase 2 — relaunch machinery
 
-All installed by `autoloop init --relaunch` (mirroring the session-log hook installer:
-copies a stable CLI to `~/.autoloop/`, writes idempotent, versioned entries):
+All installed by `autoloop init --relaunch` (mirroring the session-log hook installer's
+idempotent, versioned entries; the stable CLI copy and run/log dirs live under
+`~/.autoloop/` — a deliberate new home; the session-log installer's existing
+`~/.claude/autoloop-cli.mjs` copy is left where it is and converges later):
 
-- **Lockfile:** `~/.autoloop/run/<teamId>-<slug>.lock` containing the session PID.
-  The skill's Step 0/Step 1 asks the CLI to acquire it (`autoloop lock acquire`,
-  stale-PID detection: dead PID ⇒ steal); `autoloop lock release` at terminal loop
-  close. All relaunch triggers no-op when a live lock exists.
-- **Stop hook** (project `.claude/settings.json`): on session end, runs a small shim
-  that checks (1) lock owner == this session's PID tree, (2)
-  `autoloop loop resume --check` (new flag: exit 0 + silent when a non-terminal,
-  non-paused loop exists; exit 1 otherwise). If resumable: release the lock and
-  relaunch `claude -p "/autoloop" --permission-mode acceptEdits` detached (nohup, output
-  to `~/.autoloop/logs/<slug>.log`). **Backoff guard:** a relaunch-stamp file; more
-  than 3 relaunches within 30 minutes ⇒ stop relaunching and leave a log line (prevents
+- **Lockfile:** `~/.autoloop/run/<teamId>-<slug>.lock` containing **the Claude Code
+  session process's PID** — not the short-lived CLI child's. `autoloop lock acquire`
+  finds it by walking its own ancestor chain (via `ps -o ppid=`) to the nearest
+  `claude` process and records that PID (an explicit `--pid <n>` override exists for
+  the hook shims, which receive session context); if no `claude` ancestor is found it
+  records its direct parent and logs a warning. Liveness = `kill -0 <pid>`.
+  Stale-lock detection: recorded PID dead ⇒ steal. `autoloop lock release` at terminal
+  loop close. All relaunch triggers no-op when a live lock exists.
+- **SessionEnd hook** (project `.claude/settings.json` — project-level, unlike the
+  session-log hook's global install, because the shim needs the project cwd /
+  `.autoloop.json`): Claude Code's **`SessionEnd`** event fires when the session
+  actually terminates (NOT `Stop`, which fires at the end of every turn while the
+  session is still alive — wiring `Stop` would spawn a competing driver against a
+  live session). The shim checks (1) the lock is absent, dead, or owned by **this**
+  ending session (compare the lock PID against the shim's own `claude` ancestor),
+  (2) `autoloop loop resume --check` (new flag: exit 0 + silent when a non-terminal,
+  non-`paused` loop exists; exit 1 otherwise; the plain `loop resume` keeps exiting 0
+  always — the exit code is meaningful only with `--check`). If resumable: release
+  the lock and relaunch the headless command below, detached (nohup, output to
+  `~/.autoloop/logs/<slug>.log`). **Backoff guard:** a relaunch-stamp file; more than
+  3 relaunches within 30 minutes ⇒ stop relaunching and leave a log line (prevents
   crash loops).
-- **launchd wake job** (`com.autoloop.wake.<slug>`, every 5 min): if no live lock AND
-  the loop is `paused` AND `autoloop messages pull --check` (new flag: exit 0 when
+- **Headless command + permissions:** the relaunch runs
+  `claude -p "/autoloop" --permission-mode acceptEdits` from the project directory.
+  `acceptEdits` alone cannot run Bash, so `init --relaunch` also writes a
+  `permissions.allow` list into the project `.claude/settings.json` covering the
+  loop's command surface — `Bash(autoloop:*)`, `Bash(git:*)`, the project's test/build
+  runners (`Bash(npm:*)` etc., detected from the project or edited by the user). In
+  headless mode anything outside the allowlist is denied and logged, never prompted;
+  the user extends the list rather than the installer going permission-less.
+  (`--dangerously-skip-permissions` is deliberately not used.)
+- **launchd wake job** (`com.autoloop.wake.<slug>`, every 5 min, with the project path
+  baked in as `WorkingDirectory` — launchd jobs have no cwd context): if no live lock
+  AND the loop is `paused` (the shim reads `autoloop loop resume` JSON and checks
+  `state.loop.status`) AND `autoloop messages pull --check` (new flag: exit 0 when
   pending user messages exist, without acking) ⇒ launch the same headless command. The
   skill's Step 4 pause is rewritten: instead of an indefinite sleep-poll, after a short
   drain window the paused session **exits** (releasing the lock) — the wake job is now
   the listener. This is the token-burn fix.
-- `autoloop init --relaunch --uninstall` removes the hook entries, plist, and lock.
+- `autoloop init --relaunch --uninstall` removes the hook entries, the allowlist
+  entries it added, the plist, and the lock.
 
-Linux: a documented crontab line replaces launchd; the Stop hook is identical.
+Linux: a documented crontab line replaces launchd; the SessionEnd hook is identical.
 
 ## Validation / rules
 
@@ -128,7 +152,7 @@ but gets API auth tests like other agent routes.
   codes; `messages pull --check` does not ack; lock acquire/steal-on-dead-PID/release
   (unit-testable against a temp dir).
 - **Hook shims:** unit-test the decision functions (resumable? backoff exceeded? lock
-  live?) as pure node functions in the shim file; the launchd/Stop wiring itself is
+  live?) as pure node functions in the shim file; the launchd/SessionEnd wiring itself is
   verified by a documented manual checklist (same approach as the session-log hook).
 - **Skill:** prose validated against the CLI (every command exists, flags real) — the
   driver-hygiene review rule.

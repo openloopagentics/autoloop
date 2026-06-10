@@ -75,19 +75,31 @@ fields).
 
 **`loops.ts`** — in `upsertLoop`, when the write transitions the loop **into** a
 terminal status (was non-terminal or absent-status before, terminal after — compare
-inside the existing read): after the loop merge-set, query the loop's `phases` and
-`tasks` collections, and for each doc with a non-terminal `status`, batch-update
-`status` to the loop's terminal status, stamping `updatedAt` (and `endedAt` where the
-entity already stamps it on terminal transitions — reuse the helpers the phase/task
-services use, extracted if needed rather than duplicated). Implementation notes:
+inside the existing read; the transition flag must be carried **out** of the
+transaction, since the sweep runs after it and `upsertLoop` currently returns `void`):
+after the loop merge-set, query the loop's `phases` and `tasks` collections, and for
+each doc with a non-terminal `status`, batch-update `status` to the loop's terminal
+status, stamping `updatedAt` (and `endedAt` on **phases only** — tasks have no
+`endedAt` field; reuse the phase service's stamping helper rather than duplicating it).
+Implementation notes:
+- **The sweep also nulls the derived pointers**: set `currentPhaseId` and
+  `currentTaskId` to `null` on the loop doc (and on the project doc for the
+  project-direct variant below). The well-behaved close path ends with both pointers
+  null via the per-task/phase recomputes in `derive.ts`; the sweep must land in the
+  same end state, otherwise `LoopSnapshot`/`PlanSection`/`ProjectCard` keep rendering
+  a now-terminal task/phase as current — the very symptom the backstop exists to kill.
 - Runs **after** the loop doc write, as a best-effort batched sweep (batches of ≤500);
   the loop close itself never fails because the sweep failed — log and continue
   (consistent with the API's write-only, agent-trusting posture).
 - Sweep applies to the loop's own subcollections only. For the implicit `main` loop
   (project-direct data) the sweep triggers on **project** terminal transition instead —
   same logic hung off `upsertProject` for project-direct phases/tasks. (This keeps
-  legacy single-loop projects covered.)
-- Idempotent: re-PUTting `completed` finds nothing non-terminal and writes nothing.
+  legacy single-loop projects covered.) `upsertProject` is the only hook needed: the
+  web's user project route cannot terminal-close a loop-owned project
+  (`assertWebEditable` blocks it), so the agent PUT path is the sole writer that can
+  trigger the project-direct sweep.
+- Idempotent: re-PUTting `completed` finds nothing non-terminal and writes nothing
+  (and the pointers are already null).
 
 ## Validation (`functions/src/schemas.ts`)
 
@@ -149,10 +161,11 @@ Plugin bump; sync skill copies.
   loop/project), verdict enum rejection, uppercase `testRunId` accepted, conditional
   `summary` key absent when omitted. Backstop: closing a loop completes its
   `running`/`queued`/`blocked`/`paused` phases+tasks with the loop's terminal status,
-  stamps `updatedAt`/`endedAt`, leaves already-terminal docs byte-stable
-  (`failed` task under a `completed` loop stays `failed`), idempotent re-close,
-  cancelled→cancelled mapping; project-terminal sweep covers project-direct data;
-  non-terminal loop writes sweep nothing.
+  stamps `updatedAt` (and `endedAt` on phases only), **nulls the loop's
+  `currentPhaseId`/`currentTaskId`** (project's, for project-direct), leaves
+  already-terminal docs byte-stable (`failed` task under a `completed` loop stays
+  `failed`), idempotent re-close, cancelled→cancelled mapping; project-terminal sweep
+  covers project-direct data; non-terminal loop writes sweep nothing.
 - **Rules:** member-read / client-write-deny on both verification paths.
 - **CLI:** `verify` URL/body construction, loop-aware, `--summary-file`.
 - **Web:** `verificationView` verdict resolution (latest wins), badges render per
