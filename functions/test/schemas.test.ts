@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody } from "../src/schemas.js";
+import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody, verificationBody } from "../src/schemas.js";
 
 describe("idPattern", () => {
   it("accepts safe slugs and rejects unsafe ones", () => {
@@ -96,6 +96,36 @@ describe("bugBody", () => {
   });
   it("drops unknown keys (plain z.object)", () => {
     const parsed = bugBody.parse({ title: "X", status: "open", createdAt: "nope" });
+    expect("createdAt" in parsed).toBe(false);
+  });
+});
+
+describe("verificationBody", () => {
+  it("accepts a minimal verification", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", verdict: "confirmed" }).success).toBe(true);
+  });
+  it("accepts an UPPERCASE ULID testRunId (deliberately NOT idPattern)", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "01HZXYABCDEF0123456789ABCD", verdict: "refuted" }).success).toBe(true);
+  });
+  it("accepts the optional fields", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", taskId: "t1", testRunId: "01A", verdict: "confirmed", summary: "npm test → 6/6", by: "verifier" }).success).toBe(true);
+  });
+  it("rejects an unknown verdict", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "01A", verdict: "maybe" }).success).toBe(false);
+  });
+  it("rejects a missing or empty testRunId", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", verdict: "confirmed" }).success).toBe(false);
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "", verdict: "confirmed" }).success).toBe(false);
+  });
+  it("rejects a non-idPattern scenarioId", () => {
+    expect(verificationBody.safeParse({ scenarioId: "Bad Id", testRunId: "01A", verdict: "confirmed" }).success).toBe(false);
+  });
+  it("rejects a summary over 100KB", () => {
+    const big = "x".repeat(100 * 1024 + 1);
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "01A", verdict: "confirmed", summary: big }).success).toBe(false);
+  });
+  it("drops unknown keys (plain z.object)", () => {
+    const parsed = verificationBody.parse({ scenarioId: "s1", testRunId: "01A", verdict: "confirmed", createdAt: "nope" });
     expect("createdAt" in parsed).toBe(false);
   });
 });

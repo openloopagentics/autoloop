@@ -123,6 +123,16 @@ export const testRunBody = z.object({
   summary: z.string().max(CONTENT_MAX_BYTES, "testRun.summary exceeds 100KB").optional(),
 });
 
+export const verificationBody = z.object({
+  scenarioId: id,
+  taskId: id.optional(),
+  testRunId: z.string().min(1),          // server ULIDs are uppercase — NOT idPattern
+  verdict: z.enum(["confirmed", "refuted"]),
+  summary: z.string().max(CONTENT_MAX_BYTES, "verification.summary exceeds 100KB").optional(),
+  by: z.string().min(1).optional(),
+});
+export type VerificationBody = z.infer<typeof verificationBody>;
+
 export const revisionBody = z.object({
   trigger: z.object({ scenarioId: id, reason: z.string().min(1) }),
   // changes carry op + taskId plus optional op-specific detail (title/order/...). passthrough
