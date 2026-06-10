@@ -1,11 +1,18 @@
 import { describe, it, expect } from "vitest";
+import request from "supertest";
+import express from "express";
 import "./helpers.js";
-import { seedMember } from "./helpers.js";
+import { seedMember, authHeader } from "./helpers.js";
 import { db } from "../src/firestore.js";
 import { goalBody, scenarioBody } from "../src/schemas.js";
 import { applyVisionChange, rejectVisionChange } from "../src/services/visionChanges.js";
 import { upsertScenario } from "../src/services/scenarios.js";
 import { upsertGoal } from "../src/services/goals.js";
+import { makeApp } from "../src/app.js";
+import { makeRequireUser } from "../src/requireUser.js";
+import { requireMember } from "../src/requireMember.js";
+import { userProjectsRouter } from "../src/routes/userProjects.js";
+import { errorHandler } from "../src/errors.js";
 
 const rubric = { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] };
 
@@ -165,5 +172,88 @@ describe("rejectVisionChange", () => {
     expect((await db().doc("teams/team1/projects/acme").get()).data()!.visionOwner).toBe("loop");
     await rejectVisionChange("team1", "acme", id);
     expect((await db().doc("teams/team1/projects/acme").get()).data()!.visionOwner).toBe("loop");
+  });
+});
+
+const app = makeApp();
+// User-route harness with a stubbed ID-token verifier (mirrors userProjects.test.ts).
+const stubVerify = async (t: string) => { const m = t.match(/^good-(.+)$/); if (!m) throw new Error("x"); return { uid: m[1] }; };
+function userApp() {
+  const a = express();
+  a.use(express.json());
+  a.use("/v1/u/teams/:teamId/projects", makeRequireUser(stubVerify), requireMember, userProjectsRouter);
+  a.use(errorHandler);
+  return a;
+}
+const utok = (uid: string) => ({ Authorization: `Bearer good-${uid}` });
+async function seedUser(uid = "alice", member = true) {
+  await db().doc(`users/${uid}`).set({ email: `${uid}@x.com`, isAllowed: true });
+  if (member) await db().doc(`teams/team1/members/${uid}`).set({ uid, role: "member" });
+}
+
+describe("POST /v1/teams/:teamId/projects/:slug/vision-changes (agent)", () => {
+  it("applies and returns { ok: true, id } (event POST shape)", async () => {
+    await seedProject();
+    const res = await request(app).post("/v1/teams/team1/projects/acme/vision-changes").set(authHeader())
+      .send({ op: "upsert-goal", targetId: "g1", payload: { title: "Ship" }, reason: "seed grew" });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect((await db().doc("teams/team1/projects/acme/goals/g1").get()).data()!.title).toBe("Ship");
+    expect((await db().doc(`teams/team1/projects/acme/visionChanges/${res.body.id}`).get()).data()!.status).toBe("applied");
+  });
+  it("400s on a missing reason (zod)", async () => {
+    await seedProject();
+    const res = await request(app).post("/v1/teams/team1/projects/acme/vision-changes").set(authHeader())
+      .send({ op: "upsert-goal", targetId: "g1", payload: { title: "Ship" } });
+    expect(res.status).toBe(400);
+  });
+  it("400s on an unknown op", async () => {
+    await seedProject();
+    const res = await request(app).post("/v1/teams/team1/projects/acme/vision-changes").set(authHeader())
+      .send({ op: "delete-goal", targetId: "g1", payload: {}, reason: "r" });
+    expect(res.status).toBe(400);
+  });
+  it("404s when the project does not exist", async () => {
+    await db().doc("teams/team1").set({ name: "T", createdBy: "u1" });
+    await seedMember("team1");
+    const res = await request(app).post("/v1/teams/team1/projects/ghost/vision-changes").set(authHeader())
+      .send({ op: "upsert-goal", targetId: "g1", payload: { title: "G" }, reason: "r" });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /v1/u/.../vision-changes/:changeId/reject (user)", () => {
+  it("rejects while the project is loop-owned (no assertWebEditable) and returns { ok: true }", async () => {
+    await seedProject();
+    await seedUser();
+    const id = await applyVisionChange("team1", "acme", { op: "upsert-goal", targetId: "g1", payload: { title: "G" }, reason: "r" });
+    // the apply stamped visionOwner "loop" — a normal web vision edit would now 409
+    expect((await db().doc("teams/team1/projects/acme").get()).data()!.visionOwner).toBe("loop");
+    const res = await request(userApp()).post(`/v1/u/teams/team1/projects/acme/vision-changes/${id}/reject`).set(utok("alice"));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect((await db().doc("teams/team1/projects/acme/goals/g1").get()).exists).toBe(false); // prior null → deleted
+    expect((await db().doc("teams/team1/projects/acme").get()).data()!.visionOwner).toBe("loop"); // untouched
+  });
+  it("is member-only: 403 for a non-member", async () => {
+    await seedProject();
+    await seedUser("bob", false);
+    const id = await applyVisionChange("team1", "acme", { op: "upsert-goal", targetId: "g1", payload: { title: "G" }, reason: "r" });
+    const res = await request(userApp()).post(`/v1/u/teams/team1/projects/acme/vision-changes/${id}/reject`).set(utok("bob"));
+    expect(res.status).toBe(403);
+  });
+  it("404s on an unknown changeId", async () => {
+    await seedProject();
+    await seedUser();
+    const res = await request(userApp()).post("/v1/u/teams/team1/projects/acme/vision-changes/01GHOSTGHOSTGHOSTGHOSTGHST/reject").set(utok("alice"));
+    expect(res.status).toBe(404);
+  });
+  it("is idempotent over HTTP: a second reject is also 200", async () => {
+    await seedProject();
+    await seedUser();
+    const id = await applyVisionChange("team1", "acme", { op: "upsert-goal", targetId: "g1", payload: { title: "G" }, reason: "r" });
+    expect((await request(userApp()).post(`/v1/u/teams/team1/projects/acme/vision-changes/${id}/reject`).set(utok("alice"))).status).toBe(200);
+    expect((await request(userApp()).post(`/v1/u/teams/team1/projects/acme/vision-changes/${id}/reject`).set(utok("alice"))).status).toBe(200);
   });
 });

@@ -9,6 +9,7 @@ import { applyScenarioUpsert, deleteScenario } from "../services/scenarios.js";
 import { applyDocumentUpsert, deleteDocument } from "../services/documents.js";
 import { createMessage } from "../services/messages.js";
 import { upsertIdea } from "../services/ideas.js";
+import { rejectVisionChange } from "../services/visionChanges.js";
 
 export const userProjectsRouter = Router({ mergeParams: true });
 
@@ -149,6 +150,21 @@ userProjectsRouter.put("/:slug/ideas/:ideaId", async (req, res, next) => {
     if (!parsed.success) throw new AppError(400, "validation", parsed.error.issues[0].message);
     const { teamId, slug, ideaId } = req.params as Record<string, string>;
     await upsertIdea(teamId, slug, ideaId, parsed.data, "user"); // by from the auth path
+    res.status(200).json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// vision changes: POST /:slug/vision-changes/:changeId/reject
+// Deliberately NO assertWebEditable — like the ideas veto and the messages POST,
+// rejecting must work while the loop owns the vision.
+// changeId is a server ULID (UPPERCASE) — validate non-empty only, never idPattern
+// (precedent: messages ack).
+userProjectsRouter.post("/:slug/vision-changes/:changeId/reject", async (req, res, next) => {
+  try {
+    ids(req, ["teamId", "slug"]);
+    const { teamId, slug, changeId } = req.params as Record<string, string>;
+    if (!changeId || changeId.trim() === "") throw new AppError(400, "validation", "invalid changeId");
+    await rejectVisionChange(teamId, slug, changeId);
     res.status(200).json({ ok: true });
   } catch (err) { next(err); }
 });
