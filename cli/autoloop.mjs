@@ -550,7 +550,7 @@ export async function run(argv, deps = {}) {
       case "verify": {
         oneFlag("test-run", flags["test-run"]); oneFlag("verdict", flags.verdict);
         const scenarioId = positionals[1]; validateId("scenarioId", scenarioId);
-        if (!flags["test-run"]) throw new UsageError("verify requires --test-run <testRunId>");
+        if (typeof flags["test-run"] !== "string") throw new UsageError("verify requires --test-run <testRunId>");
         if (!["confirmed", "refuted"].includes(flags.verdict)) throw new UsageError(`--verdict must be confirmed|refuted, got '${flags.verdict}'`);
         // testRunId is a server ULID (uppercase) — deliberately NOT validateId'd.
         const body = { scenarioId, testRunId: String(flags["test-run"]), verdict: flags.verdict };

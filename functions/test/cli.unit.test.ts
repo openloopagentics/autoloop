@@ -640,6 +640,13 @@ describe("verify verb", () => {
     expect(code).not.toBe(0);
   });
 
+  it("verify rejects a bare --test-run (boolean flag) without calling fetch", async () => {
+    const dir = initDir();
+    const code = await run(["verify", "s1", "--test-run", "--verdict", "confirmed"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).not.toBe(0);
+  });
+
   it("event verbs surface the server id (autoloop: id <ULID>)", async () => {
     const dir = initDir(); const c = cap(); const errs: string[] = [];
     await run(["test-run", "s1", "--task", "t1", "--passed", "1", "--failed", "0"],
