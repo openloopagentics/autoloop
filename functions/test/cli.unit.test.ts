@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1185,5 +1185,109 @@ describe("hook wake", () => {
     expect(s.spawned.length).toBe(0);
     await run(["hook", "wake"], deps(s, fetchFor("paused", [])));
     expect(s.spawned.length).toBe(0);
+  });
+});
+
+describe("detectAllowlist / wakePlist (pure)", () => {
+  it("always includes autoloop + git; adds detected runners", () => {
+    expect(detectAllowlist([])).toEqual(["Bash(autoloop:*)", "Bash(git:*)"]);
+    const withNpm = detectAllowlist(["package.json", "src"]);
+    expect(withNpm).toContain("Bash(npm:*)");
+    expect(withNpm).toContain("Bash(npx:*)");
+    expect(detectAllowlist(["Makefile"])).toContain("Bash(make:*)");
+    expect(detectAllowlist(["Cargo.toml"])).toContain("Bash(cargo:*)");
+    expect(detectAllowlist(["pyproject.toml"])).toContain("Bash(pytest:*)");
+  });
+  it("wakePlist bakes label, WorkingDirectory, 5-min interval and the hook wake command", () => {
+    const xml = wakePlist({ label: "com.autoloop.wake.web", nodePath: "/usr/bin/node", stableCli: "/h/.autoloop/autoloop-cli.mjs", projDir: "/proj", logPath: "/h/.autoloop/logs/web.wake.log" });
+    expect(xml).toContain("<string>com.autoloop.wake.web</string>");
+    expect(xml).toContain("<key>WorkingDirectory</key><string>/proj</string>");
+    expect(xml).toContain("<key>StartInterval</key><integer>300</integer>");
+    expect(xml).toContain("<string>hook</string>");
+    expect(xml).toContain("<string>wake</string>");
+  });
+});
+
+describe("init --relaunch / --uninstall / status", () => {
+  function setup() {
+    const home = tmp(); const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
+    writeFileSync(join(dir, "package.json"), "{}");
+    const execs: any[] = [];
+    const execImpl = (cmd: string, args: string[]) => { execs.push({ cmd, args }); return ""; };
+    return { home, dir, execs, execImpl,
+      settingsPath: join(dir, ".claude", "settings.json"),
+      plistPath: join(home, "Library", "LaunchAgents", "com.autoloop.wake.web.plist"),
+      lockFile: join(home, ".autoloop", "run", "acme-web.lock") };
+  }
+  const deps = (s: ReturnType<typeof setup>, over: Record<string, unknown> = {}) => ({
+    cwd: s.dir, env: { AUTOLOOP_API_KEY: "al_k", HOME: s.home },
+    log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("no network"); },
+    execImpl: s.execImpl, platform: "darwin", ...over,
+  });
+  const settings = (s: ReturnType<typeof setup>) => JSON.parse(readFileSync(s.settingsPath, "utf8"));
+
+  it("installs the SessionEnd hook, allowlist, plist, stable CLI copy and marker", async () => {
+    const s = setup();
+    expect(await run(["init", "--relaunch"], deps(s))).toBe(0);
+    const st = settings(s);
+    expect(st.hooks.SessionEnd.length).toBe(1);
+    expect(st.hooks.SessionEnd[0].hooks[0].command).toContain("hook session-end");
+    expect(st.permissions.allow).toContain("Bash(autoloop:*)");
+    expect(st.permissions.allow).toContain("Bash(git:*)");
+    expect(st.permissions.allow).toContain("Bash(npm:*)");           // detected from package.json
+    expect(existsSync(join(s.home, ".autoloop", "autoloop-cli.mjs"))).toBe(true);
+    const plist = readFileSync(s.plistPath, "utf8");
+    expect(plist).toContain(`<key>WorkingDirectory</key><string>${s.dir}</string>`);
+    expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "load")).toBe(true);
+    expect(loadConfig(s.dir).relaunch.allowAdded).toContain("Bash(npm:*)");
+  });
+
+  it("is idempotent: re-running adds no duplicate hook or allow entries", async () => {
+    const s = setup();
+    await run(["init", "--relaunch"], deps(s));
+    await run(["init", "--relaunch"], deps(s));
+    const st = settings(s);
+    expect(st.hooks.SessionEnd.length).toBe(1);
+    expect(st.permissions.allow.filter((a: string) => a === "Bash(git:*)").length).toBe(1);
+  });
+
+  it("preserves pre-existing user hooks and allow entries", async () => {
+    const s = setup();
+    mkdirSync(join(s.dir, ".claude"), { recursive: true });
+    writeFileSync(s.settingsPath, JSON.stringify({ hooks: { SessionEnd: [{ hooks: [{ type: "command", command: "echo bye" }] }] }, permissions: { allow: ["Bash(curl:*)"] } }));
+    await run(["init", "--relaunch"], deps(s));
+    const st = settings(s);
+    expect(st.hooks.SessionEnd.length).toBe(2);
+    expect(st.permissions.allow).toContain("Bash(curl:*)");
+  });
+
+  it("status reports relaunchInstalled", async () => {
+    const s = setup();
+    const logs: string[] = [];
+    await run(["status"], deps(s, { log: (m: string) => logs.push(m) }));
+    expect(JSON.parse(logs.join(""))).toMatchObject({ teamId: "acme", projectSlug: "web", relaunchInstalled: false });
+    await run(["init", "--relaunch"], deps(s));
+    logs.length = 0;
+    await run(["status"], deps(s, { log: (m: string) => logs.push(m) }));
+    expect(JSON.parse(logs.join("")).relaunchInstalled).toBe(true);
+  });
+
+  it("--uninstall removes the hook, ONLY the allow entries it added, the plist, the lock and the marker", async () => {
+    const s = setup();
+    mkdirSync(join(s.dir, ".claude"), { recursive: true });
+    writeFileSync(s.settingsPath, JSON.stringify({ permissions: { allow: ["Bash(curl:*)", "Bash(git:*)"] } })); // user already had git
+    await run(["init", "--relaunch"], deps(s));
+    writeFileSync(s.lockFile, JSON.stringify({ pid: 1 }));
+    expect(await run(["init", "--relaunch", "--uninstall"], deps(s))).toBe(0);
+    const st = settings(s);
+    expect(st.hooks?.SessionEnd ?? []).toEqual([]);
+    expect(st.permissions.allow).toContain("Bash(curl:*)");   // user's own — kept
+    expect(st.permissions.allow).toContain("Bash(git:*)");    // pre-existing, NOT in allowAdded — kept
+    expect(st.permissions.allow).not.toContain("Bash(autoloop:*)");
+    expect(existsSync(s.plistPath)).toBe(false);
+    expect(existsSync(s.lockFile)).toBe(false);
+    expect(loadConfig(s.dir).relaunch).toBeUndefined();
+    expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "unload")).toBe(true);
   });
 });

@@ -420,6 +420,124 @@ export function hookLog(env, tag, msg, nowMs = Date.now()) {
   } catch { /* never fail the hook over logging */ }
 }
 
+const RELAUNCH_HOOK_MARKER = "hook session-end";
+export const BASE_ALLOW = ["Bash(autoloop:*)", "Bash(git:*)"];
+
+/** Marker files in the project root → permission allowlist for the headless run. Pure.
+ *  acceptEdits alone cannot run Bash; in headless mode anything outside the allowlist is
+ *  denied and logged (never prompted) — the user EXTENDS this list rather than the
+ *  installer going permission-less. --dangerously-skip-permissions is deliberately not used. */
+export function detectAllowlist(filesPresent) {
+  const f = new Set(filesPresent);
+  const out = [...BASE_ALLOW];
+  if (f.has("package.json")) out.push("Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)");
+  if (f.has("pnpm-lock.yaml")) out.push("Bash(pnpm:*)");
+  if (f.has("yarn.lock")) out.push("Bash(yarn:*)");
+  if (f.has("Makefile")) out.push("Bash(make:*)");
+  if (f.has("Cargo.toml")) out.push("Bash(cargo:*)");
+  if (f.has("go.mod")) out.push("Bash(go:*)");
+  if (f.has("pyproject.toml") || f.has("requirements.txt")) out.push("Bash(python:*)", "Bash(pytest:*)", "Bash(uv:*)");
+  return out;
+}
+
+/** launchd plist for the 5-min wake job. WorkingDirectory is baked in — launchd has no cwd. */
+export function wakePlist({ label, nodePath, stableCli, projDir, logPath }) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${nodePath}</string>
+    <string>${stableCli}</string>
+    <string>hook</string>
+    <string>wake</string>
+  </array>
+  <key>WorkingDirectory</key><string>${projDir}</string>
+  <key>StartInterval</key><integer>300</integer>
+  <key>StandardOutPath</key><string>${logPath}</string>
+  <key>StandardErrorPath</key><string>${logPath}</string>
+</dict>
+</plist>
+`;
+}
+
+/** Install (or uninstall) the relaunch machinery: stable CLI copy under ~/.autoloop/,
+ *  SessionEnd hook + permissions.allow in the PROJECT .claude/settings.json (project-level,
+ *  unlike the session-log hook's global install — the shim needs the project cwd), and the
+ *  launchd wake job. Idempotent: prior autoloop entries are filtered before re-adding
+ *  (the installSessionLogHook versioned pattern). */
+function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall = false }) {
+  const cfg = loadConfig(projDir); // requires an initialized project — teamId/slug name the lock + plist
+  const home = autoloopHome(env);
+  const stableCli = join(home, "autoloop-cli.mjs");
+  const settingsPath = join(projDir, ".claude", "settings.json");
+  const plistPath = join(env.HOME || env.USERPROFILE || "", "Library", "LaunchAgents", `com.autoloop.wake.${cfg.projectSlug}.plist`);
+
+  let settings = {};
+  if (existsSync(settingsPath)) { try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; } }
+  settings.hooks = settings.hooks ?? {};
+  settings.permissions = settings.permissions ?? {};
+  settings.permissions.allow = settings.permissions.allow ?? [];
+  settings.hooks.SessionEnd = (settings.hooks.SessionEnd ?? [])
+    .filter((h) => !h.hooks?.some((hh) => hh.command?.includes(RELAUNCH_HOOK_MARKER)));
+
+  if (uninstall) {
+    const added = cfg.relaunch?.allowAdded ?? [];
+    settings.permissions.allow = settings.permissions.allow.filter((a) => !added.includes(a));
+    mkdirSync(join(projDir, ".claude"), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    if (existsSync(plistPath)) {
+      try { execImpl("launchctl", ["unload", plistPath]); } catch { /* not loaded */ }
+      rmSync(plistPath);
+    }
+    const lockFile = lockPath(env, cfg.teamId, cfg.projectSlug);
+    if (existsSync(lockFile)) rmSync(lockFile);
+    delete cfg.relaunch;
+    saveConfig(projDir, cfg);
+    log("autoloop: relaunch machinery uninstalled (SessionEnd hook, added allowlist entries, wake job, lock)");
+    return 0;
+  }
+
+  // 1. ~/.autoloop home + a stable, version-independent CLI copy (refreshed on every install)
+  mkdirSync(join(home, "run"), { recursive: true });
+  mkdirSync(join(home, "logs"), { recursive: true });
+  try { copyFileSync(process.argv[1], stableCli); }
+  catch (e) { err(`autoloop: could not copy CLI to ${stableCli}: ${e.message}`); return 1; }
+
+  // 2. SessionEnd hook (NOT Stop — Stop fires once per turn while the session is alive and
+  //    would spawn a competing driver; SessionEnd fires only on actual termination).
+  settings.hooks.SessionEnd.push({ hooks: [{ type: "command", command: `node "${stableCli}" hook session-end` }] });
+
+  // 3. permissions.allow for the headless `claude -p "/autoloop" --permission-mode acceptEdits`
+  let files; try { files = readdirSync(projDir); } catch { files = []; }
+  const wanted = detectAllowlist(files);
+  const added = wanted.filter((a) => !settings.permissions.allow.includes(a));
+  settings.permissions.allow.push(...added);
+  mkdirSync(join(projDir, ".claude"), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+
+  // 4. wake job: launchd on macOS; documented crontab line elsewhere
+  const logPath = join(home, "logs", `${cfg.projectSlug}.wake.log`);
+  if (platform === "darwin") {
+    mkdirSync(join(env.HOME || env.USERPROFILE || "", "Library", "LaunchAgents"), { recursive: true });
+    writeFileSync(plistPath, wakePlist({ label: `com.autoloop.wake.${cfg.projectSlug}`, nodePath: process.execPath, stableCli, projDir, logPath }));
+    try { execImpl("launchctl", ["unload", plistPath]); } catch { /* not loaded yet */ }
+    try { execImpl("launchctl", ["load", plistPath]); log(`autoloop: wake job loaded (every 5 min) → ${plistPath}`); }
+    catch (e) { err(`autoloop: wrote ${plistPath} but launchctl load failed: ${e.message} — load it manually`); }
+  } else {
+    log(`autoloop: non-macOS host — install the wake job with this crontab line:\n*/5 * * * * cd ${projDir} && ${process.execPath} ${stableCli} hook wake >> ${logPath} 2>&1`);
+  }
+
+  // 5. marker: `autoloop status` reports relaunchInstalled; --uninstall removes ONLY allowAdded
+  const prevAdded = cfg.relaunch?.allowAdded ?? [];
+  cfg.relaunch = { installedAt: new Date().toISOString(), allowAdded: [...new Set([...prevAdded, ...added])] };
+  saveConfig(projDir, cfg);
+  log(`autoloop: relaunch machinery installed (SessionEnd hook + allowlist → ${settingsPath}; CLI: ${stableCli})`);
+  return 0;
+}
+
 /**
  * Run an autoloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.
@@ -460,6 +578,12 @@ export async function run(argv, deps = {}) {
     const dispatchKey = ONE_WORD.has(cmd) ? cmd : `${cmd} ${sub ?? ""}`.trim();
     switch (dispatchKey) {
       case "init": {
+        // `autoloop init --relaunch [--uninstall]` manages host-side relaunch machinery for an
+        // ALREADY-initialized project — no --team needed (mirrors the init --session-log /
+        // `session-log` pair).
+        if (flags.relaunch && !flags.team) {
+          return installRelaunch(cwd, env, { log, err, execImpl, platform, uninstall: !!flags.uninstall });
+        }
         const teamId = flags.team, projectSlug = flags.project;
         if (!teamId || !projectSlug) throw new UsageError("init requires --team <teamId> --project <slug>");
         validateId("teamId", teamId);
@@ -468,6 +592,7 @@ export async function run(argv, deps = {}) {
         saveConfig(cwd, { apiUrl, teamId, projectSlug, currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
         log(`autoloop: initialized .autoloop.json (team=${teamId}, project=${projectSlug})`);
         if (flags["session-log"]) installSessionLogHook(env, log);
+        if (flags.relaunch) return installRelaunch(cwd, env, { log, err, execImpl, platform, uninstall: !!flags.uninstall });
         return 0;
       }
       case "init --session-log":
@@ -1013,6 +1138,17 @@ export async function run(argv, deps = {}) {
           return 0;
         }
         throw new UsageError("state requires --current-loop");
+      }
+      case "status": {
+        // Minimal status report — the relaunch marker is what the driver skill branches on.
+        const cfg = loadConfig(cwd);
+        log(JSON.stringify({
+          teamId: cfg.teamId,
+          projectSlug: cfg.projectSlug,
+          currentLoopId: cfg.currentLoopId ?? null,
+          relaunchInstalled: !!cfg.relaunch,
+        }, null, 2));
+        return 0;
       }
       case "session push": {
         // Debug log — every hook firing appends here so failures are diagnosable.
