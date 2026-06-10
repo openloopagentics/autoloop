@@ -142,6 +142,19 @@ autoloop task set <taskId> --status completed
 After closing the task:
 - If a phase is fully done: `autoloop phase set <phaseId> --status completed`
 - If a scenario is unmet: `autoloop revise --scenario <s> --reason "<why>" --change <op>:<id>`
+- **If the task added or reshaped components** (a new module/service/screen, a moved
+  boundary): update the product map. Maintain `map.json` in the repo — read the existing
+  one if any (or start from `{"nodes":[],"edges":[]}`), **merge** the new/changed
+  components and edges into it (never replace wholesale, never send a fragment — the
+  upload is an idempotent PUT of the full map), then:
+
+  ```bash
+  autoloop doc add --id product-map --kind product-map --title "Product map" --format json --file map.json
+  ```
+
+  Shape: `{"nodes":[{"id":"api","label":"REST API","kind":"service","scenarioIds":["login-works"]}],"edges":[{"from":"web","to":"api"}]}` —
+  node ids lowercase (`[a-z0-9._-]`), `scenarioIds` reference vision scenarios. Keep it
+  **coarse**: components are modules/services/screens, not files.
 - If this task's work surfaced a **learning that changes the vision** — a new scenario
   discovered while testing, a threshold that proved wrong, a new goal implied by user
   messages — record it as a vision change with the learning as the reason:
