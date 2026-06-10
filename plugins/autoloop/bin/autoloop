@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
 export const STATUSES = ["queued", "running", "blocked", "paused", "completed", "failed", "cancelled"];
+export const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
 const ID_RE = /^[a-z0-9._-]+$/;
 const CONFIG_FILE = ".autoloop.json";
 const LEGACY_CONFIG_FILE = ".daloop.json"; // back-compat: pre-rename config name
@@ -162,6 +163,69 @@ export async function fetchJson(req, deps) {
 
   err(`autoloop: ${label} failed (${res.status})`);
   return 0;
+}
+
+/**
+ * Raw GET helper: returns { ok, status, body } (body null when unparseable) or null on a
+ * network error. Throws UsageError for a missing key. fetchJson stays the print-to-stdout
+ * wrapper; this is the building block for verbs that need the parsed body / status.
+ */
+export async function getJson(url, deps) {
+  const { env = process.env, fetchImpl = fetch } = deps;
+  const key = env.AUTOLOOP_API_KEY;
+  if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
+  try {
+    const res = await fetchImpl(url, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` } });
+    let body = null;
+    try { body = await res.json(); } catch { /* no/invalid body */ }
+    return { ok: res.ok, status: res.status, body };
+  } catch { return null; }
+}
+
+/**
+ * Fetch the resume state bundle, following the loopId fallback chain:
+ * explicit → cfg.currentLoopId → the server project's currentLoopId (one extra hop via the
+ * project-direct /state). Returns { state, loopId } or null on any network/HTTP failure.
+ */
+export async function fetchResumeState(cfg, env, fetchImpl, { loopId: explicitLoopId, urlFlag } = {}) {
+  const api = resolveApiUrl(cfg, env, urlFlag);
+  const base = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
+  const get = (id) => getJson(id ? `${base}/loops/${id}/state` : `${base}/state`, { env, fetchImpl });
+  let loopId = explicitLoopId ?? cfg.currentLoopId ?? null;
+  let res = await get(loopId);
+  if (!loopId && res?.ok && res.body?.state?.project?.currentLoopId) {
+    loopId = res.body.state.project.currentLoopId;
+    res = await get(loopId);
+  }
+  if (!res?.ok || !res.body?.state) return null;
+  return { state: res.body.state, loopId };
+}
+
+/** First non-terminal task by phase order, then task order (the driver's "next task"). */
+export function firstNonTerminalTask(state) {
+  const phaseOrder = new Map((state.phases ?? []).map((p) => [p.id, p.order]));
+  const planOrder = [...(state.tasks ?? [])].sort((a, b) =>
+    ((phaseOrder.get(a.phaseId) ?? Infinity) - (phaseOrder.get(b.phaseId) ?? Infinity)) || (a.order - b.order));
+  return planOrder.find((t) => !TERMINAL_STATUSES.includes(t.status)) ?? null;
+}
+
+/** Human header: loop id/status, N/M tasks terminal, K pending messages, next task. */
+export function resumeHeader(state) {
+  const tasks = state.tasks ?? [];
+  const terminal = tasks.filter((t) => TERMINAL_STATUSES.includes(t.status)).length;
+  const next = firstNonTerminalTask(state);
+  const lines = [];
+  if (state.loop) lines.push(`loop ${state.loop.id} — ${state.loop.status}`);
+  lines.push(`${terminal}/${tasks.length} tasks terminal, ${(state.pendingMessages ?? []).length} pending messages`);
+  lines.push(next ? `next: ${next.id} — ${next.title} (phase ${next.phaseId})` : "next: none (all tasks terminal)");
+  return lines.join("\n");
+}
+
+/** --check semantics: a non-terminal, NON-paused loop exists. (Paused loops are woken by
+ *  the wake job on a message, not relaunched by SessionEnd.) */
+export function isResumable(state) {
+  const s = state?.loop?.status;
+  return !!s && !TERMINAL_STATUSES.includes(s) && s !== "paused";
 }
 
 /** Locate a subagent's transcript by agentId and sum its token usage.
@@ -374,7 +438,6 @@ export async function run(argv, deps = {}) {
         }
         if (Object.keys(body).length === 0) throw new UsageError("loop set requires at least one of --status/--preview-url");
         const cfg = loadConfig(cwd);
-        const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
         if (flags.status && TERMINAL_STATUSES.includes(flags.status)) {
           cfg.currentLoopId = null;
           saveConfig(cwd, cfg);
@@ -382,6 +445,24 @@ export async function run(argv, deps = {}) {
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}`;
         return report({ method: "PUT", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "loop resume": {
+        const cfg = loadConfig(cwd);
+        const explicit = positionals[2];
+        if (explicit) validateId("loopId", explicit);
+        const fetched = await fetchResumeState(cfg, env, fetchImpl, { loopId: explicit, urlFlag: flags.url });
+        if (flags.check) {
+          // --check: the EXIT CODE is the contract — 0 iff a non-terminal, non-paused loop
+          // exists; silent so hook shims can branch on it. Any failure ⇒ 1.
+          return fetched && isResumable(fetched.state) ? 0 : 1;
+        }
+        // plain resume is best-effort and ALWAYS exits 0 (exit code only means something with --check)
+        if (!fetched) { err("autoloop: loop resume failed (network or HTTP error)"); return 0; }
+        const { state } = fetched;
+        if (!state.loop || TERMINAL_STATUSES.includes(state.loop.status)) err("autoloop: no active loop");
+        log(resumeHeader(state));
+        log(JSON.stringify(state, null, 2));
+        return 0;
       }
       case "goal set": {
         const id = positionals[2]; validateId("goalId", id);
@@ -707,6 +788,12 @@ export async function run(argv, deps = {}) {
         const cfg = loadConfig(cwd);
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
+        if (flags.check) {
+          // silent probe for the wake shim: exit 0 iff pending user messages exist.
+          // GET only — pulling NEVER acks; any failure ⇒ 1 (can't confirm pending).
+          const res = await getJson(url, { env, fetchImpl });
+          return res?.ok && Array.isArray(res.body?.messages) && res.body.messages.length > 0 ? 0 : 1;
+        }
         return fetchJson({ method: "GET", url }, { env, fetchImpl, log, err });
       }
       case "messages ack": {

@@ -29,6 +29,37 @@ session, not inside a subagent.** Subagents implement code; you report status.
 - An initialised **`.autoloop.json`** (`autoloop init --team <t> --project <slug>`)
   and `AUTOLOOP_API_KEY` in the env.
 
+## Step 0 — Resume check (before ANY setup)
+
+If `.autoloop.json` exists, ask the server whether a loop is already mid-flight
+BEFORE doing any setup:
+
+```bash
+autoloop loop resume    # human header + the full state bundle as pretty JSON
+```
+
+If the state shows a **non-terminal loop** (`state.loop.status` is not
+completed/failed/cancelled):
+
+- **Skip Step 1 entirely** — no `vision import`, no `project set`, no new
+  `loop start`. The plan already lives on the server; re-running setup would
+  clobber it.
+- **Rebuild the working plan from `state`**: `state.phases` + `state.tasks`
+  carry `order` and `status`. The next task is the **first non-terminal task by
+  phase order, then task order** — the header names it (`next: …`).
+- **Drain `state.pendingMessages` FIRST** (they are oldest-first): act on each,
+  then `autoloop messages ack <id>`. A message may change scope or direction —
+  honor it before picking up the next task.
+- Then continue the normal **Step 2** per-task loop from that next task
+  (re-run `autoloop session-log` so the session-log hook points at this
+  session — the bare team-less verb; `init --session-log` without `--team` exits 1).
+- If `state.loop.status` is `paused`: resume into **Step 4 (Paused)** instead —
+  unless a pending message says to resume or change course, in which case do
+  what it says.
+
+If there is no non-terminal loop (the CLI prints `no active loop`), proceed to
+Step 1 as normal.
+
 ## Step 1 — Setup (once per run)
 
 ```bash
