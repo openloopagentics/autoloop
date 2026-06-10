@@ -15,7 +15,7 @@ export function VisionTab({ teamId, slug, editable, goals, scenarios, scores, te
     <>
       {hasScenarios && <ScenariosMetBanner met={met} total={total} />}
       {editable
-        ? <VisionEditableSection teamId={teamId} slug={slug} goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} documents={documents} />
+        ? <VisionEditableSection teamId={teamId} slug={slug} goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} documents={documents} verifications={verifications} />
         : hasScenarios && <VisionSection goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} verifications={verifications} />}
       <DocumentsSection documents={documents} />
     </>

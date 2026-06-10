@@ -13,8 +13,8 @@ export function VerificationBadge({ verdict, compact = false, showUnverified = f
 }) {
   if (!verdict) {
     if (!showUnverified) return null;
-    return <span className="verifybadge verifybadge--unverified" title="Not independently verified">⚠ Unverified</span>;
+    return <span className="verifybadge verifybadge--unverified" role="img" aria-label="Not independently verified" title="Not independently verified">⚠ Unverified</span>;
   }
   const l = LABELS[verdict];
-  return <span className={`verifybadge verifybadge--${l.cls}`} title={l.title}>{compact ? l.glyph : l.full}</span>;
+  return <span className={`verifybadge verifybadge--${l.cls}`} role="img" aria-label={l.title} title={l.title}>{compact ? l.glyph : l.full}</span>;
 }

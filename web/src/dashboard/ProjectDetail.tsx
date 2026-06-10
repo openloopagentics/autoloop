@@ -61,7 +61,7 @@ export function ProjectDetail() {
   const scores = useScores(teamId, slug, loopArg);
   const testRuns = useTestRuns(teamId, slug, loopArg);
   const revisions = useRevisions(teamId, slug, loopArg);
-  const verifications = useVerifications(teamId, slug, loopArg);
+  const verifications = useVerifications(teamId, slug, loopArg); // selected-loop scope — Vision badges follow the loop selection (test-runs there are cross-loop); documented limitation
   const bugs = useAllBugs(teamId, slug); // all bugs across every loop — not loop-scoped
   const allScores = useAllScores(teamId, slug);     // scenarios are project-level → met-state spans all loops
   const allTestRuns = useAllTestRuns(teamId, slug); // all test runs across every loop
