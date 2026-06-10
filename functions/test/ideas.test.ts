@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import "./helpers.js";
-import { seedMember } from "./helpers.js";
+import { seedMember, authHeader } from "./helpers.js";
 import { db } from "../src/firestore.js";
 import { upsertIdea, listIdeas } from "../src/services/ideas.js";
+import request from "supertest";
+import { makeApp } from "../src/app.js";
+
+const app = makeApp();
 
 async function seedProject(teamId = "team1", slug = "acme") {
   await db().doc(`teams/${teamId}`).set({ name: "Team", createdBy: "u1" });
@@ -110,5 +114,59 @@ describe("listIdeas", () => {
     await seedProject();
     expect(await listIdeas("team1", "acme")).toEqual([]);
     await expect(listIdeas("team1", "ghost")).rejects.toMatchObject({ httpStatus: 404 });
+  });
+});
+
+describe("ideas agent API", () => {
+  it("PUT creates an idea and stamps by:'agent' (a client-supplied by is ignored)", async () => {
+    await seedProject();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/ideas/i1").set(authHeader())
+      .send({ title: "Dark mode", status: "proposed", order: 100, by: "user" }); // by must be DROPPED
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true });
+    const d = (await db().doc("teams/team1/projects/acme/ideas/i1").get()).data()!;
+    expect(d.title).toBe("Dark mode");
+    expect(d.by).toBe("agent"); // from the API-key path, not the body
+  });
+
+  it("PUT 400s when creating without the title+status+order trio", async () => {
+    await seedProject();
+    const res = await request(app).put("/v1/teams/team1/projects/acme/ideas/i1").set(authHeader())
+      .send({ title: "X", status: "proposed" });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT applies a partial update to an existing idea", async () => {
+    await seedProject();
+    await request(app).put("/v1/teams/team1/projects/acme/ideas/i1").set(authHeader())
+      .send({ title: "X", status: "proposed", order: 100 });
+    const res = await request(app).put("/v1/teams/team1/projects/acme/ideas/i1").set(authHeader())
+      .send({ status: "done", builtInLoopId: "loop-2" });
+    expect(res.status).toBe(200);
+    const d = (await db().doc("teams/team1/projects/acme/ideas/i1").get()).data()!;
+    expect(d.status).toBe("done");
+    expect(d.builtInLoopId).toBe("loop-2");
+    expect(d.title).toBe("X");
+  });
+
+  it("PUT 400s on an unknown status enum and 404s on a missing project", async () => {
+    await seedProject();
+    expect((await request(app).put("/v1/teams/team1/projects/acme/ideas/i1").set(authHeader())
+      .send({ title: "X", status: "maybe", order: 1 })).status).toBe(400);
+    expect((await request(app).put("/v1/teams/team1/projects/ghost/ideas/i1").set(authHeader())
+      .send({ title: "X", status: "proposed", order: 1 })).status).toBe(404);
+  });
+
+  it("GET lists ideas band-sorted with serialized timestamps", async () => {
+    await seedProject();
+    await upsertIdea("team1", "acme", "p1", { title: "P", status: "proposed", order: 5 }, "agent");
+    await upsertIdea("team1", "acme", "a1", { title: "A", status: "accepted", order: 99 }, "user");
+    await upsertIdea("team1", "acme", "r1", { title: "R", status: "rejected", order: 1 }, "user");
+    const res = await request(app).get("/v1/teams/team1/projects/acme/ideas").set(authHeader());
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.ideas.map((i: { id: string }) => i.id)).toEqual(["a1", "p1", "r1"]);
+    expect(typeof res.body.ideas[0].createdAt).toBe("string");
+    expect(typeof res.body.ideas[0].decidedAt).toBe("string"); // accepted → decided
   });
 });
