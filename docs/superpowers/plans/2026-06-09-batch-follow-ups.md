@@ -39,3 +39,13 @@ aren't lost when the batch ships.
    (proposed/band 1) — unreachable via the API; only hand-written docs.
 9. **Latency-compensation flicker**: a just-added idea sorts to its band's end
    until serverTimestamp commits (web null-createdAt sorts last). Cosmetic.
+
+## From plan 3 (vision growth)
+
+10. **Idea-seeded vision growth at loop start** — SKILL.md's 2e bullet triggers
+    on "this task's work surfaced a learning", but the ideas Pick step (loop
+    start) can also imply a new goal/scenario; the general Rules entry covers
+    it, but a one-line nudge in the Pick step would remove ambiguity.
+11. **Unbounded feed queries** — `useVisionChanges` (like `useIdeas`/
+    `useTeamNotifications`) has no `limit()`; long-lived projects load every
+    change ever. Codebase-wide pattern; fix together if ever needed.
