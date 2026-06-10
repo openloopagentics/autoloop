@@ -1212,6 +1212,7 @@ a.docrow-title:hover { color: var(--accent); }
 }
 .ideacompose-rationale:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 .ideacompose-rationale::placeholder { color: var(--fg-meta); }
+.ideacompose-add { align-self: flex-end; }
 
 /* ==========================================================================
    MESSAGES TAB — thread + compose

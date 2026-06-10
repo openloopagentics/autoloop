@@ -5,7 +5,7 @@ import { LoopSelector } from "./LoopSelector";
 import type { SelectableLoop } from "../loopView";
 
 describe("Tabs", () => {
-  it("renders the four tabs, marks the active one, and fires onChange", () => {
+  it("renders all tabs, marks the active one, and fires onChange", () => {
     const onChange = vi.fn();
     render(<Tabs active="dashboard" onChange={onChange} />);
     for (const t of ["Dashboard", "Vision", "Loops", "Tests", "Bugs", "Ideas", "Messages"]) expect(screen.getByRole("tab", { name: t })).toBeInTheDocument();
