@@ -28,7 +28,7 @@ export interface Verification {
 }
 export interface RevisionChange { op: string; taskId: string; [k: string]: unknown; }
 export interface Revision { id: string; trigger?: { scenarioId?: string; reason?: string }; changes?: RevisionChange[]; }
-export interface DocumentRec { id: string; kind?: string; title?: string; format?: "markdown" | "url"; content?: string; }
+export interface DocumentRec { id: string; kind?: string; title?: string; format?: "markdown" | "url" | "json"; content?: string; }
 export interface VisionChange {
   id: string; op?: "upsert-goal" | "upsert-scenario"; targetId?: string;
   payload?: Record<string, unknown>; prior?: Record<string, unknown> | null;

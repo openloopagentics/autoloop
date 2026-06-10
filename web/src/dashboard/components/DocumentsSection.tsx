@@ -18,7 +18,9 @@ export function DocumentsSection({ documents }: { documents: DocumentRec[] }) {
             </div>
             {d.format === "url"
               ? <span className="docrow-url dim mono">{d.content}</span>
-              : <Markdown>{d.content ?? ""}</Markdown>}
+              : d.format === "json"
+                ? <pre className="docrow-json mono">{d.content}</pre>
+                : <Markdown>{d.content ?? ""}</Markdown>}
           </div>
         ))}
       </div>

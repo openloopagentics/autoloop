@@ -1418,3 +1418,4 @@ a.docrow-title:hover { color: var(--accent); }
 .mapscrub input[type="range"] { flex: 1; }
 .mapscrub-play { min-width: 34px; }
 .mapscrub-label { font-size: 12px; min-width: 140px; text-align: right; }
+.docrow-json { font-size: 12px; overflow-x: auto; white-space: pre; margin: 6px 0 0; }

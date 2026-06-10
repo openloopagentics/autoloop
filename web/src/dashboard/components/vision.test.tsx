@@ -112,4 +112,13 @@ describe("DocumentsSection", () => {
     expect(screen.getByRole("heading", { name: "Hello" })).toBeInTheDocument();
     expect(screen.getByText("body text")).toBeInTheDocument();
   });
+  it("renders json documents as a preformatted block, not through react-markdown", () => {
+    const { container } = render(<DocumentsSection documents={[
+      { id: "product-map", kind: "product-map", title: "Product map", format: "json", content: '{"nodes":[{"id":"api"}]}' },
+    ]} />);
+    const pre = container.querySelector("pre.docrow-json");
+    expect(pre).not.toBeNull();
+    expect(pre!.textContent).toBe('{"nodes":[{"id":"api"}]}');
+    expect(container.querySelector(".md")).toBeNull(); // no react-markdown wrapper
+  });
 });
