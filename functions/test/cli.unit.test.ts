@@ -654,3 +654,71 @@ describe("verify verb", () => {
     expect(errs.some((m) => m.includes("id 01XYZ"))).toBe(true);
   });
 });
+
+describe("idea add/set/list verbs", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {}, ...extra });
+    return dir;
+  }
+  const cap = (jsonBody: any = { ok: true }) => { const c: any = { calls: [] }; c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => jsonBody }; }; return c; };
+  const base = (dir: string, c: any, logsOut: string[] = []) => ({ cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: (m: string) => logsOut.push(m), err: () => {}, fetchImpl: c.fetchImpl });
+
+  it("idea add PUTs with defaults status=proposed order=100", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["idea", "add", "idea-dark-mode", "--title", "Dark mode", "--rationale", "users asked", "--origin-loop", "loop-1"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/ideas/idea-dark-mode");
+    expect(c.init.method).toBe("PUT");
+    expect(JSON.parse(c.init.body)).toMatchObject({ title: "Dark mode", status: "proposed", order: 100, rationale: "users asked", originLoopId: "loop-1" });
+  });
+
+  it("idea add is project-level even when currentLoopId is set (no loopSeg)", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    await run(["idea", "add", "i1", "--title", "X"], base(dir, c));
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/ideas/i1");
+  });
+
+  it("idea add reads --rationale-file (wins over --rationale) and validates --status", async () => {
+    const dir = initDir(); const c = cap();
+    writeFileSync(join(dir, "why.md"), "# from file");
+    await run(["idea", "add", "i1", "--title", "X", "--rationale", "inline", "--rationale-file", "why.md", "--status", "accepted"], base(dir, c));
+    const body = JSON.parse(c.init.body);
+    expect(body.rationale).toBe("# from file");
+    expect(body.status).toBe("accepted");
+    const code = await run(["idea", "add", "i2", "--title", "X", "--status", "maybe"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+  });
+
+  it("idea add requires --title", async () => {
+    const dir = initDir();
+    const code = await run(["idea", "add", "i1"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+  });
+
+  it("idea set PUTs a partial update (done + built-in-loop)", async () => {
+    const dir = initDir(); const c = cap();
+    expect(await run(["idea", "set", "i1", "--status", "done", "--built-in-loop", "loop-2"], base(dir, c))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/ideas/i1");
+    expect(JSON.parse(c.init.body)).toEqual({ status: "done", builtInLoopId: "loop-2" });
+  });
+
+  it("idea set requires at least one field", async () => {
+    const dir = initDir();
+    const code = await run(["idea", "set", "i1"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+  });
+
+  it("idea list GETs project-level /ideas and prints one line per idea", async () => {
+    const dir = initDir({ currentLoopId: "l1" });
+    const c = cap({ ok: true, ideas: [
+      { id: "a1", status: "accepted", order: 50, title: "A" },
+      { id: "p1", status: "proposed", order: 100, title: "P" },
+    ] });
+    const logs: string[] = [];
+    expect(await run(["idea", "list"], base(dir, c, logs))).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/ideas");
+    expect(c.init.method).toBe("GET");
+    expect(logs.join("\n")).toContain("[accepted] 50 a1 — A");
+    expect(logs.join("\n")).toContain("[proposed] 100 p1 — P");
+  });
+});
