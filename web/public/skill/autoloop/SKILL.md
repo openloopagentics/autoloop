@@ -98,6 +98,9 @@ autoloop commit --task <taskId> --agent <agentId>
 autoloop test-run <scenarioId> --task <taskId> --passed <n> --failed <m> \
   --summary "test: web/src/foo.test.tsx › 'hero rotates' | cmd: npm test -- foo | <pass/fail conclusion>" \
   [--issue "<file::test> expected X, got Y"]   # repeat per failure
+#    Record the `autoloop: id <ULID>` line each test-run prints — you need it
+#    for the verification step in 3a. (If you lost one, re-run the test and
+#    submit a fresh test-run.)
 
 # 3. Open a bug for EVERY concrete defect found. It must be traceable:
 #    --scenario + --task link it; --description carries the test that caught it,
@@ -195,6 +198,9 @@ autoloop verify <scenarioId> --test-run <testRunId> --verdict confirmed|refuted 
   [--task <taskId>] --summary "<command> → <actual result>"
 ```
 
+   Verdict mapping: the verifier's actual counts match the recorded run (and
+   `failed = 0`) → `confirmed`; anything else → `refuted`.
+
 4. A `refuted` verdict means the scenario is **unmet** regardless of its score —
    record a revision (the existing unmet path) and do not count it met in the
    closing summary.
@@ -243,13 +249,16 @@ Anything else — "a sensible cap", "one round is enough", "the app looks good" 
 is a rationalization. Ignore it and start the next loop.
 
 A scenario is **met** in this summary if AND ONLY IF, for that scenario, you
-submitted BOTH:
+submitted ALL of:
 1. a score with `composite >= threshold` (default 80), AND
-2. a test-run with `failed = 0`.
+2. a test-run with `failed = 0`, AND
+3. its latest test-run was NOT `refuted` by verification.
 
-If either is missing, the scenario is **unmet** — even if the composite is high.
-This matches exactly what the UI shows. Do not report a scenario as "met" based
-on the score alone.
+If any of these is missing, the scenario is **unmet** — even if the composite is
+high. Conditions 1–2 match the UI's met/unmet state; a refuted verdict
+additionally shows as ✗ Refuted there — report such a scenario as unmet even
+though its met-state may still read met. Do not report a scenario as "met"
+based on the score alone.
 
 ## Step 4 — Paused: keep polling, act on the next message
 
@@ -338,6 +347,10 @@ autoloop commit --task search
 autoloop test-run search-works --task search --passed 6 --failed 0 --summary "Search returns relevant results."
 autoloop score search-works --task search --criterion correctness=4 --criterion ux=4 --composite 85 --commit <sha>
 autoloop task set search --status completed       # ← dashboard: search is done
+
+# pre-close verification sweep (3a): verifier subagent replays both commands
+autoloop verify login-works --test-run <ulid-from-login-test-run> --verdict confirmed --summary "npm test -- login → 8/8"
+autoloop verify search-works --test-run <ulid-from-search-test-run> --verdict confirmed --summary "npm test -- search → 6/6"
 
 autoloop phase set build --status completed
 autoloop loop set loop-2026-06-04 --status completed
