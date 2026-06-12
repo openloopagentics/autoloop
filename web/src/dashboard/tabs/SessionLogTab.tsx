@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useLoops, useSessionLog } from "../hooks";
-import type { Loop, SessionDoc, SessionEntry } from "../types";
+import { buildLoopList, groupLoopRuns, type SelectableLoop } from "../loopView";
+import { relativeTime } from "../relativeTime";
+import type { SessionDoc, SessionEntry } from "../types";
 
 function formatTime(ts: number) {
   if (!ts) return "";
@@ -69,14 +71,17 @@ function LoopSessions({ teamId, slug, loopId }: { teamId: string; slug: string; 
   );
 }
 
-function LoopRow({ teamId, slug, loop, defaultOpen }: { teamId: string; slug: string; loop: Loop; defaultOpen: boolean }) {
+function LoopRow({ teamId, slug, loop, defaultOpen }: { teamId: string; slug: string; loop: SelectableLoop; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+  const started = relativeTime(loop.startedAt);
   return (
     <div className={`slog-loop${open ? " slog-loop--open" : ""}`}>
       <button type="button" className="slog-loop-head" onClick={() => setOpen((o) => !o)}>
         <span className="slog-loop-caret">{open ? "▾" : "▸"}</span>
-        <span className="slog-loop-id">{loop.id}</span>
+        {typeof loop.order === "number" && <span className="looprow-iter tnum" title={`iteration ${loop.order}`}>#{loop.order}</span>}
+        <span className="slog-loop-id">{loop.name ?? loop.id}</span>
         {loop.goal && <span className="slog-loop-goal dim">{loop.goal}</span>}
+        {started && <span className="looprow-time tnum" title="started">{started}</span>}
         {loop.status && <span className={`slog-loop-status slog-loop-status--${loop.status}`}>{loop.status}</span>}
       </button>
       {open && <LoopSessions teamId={teamId} slug={slug} loopId={loop.id} />}
@@ -89,12 +94,19 @@ export function SessionLogTab({ teamId, slug }: { teamId: string; slug: string }
   if (loading) return <p className="dim">Loading…</p>;
   if (error) return <p className="error-note">{error}</p>;
   if (loops.length === 0) return <p className="dim">No loops yet — the session log appears once a loop runs.</p>;
-  // Newest loop first; auto-expand it so a running loop is visible without clicking.
-  const ordered = [...loops].sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || b.id.localeCompare(a.id));
+  // Same organization as the Loops tab: day-grouped runs, newest first, newest
+  // iteration first within each run; auto-expand the newest loop so a running
+  // loop's log is visible without clicking.
+  const groups = groupLoopRuns(buildLoopList(loops, null, false));
   return (
     <div className="slog-wrap">
-      {ordered.map((loop, i) => (
-        <LoopRow key={loop.id} teamId={teamId} slug={slug} loop={loop} defaultOpen={i === 0} />
+      {groups.map((g, gi) => (
+        <section key={g.label} className="loopgroup">
+          <h3 className="loopgroup-label">{g.label}</h3>
+          {g.loops.map((loop, i) => (
+            <LoopRow key={loop.id} teamId={teamId} slug={slug} loop={loop} defaultOpen={gi === 0 && i === 0} />
+          ))}
+        </section>
       ))}
     </div>
   );
