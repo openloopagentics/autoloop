@@ -52,4 +52,10 @@ describe("LoopRow", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(onSelect).toHaveBeenCalledWith("l2");
   });
+  it("shows the iteration number when order is set; never on main", () => {
+    render(<LoopRow loop={{ ...loop, order: 7 }} selected={false} progress={{ done: 0, total: 0 }} met={{ met: 0, total: 0 }} onSelect={() => {}} />);
+    expect(screen.getByTitle("iteration 7")).toHaveTextContent("#7");
+    const { container } = render(<LoopRow loop={{ id: "main", isMain: true, name: "main" }} selected={false} progress={{ done: 0, total: 0 }} met={{ met: 0, total: 0 }} onSelect={() => {}} />);
+    expect(container.querySelector(".looprow-iter")).toBeNull();
+  });
 });

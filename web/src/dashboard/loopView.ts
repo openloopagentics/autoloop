@@ -1,7 +1,19 @@
 import type { Loop, Phase, Project } from "./types";
 import { isTerminalStatus } from "./status";
+import { tsMillis } from "./mapTimeline";
 
 export const MAIN_ID = "main";
+
+/** Newest-iteration-first comparator: order desc → startedAt desc → numeric-aware id desc
+ *  (so same-order ids like `loop-…-10` sort above `loop-…-9`, not lexicographically). */
+function newestFirst(
+  a: { id: string; order?: number; startedAt?: unknown },
+  b: { id: string; order?: number; startedAt?: unknown },
+): number {
+  return (b.order ?? 0) - (a.order ?? 0)
+    || (tsMillis(b.startedAt) ?? 0) - (tsMillis(a.startedAt) ?? 0)
+    || b.id.localeCompare(a.id, undefined, { numeric: true });
+}
 
 export interface SelectableLoop {
   id: string; isMain: boolean;
@@ -16,11 +28,12 @@ export function basePath(teamId: string, slug: string, loopId?: string): [string
   return loopId ? [...base, "loops", loopId] : base;
 }
 
-/** Explicit loops (latest first — descending by order then id) + a synthesized `main` (always last)
- *  when the project has legacy project-direct data. `main` carries the PROJECT doc's status/phase/task. */
+/** Explicit loops (latest iteration first — order desc, startedAt desc, numeric-aware id desc)
+ *  + a synthesized `main` (always last — the oldest, pre-loop data) when the project has legacy
+ *  project-direct data. `main` carries the PROJECT doc's status/phase/task. */
 export function buildLoopList(loops: Loop[], project: Project | null | undefined, hasProjectDirectData: boolean): SelectableLoop[] {
   const list: SelectableLoop[] = [...loops]
-    .sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || b.id.localeCompare(a.id))
+    .sort(newestFirst)
     .map((l) => ({
       id: l.id, isMain: false, goal: l.goal, name: l.name, status: l.status, order: l.order,
       currentPhaseId: l.currentPhaseId, currentTaskId: l.currentTaskId,
@@ -60,12 +73,12 @@ export function loopIsRunning(loop: { status?: string }): boolean {
  *  latest loop's status (so a project with no running loop reflects its loops, not a stale flag).
  *  Falls back to the stored project status when the project has no loops. */
 export function effectiveProjectStatus(
-  loops: { id: string; status?: string; order?: number }[],
+  loops: { id: string; status?: string; order?: number; startedAt?: unknown }[],
   projectStatus?: string,
 ): string | undefined {
   if (loops.length === 0) return projectStatus;
   if (loops.some((l) => l.status === "running")) return "running";
-  const latest = [...loops].sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || b.id.localeCompare(a.id))[0];
+  const latest = [...loops].sort(newestFirst)[0];
   return latest?.status ?? projectStatus;
 }
 

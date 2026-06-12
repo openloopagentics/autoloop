@@ -8,6 +8,9 @@ export function LoopRow({ loop, selected, progress, met, onSelect }: {
 }) {
   return (
     <button type="button" className={`looprow card${selected ? " looprow--sel" : ""}`} aria-pressed={selected} onClick={() => onSelect(loop.id)}>
+      {!loop.isMain && typeof loop.order === "number" && (
+        <span className="looprow-iter tnum" title={`iteration ${loop.order}`}>#{loop.order}</span>
+      )}
       <span className="looprow-name">{loop.isMain ? "main (legacy)" : (loop.name ?? loop.goal ?? loop.id)}</span>
       {loop.status && <StatusBadge status={loop.status} />}
       <span className="looprow-prog tnum">{progress.done}/{progress.total} phases</span>
