@@ -4,20 +4,24 @@ import { tsMillis } from "./mapTimeline";
 
 export const MAIN_ID = "main";
 
-/** Newest-iteration-first comparator: order desc → startedAt desc → numeric-aware id desc
- *  (so same-order ids like `loop-…-10` sort above `loop-…-9`, not lexicographically). */
+/** Newest-iteration-first comparator: RUNNING loops first, then startedAt desc (the
+ *  server-stamped truth — agent-supplied `order` demoted to a tie-break because drivers
+ *  have been seen reusing low orders for new loops), then order desc, then numeric-aware
+ *  id desc (so same-rank ids like `loop-…-10` sort above `loop-…-9`, not lexicographically). */
 function newestFirst(
-  a: { id: string; order?: number; startedAt?: unknown },
-  b: { id: string; order?: number; startedAt?: unknown },
+  a: { id: string; order?: number; status?: string; startedAt?: unknown },
+  b: { id: string; order?: number; status?: string; startedAt?: unknown },
 ): number {
-  return (b.order ?? 0) - (a.order ?? 0)
+  return Number(b.status === "running") - Number(a.status === "running")
     || (tsMillis(b.startedAt) ?? 0) - (tsMillis(a.startedAt) ?? 0)
+    || (b.order ?? 0) - (a.order ?? 0)
     || b.id.localeCompare(a.id, undefined, { numeric: true });
 }
 
 export interface SelectableLoop {
   id: string; isMain: boolean;
   goal?: string; name?: string; status?: string; order?: number;
+  startedAt?: unknown; // server-stamped at loop create — shown on the row, drives ordering
   currentPhaseId?: string | null; currentTaskId?: string | null;
   previewUrl?: string | null;
 }
@@ -28,14 +32,15 @@ export function basePath(teamId: string, slug: string, loopId?: string): [string
   return loopId ? [...base, "loops", loopId] : base;
 }
 
-/** Explicit loops (latest iteration first — order desc, startedAt desc, numeric-aware id desc)
- *  + a synthesized `main` (always last — the oldest, pre-loop data) when the project has legacy
+/** Explicit loops (running first, then latest startedAt — see newestFirst) + a synthesized
+ *  `main` (always last — the oldest, pre-loop data) when the project has legacy
  *  project-direct data. `main` carries the PROJECT doc's status/phase/task. */
 export function buildLoopList(loops: Loop[], project: Project | null | undefined, hasProjectDirectData: boolean): SelectableLoop[] {
   const list: SelectableLoop[] = [...loops]
     .sort(newestFirst)
     .map((l) => ({
       id: l.id, isMain: false, goal: l.goal, name: l.name, status: l.status, order: l.order,
+      startedAt: l.startedAt,
       currentPhaseId: l.currentPhaseId, currentTaskId: l.currentTaskId,
       previewUrl: l.previewUrl,
     }));
