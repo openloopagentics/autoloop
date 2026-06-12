@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync, readdirSync, rmSync, openSync } from "node:fs";
-import { join, basename } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync, readdirSync, rmSync, openSync, chmodSync } from "node:fs";
+import { join, basename, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync, spawn } from "node:child_process";
 
@@ -405,8 +405,15 @@ export function launchHeadless({ cwd, slug, env, spawnImpl, log }) {
   mkdirSync(logDir, { recursive: true });
   const logFile = join(logDir, `${slug}.log`);
   const out = openSync(logFile, "a");
-  const child = spawnImpl("claude", ["-p", "/autoloop", "--permission-mode", "acceptEdits"],
-    { cwd, detached: true, stdio: ["ignore", out, out] });
+  // launchd/cron parents carry a bare env: spawn the absolute claude path (CLAUDE_BIN from
+  // ~/.autoloop/env) and pass the API key through so the session's own autoloop calls work.
+  const childEnv = { ...process.env };
+  for (const k of ["AUTOLOOP_API_KEY", "AUTOLOOP_API_URL"]) {
+    if (env[k] && !childEnv[k]) childEnv[k] = env[k];
+  }
+  if (env.CLAUDE_BIN) childEnv.PATH = `${dirname(env.CLAUDE_BIN)}${childEnv.PATH ? ":" + childEnv.PATH : ""}`;
+  const child = spawnImpl(env.CLAUDE_BIN || "claude", ["-p", "/autoloop", "--permission-mode", "acceptEdits"],
+    { cwd, detached: true, stdio: ["ignore", out, out], env: childEnv });
   child.unref?.();
   log(`autoloop: relaunched headless driver (pid ${child.pid ?? "?"}) — log: ${logFile}`);
 }
@@ -418,6 +425,36 @@ export function hookLog(env, tag, msg, nowMs = Date.now()) {
     writeFileSync(join(autoloopHome(env), "logs", "hooks.log"),
       `[${new Date(nowMs).toISOString()}] ${tag}: ${msg}\n`, { flag: "a" });
   } catch { /* never fail the hook over logging */ }
+}
+
+/** Parse KEY=VALUE lines (the ~/.autoloop/env file). Ignores blank lines and #-comments;
+ *  values may contain '='. Pure. */
+export function parseEnvFile(text) {
+  const out = {};
+  for (const line of String(text).split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const i = t.indexOf("=");
+    if (i <= 0) continue;
+    out[t.slice(0, i)] = t.slice(i + 1);
+  }
+  return out;
+}
+
+/** Merge ~/.autoloop/env into env — REAL env always wins; file fills the gaps.
+ *  launchd/cron jobs inherit no shell env, so the hooks load this before any API call.
+ *  Never throws. */
+export function loadAutoloopEnv(env) {
+  try {
+    const p = join(autoloopHome(env), "env");
+    if (!existsSync(p)) return env;
+    const fileVals = parseEnvFile(readFileSync(p, "utf8"));
+    const merged = { ...env };
+    for (const [k, v] of Object.entries(fileVals)) {
+      if (merged[k] === undefined || merged[k] === "") merged[k] = v;
+    }
+    return merged;
+  } catch { return env; }
 }
 
 const RELAUNCH_HOOK_MARKER = "hook session-end";
@@ -494,9 +531,11 @@ function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall
     }
     const lockFile = lockPath(env, cfg.teamId, cfg.projectSlug);
     if (existsSync(lockFile)) rmSync(lockFile);
+    const envFile = join(home, "env"); // holds the API key — remove on uninstall
+    if (existsSync(envFile)) rmSync(envFile);
     delete cfg.relaunch;
     saveConfig(projDir, cfg);
-    log("autoloop: relaunch machinery uninstalled (SessionEnd hook, added allowlist entries, wake job, lock)");
+    log("autoloop: relaunch machinery uninstalled (SessionEnd hook, added allowlist entries, wake job, lock, env file)");
     return 0;
   }
 
@@ -505,6 +544,21 @@ function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall
   mkdirSync(join(home, "logs"), { recursive: true });
   try { copyFileSync(process.argv[1], stableCli); }
   catch (e) { err(`autoloop: could not copy CLI to ${stableCli}: ${e.message}`); return 1; }
+
+  // 1b. ~/.autoloop/env — launchd/cron jobs inherit no shell env; the hook shims load
+  //     this file (real env wins). 0600: it holds the API key.
+  const envFile = join(home, "env");
+  const claudeBin = (() => {
+    try { const p = String(execImpl("which", ["claude"])).trim(); return p || null; } catch { return null; }
+  })();
+  const envLines = [];
+  if (env.AUTOLOOP_API_KEY) envLines.push(`AUTOLOOP_API_KEY=${env.AUTOLOOP_API_KEY}`);
+  else err("autoloop: AUTOLOOP_API_KEY is not set — the wake job cannot reach the API until you add it to " + envFile);
+  if (env.AUTOLOOP_API_URL) envLines.push(`AUTOLOOP_API_URL=${env.AUTOLOOP_API_URL}`);
+  if (claudeBin) envLines.push(`CLAUDE_BIN=${claudeBin}`);
+  else err("autoloop: `claude` not found on PATH — relaunches will fail until you add CLAUDE_BIN to " + envFile);
+  writeFileSync(envFile, envLines.join("\n") + "\n", { mode: 0o600 });
+  chmodSync(envFile, 0o600); // writeFileSync mode applies only on create — enforce on refresh too
 
   // 2. SessionEnd hook (NOT Stop — Stop fires once per turn while the session is alive and
   //    would spawn a competing driver; SessionEnd fires only on actual termination).
@@ -736,52 +790,56 @@ export async function run(argv, deps = {}) {
         // (Deliberately NOT Stop: Stop fires at the end of every turn while the session is
         // still alive — wiring it would spawn a competing driver against a live session.)
         // Best-effort: ALWAYS exit 0; a failing hook must never break Claude Code.
+        // launchd/cron-launched shims inherit no shell env — fill the gaps from ~/.autoloop/env.
+        const henv = loadAutoloopEnv(env);
         const hook = readHookStdin();                  // { session_id, cwd, ... }
         const projDir = hook?.cwd || cwd;
         let cfg;
-        try { cfg = loadConfig(projDir); } catch (e) { hookLog(env, "session-end", `skip: ${e.message}`, now()); return 0; }
+        try { cfg = loadConfig(projDir); } catch (e) { hookLog(henv, "session-end", `skip: ${e.message}`, now()); return 0; }
         const key = `${cfg.teamId}-${cfg.projectSlug}`;
-        const lockFile = lockPath(env, cfg.teamId, cfg.projectSlug);
+        const lockFile = lockPath(henv, cfg.teamId, cfg.projectSlug);
         // "ours" = the lock pid is THIS ending session's claude ancestor — it may hand off.
         const self = findClaudeSessionPid(process.pid, psLookup);
         const lockState = evaluateLock(readLock(lockFile), isAlive, self.pid ?? null);
 
-        const stamps = readStamps(stampsPath(env, key)).filter((t) => now() - t < RELAUNCH_WINDOW_MS);
+        const stamps = readStamps(stampsPath(henv, key)).filter((t) => now() - t < RELAUNCH_WINDOW_MS);
         const backoff = backoffExceeded(stamps, now());
         // resumable? — the same probe as `loop resume --check`, in-process
-        const fetched = await fetchResumeState(cfg, env, fetchImpl);
+        const fetched = await fetchResumeState(cfg, henv, fetchImpl);
         const resumable = !!fetched && isResumable(fetched.state);
 
         const d = decideSessionEndRelaunch({ lockState, resumable, backoff });
-        hookLog(env, "session-end", `lock=${lockState} resumable=${resumable} backoff=${backoff} → ${d.relaunch ? "RELAUNCH" : "skip"} (${d.reason})`, now());
+        hookLog(henv, "session-end", `lock=${lockState} resumable=${resumable} backoff=${backoff} → ${d.relaunch ? "RELAUNCH" : "skip"} (${d.reason})`, now());
         if (!d.relaunch) return 0;
 
         if (existsSync(lockFile)) rmSync(lockFile);    // release: this session is gone; the relaunch re-acquires
-        mkdirSync(join(autoloopHome(env), "run"), { recursive: true });
-        writeFileSync(stampsPath(env, key), JSON.stringify([...stamps, now()]));
-        launchHeadless({ cwd: projDir, slug: cfg.projectSlug, env, spawnImpl, log });
+        mkdirSync(join(autoloopHome(henv), "run"), { recursive: true });
+        writeFileSync(stampsPath(henv, key), JSON.stringify([...stamps, now()]));
+        launchHeadless({ cwd: projDir, slug: cfg.projectSlug, env: henv, spawnImpl, log });
         return 0;
       }
       case "hook wake": {
         // launchd interval shim (every 5 min; WorkingDirectory = project dir, baked into the
         // plist because launchd jobs have no cwd context). Linux runs the same verb from cron.
+        // launchd/cron jobs inherit no shell env — fill the gaps from ~/.autoloop/env.
+        const henv = loadAutoloopEnv(env);
         let cfg;
-        try { cfg = loadConfig(cwd); } catch (e) { hookLog(env, "wake", `skip: ${e.message}`, now()); return 0; }
-        const lockFile = lockPath(env, cfg.teamId, cfg.projectSlug);
+        try { cfg = loadConfig(cwd); } catch (e) { hookLog(henv, "wake", `skip: ${e.message}`, now()); return 0; }
+        const lockFile = lockPath(henv, cfg.teamId, cfg.projectSlug);
         const lockState = evaluateLock(readLock(lockFile), isAlive, null); // no claude ancestor under launchd
 
-        const fetched = await fetchResumeState(cfg, env, fetchImpl);     // `loop resume` JSON
+        const fetched = await fetchResumeState(cfg, henv, fetchImpl);     // `loop resume` JSON
         const loopStatus = fetched?.state?.loop?.status;
         // pending messages — same probe as `messages pull --check`, in-process (GET only, never acks)
-        const api = resolveApiUrl(cfg, env, undefined);
-        const msgs = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`, { env, fetchImpl });
+        const api = resolveApiUrl(cfg, henv, undefined);
+        const msgs = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`, { env: henv, fetchImpl });
         const hasPendingMessages = !!(msgs?.ok && Array.isArray(msgs.body?.messages) && msgs.body.messages.length > 0);
 
         const d = decideWake({ lockState, loopStatus, hasPendingMessages });
-        hookLog(env, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
+        hookLog(henv, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
         if (!d.wake) return 0;
         if (lockState === "dead") rmSync(lockFile);    // steal the stale lock; the new session re-acquires
-        launchHeadless({ cwd, slug: cfg.projectSlug, env, spawnImpl, log });
+        launchHeadless({ cwd, slug: cfg.projectSlug, env: henv, spawnImpl, log });
         return 0;
       }
       case "goal set": {
