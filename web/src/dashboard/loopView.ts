@@ -4,16 +4,14 @@ import { tsMillis } from "./mapTimeline";
 
 export const MAIN_ID = "main";
 
-/** Newest-iteration-first comparator: RUNNING loops first, then startedAt desc (the
- *  server-stamped truth — agent-supplied `order` demoted to a tie-break because drivers
- *  have been seen reusing low orders for new loops), then order desc, then numeric-aware
- *  id desc (so same-rank ids like `loop-…-10` sort above `loop-…-9`, not lexicographically). */
+/** Newest-iteration-first comparator: STRICTLY startedAt desc (server-stamped truth),
+ *  then order desc, then numeric-aware id desc. No status-based reordering — a stale
+ *  loop stuck "running" must NOT outrank genuinely newer iterations. */
 function newestFirst(
-  a: { id: string; order?: number; status?: string; startedAt?: unknown },
-  b: { id: string; order?: number; status?: string; startedAt?: unknown },
+  a: { id: string; order?: number; startedAt?: unknown },
+  b: { id: string; order?: number; startedAt?: unknown },
 ): number {
-  return Number(b.status === "running") - Number(a.status === "running")
-    || (tsMillis(b.startedAt) ?? 0) - (tsMillis(a.startedAt) ?? 0)
+  return (tsMillis(b.startedAt) ?? 0) - (tsMillis(a.startedAt) ?? 0)
     || (b.order ?? 0) - (a.order ?? 0)
     || b.id.localeCompare(a.id, undefined, { numeric: true });
 }
@@ -32,8 +30,8 @@ export function basePath(teamId: string, slug: string, loopId?: string): [string
   return loopId ? [...base, "loops", loopId] : base;
 }
 
-/** Explicit loops (running first, then latest startedAt — see newestFirst) + a synthesized
- *  `main` (always last — the oldest, pre-loop data) when the project has legacy
+/** Explicit loops (latest startedAt first — see newestFirst) + a synthesized `main`
+ *  (always last — the oldest, pre-loop data) when the project has legacy
  *  project-direct data. `main` carries the PROJECT doc's status/phase/task. */
 export function buildLoopList(loops: Loop[], project: Project | null | undefined, hasProjectDirectData: boolean): SelectableLoop[] {
   const list: SelectableLoop[] = [...loops]
@@ -51,6 +49,37 @@ export function buildLoopList(loops: Loop[], project: Project | null | undefined
     });
   }
   return list;
+}
+
+export interface LoopGroup { label: string; loops: SelectableLoop[]; }
+
+/** Group an already-newest-first loop list into loop runs by the calendar DAY each
+ *  iteration started ("Today" / "Yesterday" / a date), newest run first, iterations
+ *  newest-first within each run. Loops with no startedAt land in "earlier";
+ *  the synthesized `main` gets its own trailing "legacy" group. */
+export function groupLoopRuns(list: SelectableLoop[], now: number = Date.now()): LoopGroup[] {
+  const dayKey = (ms: number) => new Date(ms).toDateString();
+  const today = dayKey(now);
+  const yesterday = dayKey(now - 86_400_000);
+  const labelFor = (ms: number) => {
+    const k = dayKey(ms);
+    if (k === today) return "Today";
+    if (k === yesterday) return "Yesterday";
+    return new Date(ms).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  };
+  const groups: LoopGroup[] = [];
+  const at = new Map<string, LoopGroup>();
+  const push = (label: string, loop: SelectableLoop) => {
+    let g = at.get(label);
+    if (!g) { g = { label, loops: [] }; at.set(label, g); groups.push(g); }
+    g.loops.push(loop);
+  };
+  for (const l of list) {
+    if (l.isMain) { push("legacy", l); continue; }
+    const ms = tsMillis(l.startedAt);
+    push(ms === null ? "earlier" : labelFor(ms), l);
+  }
+  return groups;
 }
 
 /** Default selection: a valid currentLoopId → else the most-recent explicit loop (highest order)
