@@ -5,7 +5,7 @@ import {
   useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas,
 } from "./hooks";
 import { postMessage, putUserIdea } from "./api";
-import { buildLoopList, defaultSelectedLoop, loopArgFor, effectiveProjectStatus, MAIN_ID } from "./loopView";
+import { buildLoopList, defaultSelectedLoop, loopArgFor, loopIsRunning, effectiveProjectStatus, MAIN_ID } from "./loopView";
 import { useLoopTrend } from "./useLoopTrend";
 import type { LoopSlice } from "./mapTimeline";
 import { buildTrend } from "./trendView";
@@ -89,7 +89,9 @@ export function ProjectDetail() {
           })),
     [trend.loading, trend.data]);
 
-  const agentActive = loops.data.some((l) => l.status === "running") || (loops.data.length === 0 && project.data?.status === "running");
+  // loopIsRunning applies the zombie rule — a loop stuck "running" but untouched for 3+ hours
+  // does not claim an agent is listening.
+  const agentActive = loops.data.some(loopIsRunning) || (loops.data.length === 0 && project.data?.status === "running");
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
   const renderTask = (t: Task, isCurrent: boolean) => <PlanTask teamId={teamId} slug={slug} task={t} loopId={loopArg} isCurrent={isCurrent} />;

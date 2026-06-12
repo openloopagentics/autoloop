@@ -4,7 +4,7 @@ export interface Project { slug: string; title?: string; status?: string; vision
 
 export interface Loop {
   id: string; goal?: string; name?: string; order?: number; status?: string;
-  startedAt?: unknown; endedAt?: unknown;
+  startedAt?: unknown; endedAt?: unknown; updatedAt?: unknown;
   currentPhaseId?: string | null; currentTaskId?: string | null;
   previewUrl?: string | null; // agent-reported preview deploy; null and absent both mean "no link"
 }
