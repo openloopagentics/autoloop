@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { usePhases, useScores, useTestRuns } from "../hooks";
-import { phaseProgress, loopArgFor, type SelectableLoop } from "../loopView";
+import { phaseProgress, loopArgFor, groupLoopRuns, type SelectableLoop } from "../loopView";
 import { summarize } from "../scenarioState";
 import { LoopRow } from "./LoopRow";
 import type { Scenario } from "../types";
@@ -27,11 +27,16 @@ export function LoopList({ teamId, slug, loops, scenarios, selectedId, onSelect,
   if (loops.length === 0) return <div className="empty">No loops yet.</div>;
   return (
     <div className="looplist">
-      {loops.map((l) => (
-        <Fragment key={l.id}>
-          <LoopRowContainer teamId={teamId} slug={slug} loop={l} scenarios={scenarios} selected={l.id === selectedId} onSelect={onSelect} />
-          {l.id === selectedId && detail && <div className="loopdetail">{detail}</div>}
-        </Fragment>
+      {groupLoopRuns(loops).map((g) => (
+        <section key={g.label} className="loopgroup">
+          <h3 className="loopgroup-label">{g.label}</h3>
+          {g.loops.map((l) => (
+            <Fragment key={l.id}>
+              <LoopRowContainer teamId={teamId} slug={slug} loop={l} scenarios={scenarios} selected={l.id === selectedId} onSelect={onSelect} />
+              {l.id === selectedId && detail && <div className="loopdetail">{detail}</div>}
+            </Fragment>
+          ))}
+        </section>
       ))}
     </div>
   );

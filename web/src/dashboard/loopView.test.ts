@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { basePath, buildLoopList, defaultSelectedLoop, phaseProgress, loopIsRunning } from "./loopView";
+import { basePath, buildLoopList, defaultSelectedLoop, groupLoopRuns, phaseProgress, loopIsRunning } from "./loopView";
 import type { Loop, Phase, Project } from "./types";
 
 describe("basePath", () => {
@@ -8,6 +8,28 @@ describe("basePath", () => {
   });
   it("inserts loops/<id> with a loopId", () => {
     expect(basePath("t", "web", "l1")).toEqual(["teams", "t", "projects", "web", "loops", "l1"]);
+  });
+});
+
+describe("groupLoopRuns", () => {
+  const NOW = new Date("2026-06-11T12:00:00").getTime();
+  const sl = (id: string, startedAt?: number, isMain = false) =>
+    ({ id, isMain, startedAt }) as Parameters<typeof groupLoopRuns>[0][number];
+  it("groups newest-first iterations under Today/Yesterday/date runs; main → legacy; no-time → earlier", () => {
+    const groups = groupLoopRuns([
+      sl("t2", NOW - 2 * 3600_000),                    // today
+      sl("t7", NOW - 7 * 3600_000),                    // today
+      sl("y1", NOW - 26 * 3600_000),                   // yesterday
+      sl("old", new Date("2026-06-01T10:00:00").getTime()),
+      sl("untimed", undefined),
+      sl("main", undefined, true),
+    ], NOW);
+    expect(groups.map((g) => g.label)).toEqual([
+      "Today", "Yesterday",
+      new Date("2026-06-01T10:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
+      "earlier", "legacy",
+    ]);
+    expect(groups[0].loops.map((l) => l.id)).toEqual(["t2", "t7"]); // input order preserved (newest first)
   });
 });
 
@@ -51,14 +73,14 @@ describe("buildLoopList", () => {
     ];
     expect(buildLoopList(byStart, project, false).map((l) => l.id)).toEqual(["new-low-order", "old-high-order"]);
   });
-  it("pins RUNNING loops to the top regardless of order/startedAt; passes startedAt through", () => {
+  it("a stale loop stuck running does NOT outrank newer iterations (strict time order)", () => {
     const ls: Loop[] = [
-      { id: "done-newest", order: 9, status: "completed", startedAt: 9000 },
-      { id: "running-old", order: 1, status: "running", startedAt: 1000 },
+      { id: "zombie-running", order: 1, status: "running", startedAt: 1000 },
+      { id: "newer-done", order: 9, status: "completed", startedAt: 9000 },
     ];
     const list = buildLoopList(ls, project, false);
-    expect(list.map((l) => l.id)).toEqual(["running-old", "done-newest"]);
-    expect(list[0].startedAt).toBe(1000);
+    expect(list.map((l) => l.id)).toEqual(["newer-done", "zombie-running"]);
+    expect(list[1].startedAt).toBe(1000); // startedAt passes through
   });
 });
 
