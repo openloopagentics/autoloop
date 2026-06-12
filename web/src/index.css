@@ -1350,6 +1350,7 @@ a.docrow-title:hover { color: var(--accent); }
 .slog-loop-status--completed { color: var(--st-completed); }
 .slog-loop-status--running { color: var(--st-running); }
 .slog-loop-status--failed { color: var(--st-failed); }
+.slog-loop-status--paused { color: var(--st-paused); }
 .slog-loop-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 16px; }
 
 .slog-session { display: flex; flex-direction: column; gap: 4px; }
