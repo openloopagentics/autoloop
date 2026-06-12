@@ -37,18 +37,28 @@ describe("buildLoopList", () => {
     expect(list.find((l) => l.id === "l1")?.previewUrl).toBe("https://p.web.app");
     expect(list.find((l) => l.isMain)?.previewUrl).toBeUndefined();
   });
-  it("breaks order ties by startedAt desc, then numeric-aware id desc (…-10 above …-9)", () => {
+  it("sorts by startedAt desc ahead of order; numeric-aware id desc as the last tie-break", () => {
     const tied: Loop[] = [
       { id: "loop-2026-06-10-9", order: 5 },
       { id: "loop-2026-06-10-10", order: 5 },
     ];
     expect(buildLoopList(tied, project, false).map((l) => l.id))
       .toEqual(["loop-2026-06-10-10", "loop-2026-06-10-9"]);
+    // startedAt (server truth) beats a stale agent-supplied order
     const byStart: Loop[] = [
-      { id: "a", order: 5, startedAt: 1000 },
-      { id: "b", order: 5, startedAt: 2000 },
+      { id: "old-high-order", order: 9, startedAt: 1000 },
+      { id: "new-low-order", order: 1, startedAt: 2000 },
     ];
-    expect(buildLoopList(byStart, project, false).map((l) => l.id)).toEqual(["b", "a"]);
+    expect(buildLoopList(byStart, project, false).map((l) => l.id)).toEqual(["new-low-order", "old-high-order"]);
+  });
+  it("pins RUNNING loops to the top regardless of order/startedAt; passes startedAt through", () => {
+    const ls: Loop[] = [
+      { id: "done-newest", order: 9, status: "completed", startedAt: 9000 },
+      { id: "running-old", order: 1, status: "running", startedAt: 1000 },
+    ];
+    const list = buildLoopList(ls, project, false);
+    expect(list.map((l) => l.id)).toEqual(["running-old", "done-newest"]);
+    expect(list[0].startedAt).toBe(1000);
   });
 });
 

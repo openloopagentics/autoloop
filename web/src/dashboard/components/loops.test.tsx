@@ -52,6 +52,10 @@ describe("LoopRow", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(onSelect).toHaveBeenCalledWith("l2");
   });
+  it("shows the started time when startedAt is present", () => {
+    render(<LoopRow loop={{ ...loop, startedAt: Date.now() - 3 * 3600_000 }} selected={false} progress={{ done: 0, total: 0 }} met={{ met: 0, total: 0 }} onSelect={() => {}} />);
+    expect(screen.getByTitle("started")).toHaveTextContent(/3h ago/);
+  });
   it("shows the iteration number when order is set; never on main", () => {
     render(<LoopRow loop={{ ...loop, order: 7 }} selected={false} progress={{ done: 0, total: 0 }} met={{ met: 0, total: 0 }} onSelect={() => {}} />);
     expect(screen.getByTitle("iteration 7")).toHaveTextContent("#7");
