@@ -37,6 +37,19 @@ describe("buildLoopList", () => {
     expect(list.find((l) => l.id === "l1")?.previewUrl).toBe("https://p.web.app");
     expect(list.find((l) => l.isMain)?.previewUrl).toBeUndefined();
   });
+  it("breaks order ties by startedAt desc, then numeric-aware id desc (…-10 above …-9)", () => {
+    const tied: Loop[] = [
+      { id: "loop-2026-06-10-9", order: 5 },
+      { id: "loop-2026-06-10-10", order: 5 },
+    ];
+    expect(buildLoopList(tied, project, false).map((l) => l.id))
+      .toEqual(["loop-2026-06-10-10", "loop-2026-06-10-9"]);
+    const byStart: Loop[] = [
+      { id: "a", order: 5, startedAt: 1000 },
+      { id: "b", order: 5, startedAt: 2000 },
+    ];
+    expect(buildLoopList(byStart, project, false).map((l) => l.id)).toEqual(["b", "a"]);
+  });
 });
 
 describe("defaultSelectedLoop", () => {
