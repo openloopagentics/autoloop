@@ -5,6 +5,13 @@ import { isTerminal, type Status } from "../status.js";
 import { computeCurrentPhaseId, computeCurrentTaskId, type TaskLite } from "../derive.js";
 import type { PhaseBody } from "../schemas.js";
 
+/** Stamp endedAt on the FIRST terminal transition; once set it is never updated,
+ *  even if the doc is re-activated and re-completed (the server does not police
+ *  transitions). Shared by upsertPhase and the terminal backstop sweep. */
+export function stampEndedAt(data: Record<string, unknown>, newStatus: Status, existingEndedAt: unknown): void {
+  if (isTerminal(newStatus) && !existingEndedAt) data.endedAt = FieldValue.serverTimestamp();
+}
+
 export async function upsertPhase(teamId: string, slug: string, phaseId: string, body: PhaseBody, loopId?: string): Promise<void> {
   const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
   const baseRef = loopId ? projectRef.collection("loops").doc(loopId) : projectRef;
@@ -42,12 +49,7 @@ export async function upsertPhase(teamId: string, slug: string, phaseId: string,
     if (body.name !== undefined) phaseData.name = body.name;
     if (body.order !== undefined) phaseData.order = body.order;
     if (body.status !== undefined) phaseData.status = body.status;
-    // endedAt = the FIRST terminal transition; once set it is never updated,
-    // even if the phase is re-activated and re-completed (the server does not
-    // police transitions). So retries are no-ops and endedAt is stable.
-    if (isTerminal(newStatus) && !(existing.endedAt)) {
-      phaseData.endedAt = FieldValue.serverTimestamp();
-    }
+    stampEndedAt(phaseData, newStatus, existing.endedAt);
 
     // --- recompute currentPhaseId from the full phase set with this write applied ---
     const phases = phasesSnap.docs

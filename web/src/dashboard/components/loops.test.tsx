@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TestRunsSection } from "./TestRunsSection";
 import { LoopRow } from "./LoopRow";
+import { LoopDetail } from "./LoopDetail";
 import type { SelectableLoop } from "../loopView";
 
 describe("TestRunsSection", () => {
@@ -11,6 +12,31 @@ describe("TestRunsSection", () => {
     expect(screen.getByText(/exercised login/)).toBeInTheDocument();
     rerender(<TestRunsSection testRuns={[]} />);
     expect(container.firstChild).toBeNull();
+  });
+  it("shows ✓ Verified / ✗ Refuted per the latest verification, nothing when unverified", () => {
+    const runs = [{ id: "01A", passed: 8, failed: 0 }];
+    const { rerender } = render(<TestRunsSection testRuns={runs}
+      verifications={[{ id: "01V", testRunId: "01A", verdict: "confirmed" }]} />);
+    expect(screen.getByText("✓ Verified")).toBeInTheDocument();
+    rerender(<TestRunsSection testRuns={runs}
+      verifications={[{ id: "01V", testRunId: "01A", verdict: "confirmed" }, { id: "01W", testRunId: "01A", verdict: "refuted" }]} />);
+    expect(screen.getByText("✗ Refuted")).toBeInTheDocument(); // latest (01W) wins
+    rerender(<TestRunsSection testRuns={runs} verifications={[]} />);
+    expect(screen.queryByText(/Verified|Refuted/)).toBeNull(); // nothing when unverified
+  });
+});
+
+describe("LoopDetail preview link", () => {
+  const noop = () => null;
+  it("renders the preview anchor when previewUrl is set, hides it otherwise", () => {
+    const { rerender } = render(
+      <LoopDetail phases={[]} tasks={[]} testRuns={[]} revisions={[]} previewUrl="https://app--l1.web.app"
+        renderLegacyPhase={noop} renderTask={noop} />);
+    expect(screen.getByRole("link", { name: /open preview/i })).toHaveAttribute("rel", "noopener noreferrer");
+    rerender(
+      <LoopDetail phases={[]} tasks={[]} testRuns={[]} revisions={[]}
+        renderLegacyPhase={noop} renderTask={noop} />);
+    expect(screen.queryByRole("link", { name: /open preview/i })).toBeNull();
   });
 });
 

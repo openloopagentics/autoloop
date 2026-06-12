@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "../errors.js";
 import { ulid } from "../ulid.js";
-import type { ScoreBody, TestRunBody, RevisionBody } from "../schemas.js";
+import type { ScoreBody, TestRunBody, RevisionBody, VerificationBody } from "../schemas.js";
 import { resolveBase } from "./baseRef.js";
 
 /** Append a score event. Server stamps the id (sortable ULID) + createdAt. Returns the id. */
@@ -62,5 +62,22 @@ export async function appendRevision(teamId: string, slug: string, body: Revisio
     changes: body.changes,
     createdAt: FieldValue.serverTimestamp(),
   });
+  return id;
+}
+
+export async function appendVerification(teamId: string, slug: string, body: VerificationBody, loopId?: string): Promise<string> {
+  const { baseRef } = await resolveBase(teamId, slug, loopId);
+  const id = ulid();
+  // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
+  const data: Record<string, unknown> = {
+    scenarioId: body.scenarioId,
+    testRunId: body.testRunId,
+    verdict: body.verdict,
+    by: body.by ?? "verifier",
+    createdAt: FieldValue.serverTimestamp(),
+  };
+  if (body.taskId !== undefined) data.taskId = body.taskId;
+  if (body.summary !== undefined) data.summary = body.summary;
+  await baseRef.collection("verifications").doc(id).set(data);
   return id;
 }

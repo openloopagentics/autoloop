@@ -15,12 +15,15 @@ import { scenariosRouter } from "./routes/scenarios.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { taskCommitsRouter } from "./routes/taskCommits.js";
 import { documentsRouter } from "./routes/documents.js";
-import { scoresRouter, testRunsRouter, revisionsRouter } from "./routes/events.js";
+import { scoresRouter, testRunsRouter, revisionsRouter, verificationsRouter } from "./routes/events.js";
 import { loopsRouter } from "./routes/loops.js";
 import { bugsRouter } from "./routes/bugs.js";
 import { messagesRouter } from "./routes/messages.js";
+import { ideasRouter } from "./routes/ideas.js";
+import { visionChangesRouter } from "./routes/visionChanges.js";
 import { userProjectsRouter } from "./routes/userProjects.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { stateRouter } from "./routes/loopState.js";
 
 export function makeApp() {
   // Initialize the Admin SDK before any handler runs, so the ID-token auth
@@ -49,8 +52,12 @@ export function makeApp() {
   teamRouter.use("/:slug/scores", scoresRouter);
   teamRouter.use("/:slug/testRuns", testRunsRouter);
   teamRouter.use("/:slug/revisions", revisionsRouter);
+  teamRouter.use("/:slug/verifications", verificationsRouter);
   teamRouter.use("/:slug/bugs", bugsRouter);
   teamRouter.use("/:slug/messages", messagesRouter);
+  teamRouter.use("/:slug/state", stateRouter);
+  teamRouter.use("/:slug/ideas", ideasRouter);
+  teamRouter.use("/:slug/vision-changes", visionChangesRouter);
   // Loop-scoped variants reuse the SAME routers (mergeParams propagates :loopId).
   // Order: more-specific mounts before the /:slug/loops entity mount.
   teamRouter.use("/:slug/loops/:loopId/tasks/:taskId/commits", taskCommitsRouter);
@@ -59,8 +66,10 @@ export function makeApp() {
   teamRouter.use("/:slug/loops/:loopId/scores", scoresRouter);
   teamRouter.use("/:slug/loops/:loopId/testRuns", testRunsRouter);
   teamRouter.use("/:slug/loops/:loopId/revisions", revisionsRouter);
+  teamRouter.use("/:slug/loops/:loopId/verifications", verificationsRouter);
   teamRouter.use("/:slug/loops/:loopId/bugs", bugsRouter);
   teamRouter.use("/:slug/loops/:loopId/sessions", sessionsRouter);
+  teamRouter.use("/:slug/loops/:loopId/state", stateRouter);
   teamRouter.use("/:slug/loops", loopsRouter); // loop entity
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
   app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);

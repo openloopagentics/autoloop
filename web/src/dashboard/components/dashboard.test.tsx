@@ -37,3 +37,20 @@ describe("LoopSnapshot", () => {
     expect(screen.getByText(/no active task/i)).toBeInTheDocument();
   });
 });
+
+describe("preview link", () => {
+  const empty = { phases: [], tasks: [], scenarios: [], scores: [], testRuns: [] } as any;
+  it("LoopSnapshot renders Open preview with target=_blank and rel noopener noreferrer", () => {
+    render(<LoopSnapshot loop={{ id: "l1", isMain: false, previewUrl: "https://app--l1.web.app" }} {...empty} />);
+    const a = screen.getByRole("link", { name: /open preview/i });
+    expect(a).toHaveAttribute("href", "https://app--l1.web.app");
+    expect(a).toHaveAttribute("target", "_blank");
+    expect(a).toHaveAttribute("rel", "noopener noreferrer");
+  });
+  it("LoopSnapshot hides the link when previewUrl is absent or null", () => {
+    const { rerender } = render(<LoopSnapshot loop={{ id: "l1", isMain: false }} {...empty} />);
+    expect(screen.queryByRole("link", { name: /open preview/i })).toBeNull();
+    rerender(<LoopSnapshot loop={{ id: "l1", isMain: false, previewUrl: null }} {...empty} />);
+    expect(screen.queryByRole("link", { name: /open preview/i })).toBeNull();
+  });
+});

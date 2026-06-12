@@ -1,17 +1,17 @@
 import { useState } from "react";
 
-export interface DocumentBody { kind: string; title: string; format: "markdown" | "url"; content: string; }
+export interface DocumentBody { kind: string; title: string; format: "markdown" | "url" | "json"; content: string; }
 
 const MAX_CONTENT = 100 * 1024;
 
 export function DocumentForm({ initial, onSave }: {
-  initial?: { kind?: string; title?: string; format?: "markdown" | "url"; content?: string };
+  initial?: { kind?: string; title?: string; format?: "markdown" | "url" | "json"; content?: string };
   onSave: (body: DocumentBody) => Promise<void>;
 }) {
   const editing = initial != null;
   const [kind, setKind] = useState(initial?.kind ?? "");
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [format, setFormat] = useState<"markdown" | "url">(initial?.format ?? "markdown");
+  const [format, setFormat] = useState<"markdown" | "url" | "json">(initial?.format ?? "markdown");
   const [content, setContent] = useState(initial?.content ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,9 +41,10 @@ export function DocumentForm({ initial, onSave }: {
           value={kind} onChange={(e) => setKind(e.target.value)} />
         <input className="input" aria-label="Document title" placeholder="Document title"
           value={title} onChange={(e) => setTitle(e.target.value)} />
-        <select className="select" aria-label="Format" value={format} onChange={(e) => setFormat(e.target.value as "markdown" | "url")}>
+        <select className="select" aria-label="Format" value={format} onChange={(e) => setFormat(e.target.value as "markdown" | "url" | "json")}>
           <option value="markdown">markdown</option>
           <option value="url">url</option>
+          <option value="json">json</option>
         </select>
       </div>
       <textarea className="input edit-textarea" aria-label="Document content" placeholder="Content"

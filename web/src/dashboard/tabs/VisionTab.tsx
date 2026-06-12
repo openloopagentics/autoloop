@@ -2,21 +2,27 @@ import { ScenariosMetBanner } from "../components/ScenariosMetBanner";
 import { VisionSection } from "../components/VisionSection";
 import { VisionEditableSection } from "../VisionEditableSection";
 import { DocumentsSection } from "../components/DocumentsSection";
+import { VisionChangesFeed } from "../components/VisionChangesFeed";
 import { summarize } from "../scenarioState";
-import type { Goal, Scenario, Score, TestRun, DocumentRec } from "../types";
+import { useVisionChanges } from "../hooks";
+import { rejectVisionChange } from "../api";
+import type { Goal, Scenario, Score, TestRun, DocumentRec, Verification } from "../types";
 
-export function VisionTab({ teamId, slug, editable, goals, scenarios, scores, testRuns, documents }: {
+export function VisionTab({ teamId, slug, editable, goals, scenarios, scores, testRuns, documents, verifications }: {
   teamId: string; slug: string; editable: boolean;
-  goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; documents: DocumentRec[];
+  goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; documents: DocumentRec[]; verifications: Verification[];
 }) {
   const hasScenarios = scenarios.length > 0;
   const { met, total } = summarize(scenarios, scores, testRuns);
+  const changes = useVisionChanges(teamId, slug);
   return (
     <>
       {hasScenarios && <ScenariosMetBanner met={met} total={total} />}
       {editable
-        ? <VisionEditableSection teamId={teamId} slug={slug} goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} documents={documents} />
-        : hasScenarios && <VisionSection goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} />}
+        ? <VisionEditableSection teamId={teamId} slug={slug} goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} documents={documents} verifications={verifications} />
+        : hasScenarios && <VisionSection goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} verifications={verifications} />}
+      <VisionChangesFeed changes={changes.data} goals={goals} scenarios={scenarios}
+        onReject={(changeId) => rejectVisionChange(teamId, slug, changeId)} />
       <DocumentsSection documents={documents} />
     </>
   );

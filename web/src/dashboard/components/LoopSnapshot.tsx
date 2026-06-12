@@ -3,6 +3,7 @@ import type { SelectableLoop } from "../loopView";
 import { phaseProgress } from "../loopView";
 import { summarize } from "../scenarioState";
 import { StatusBadge } from "./StatusBadge";
+import { PreviewLink } from "./PreviewLink";
 
 export function LoopSnapshot({ loop, phases, tasks, scenarios, scores, testRuns }: {
   loop: SelectableLoop; phases: Phase[]; tasks: Task[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[];
@@ -15,6 +16,7 @@ export function LoopSnapshot({ loop, phases, tasks, scenarios, scores, testRuns 
       <div className="snapshot-head">
         <span className="snapshot-name">{loop.name ?? loop.goal ?? loop.id}</span>
         {loop.status && <StatusBadge status={loop.status} />}
+        <PreviewLink url={loop.previewUrl} />
       </div>
       <div className="snapshot-metrics">
         <span className="snapshot-metric snapshot-phases tnum">{prog.done}/{prog.total}<span className="dim"> phases</span></span>
