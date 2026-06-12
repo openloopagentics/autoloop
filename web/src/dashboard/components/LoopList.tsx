@@ -5,15 +5,15 @@ import { summarize } from "../scenarioState";
 import { LoopRow } from "./LoopRow";
 import type { Scenario } from "../types";
 
-function LoopRowContainer({ teamId, slug, loop, scenarios, selected, onSelect }: {
-  teamId: string; slug: string; loop: SelectableLoop; scenarios: Scenario[]; selected: boolean; onSelect: (id: string) => void;
+function LoopRowContainer({ teamId, slug, loop, scenarios, selected, expanded, onSelect }: {
+  teamId: string; slug: string; loop: SelectableLoop; scenarios: Scenario[]; selected: boolean; expanded: boolean; onSelect: (id: string) => void;
 }) {
   const arg = loopArgFor(loop);
   const phases = usePhases(teamId, slug, arg);
   const scores = useScores(teamId, slug, arg);
   const testRuns = useTestRuns(teamId, slug, arg);
   return (
-    <LoopRow loop={loop} selected={selected}
+    <LoopRow loop={loop} selected={selected} expanded={expanded}
       progress={phaseProgress(phases.data)}
       met={summarize(scenarios, scores.data, testRuns.data)}
       onSelect={onSelect} />
@@ -32,7 +32,8 @@ export function LoopList({ teamId, slug, loops, scenarios, selectedId, onSelect,
           <h3 className="loopgroup-label">{g.label}</h3>
           {g.loops.map((l) => (
             <Fragment key={l.id}>
-              <LoopRowContainer teamId={teamId} slug={slug} loop={l} scenarios={scenarios} selected={l.id === selectedId} onSelect={onSelect} />
+              <LoopRowContainer teamId={teamId} slug={slug} loop={l} scenarios={scenarios} selected={l.id === selectedId}
+                expanded={l.id === selectedId && Boolean(detail)} onSelect={onSelect} />
               {l.id === selectedId && detail && <div className="loopdetail">{detail}</div>}
             </Fragment>
           ))}
