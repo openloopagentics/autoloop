@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { tmpdir } from "node:os";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1075,6 +1075,27 @@ describe("relaunch decisions (pure)", () => {
   });
 });
 
+describe("parseEnvFile / loadAutoloopEnv (~/.autoloop/env)", () => {
+  it("parses KEY=VALUE lines; values may contain '='; skips comments, blanks and no-'=' lines", () => {
+    expect(parseEnvFile("AUTOLOOP_API_KEY=al_k\nAUTOLOOP_API_URL=http://x?a=1&b=2\n\n# a comment\nnot a kv line\n=novalue\nCLAUDE_BIN=/opt/x/claude"))
+      .toEqual({ AUTOLOOP_API_KEY: "al_k", AUTOLOOP_API_URL: "http://x?a=1&b=2", CLAUDE_BIN: "/opt/x/claude" });
+    expect(parseEnvFile("")).toEqual({});
+  });
+
+  it("file fills missing keys, real env wins, missing file leaves env unchanged", () => {
+    const home = tmp();
+    const env = { HOME: home, AUTOLOOP_API_KEY: "real_key" };
+    expect(loadAutoloopEnv(env)).toEqual(env); // no ~/.autoloop/env yet
+    mkdirSync(join(home, ".autoloop"), { recursive: true });
+    writeFileSync(join(home, ".autoloop", "env"), "AUTOLOOP_API_KEY=file_key\nCLAUDE_BIN=/opt/x/claude\n");
+    const merged = loadAutoloopEnv(env);
+    expect(merged.AUTOLOOP_API_KEY).toBe("real_key");  // real env wins
+    expect(merged.CLAUDE_BIN).toBe("/opt/x/claude");   // file fills the gap
+    const filled = loadAutoloopEnv({ HOME: home, AUTOLOOP_API_KEY: "" });
+    expect(filled.AUTOLOOP_API_KEY).toBe("file_key");  // empty string counts as missing
+  });
+});
+
 describe("hook session-end", () => {
   const RESUMABLE = { ok: true, state: { loop: { id: "l1", goal: "g", order: 1, status: "running" }, project: { slug: "web", currentLoopId: "l1" }, phases: [], tasks: [], scenarios: [], openBugs: [], pendingMessages: [] } };
   const PAUSED = { ok: true, state: { ...RESUMABLE.state, loop: { ...RESUMABLE.state.loop, status: "paused" } } };
@@ -1167,6 +1188,22 @@ describe("hook wake", () => {
     expect(s.spawned[0].opts.cwd).toBe(s.dir); // launchd bakes WorkingDirectory; the shim uses cwd
   });
 
+  it("works with the API key ONLY in ~/.autoloop/env (launchd inherits no shell env) and spawns CLAUDE_BIN", async () => {
+    const s = setup();
+    writeFileSync(join(s.home, ".autoloop", "env"), "AUTOLOOP_API_KEY=al_k\nCLAUDE_BIN=/opt/x/claude\n");
+    // childEnv is seeded from process.env (real env wins) — blank the key so the env-file value is observable
+    const realKey = process.env.AUTOLOOP_API_KEY;
+    delete process.env.AUTOLOOP_API_KEY;
+    try {
+      expect(await run(["hook", "wake"], deps(s, fetchFor("paused", [{ id: "m1", text: "go" }]), { env: { HOME: s.home } }))).toBe(0);
+    } finally {
+      if (realKey !== undefined) process.env.AUTOLOOP_API_KEY = realKey;
+    }
+    expect(s.spawned.length).toBe(1);
+    expect(s.spawned[0].cmd).toBe("/opt/x/claude");                 // absolute path, not bare "claude"
+    expect(s.spawned[0].opts.env.AUTOLOOP_API_KEY).toBe("al_k");    // key passed to the headless session
+  });
+
   it("clears a DEAD lock before waking", async () => {
     const s = setup();
     writeFileSync(s.lockFile, JSON.stringify({ pid: 111 })); // dead
@@ -1214,11 +1251,16 @@ describe("init --relaunch / --uninstall / status", () => {
     saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
     writeFileSync(join(dir, "package.json"), "{}");
     const execs: any[] = [];
-    const execImpl = (cmd: string, args: string[]) => { execs.push({ cmd, args }); return ""; };
+    // per-cmd stub: `which claude` resolves; launchctl etc. return nothing
+    const execImpl = (cmd: string, args: string[]) => {
+      execs.push({ cmd, args });
+      return cmd === "which" && args[0] === "claude" ? "/opt/homebrew/bin/claude\n" : "";
+    };
     return { home, dir, execs, execImpl,
       settingsPath: join(dir, ".claude", "settings.json"),
       plistPath: join(home, "Library", "LaunchAgents", "com.autoloop.wake.web.plist"),
-      lockFile: join(home, ".autoloop", "run", "acme-web.lock") };
+      lockFile: join(home, ".autoloop", "run", "acme-web.lock"),
+      envFile: join(home, ".autoloop", "env") };
   }
   const deps = (s: ReturnType<typeof setup>, over: Record<string, unknown> = {}) => ({
     cwd: s.dir, env: { AUTOLOOP_API_KEY: "al_k", HOME: s.home },
@@ -1241,6 +1283,15 @@ describe("init --relaunch / --uninstall / status", () => {
     expect(plist).toContain(`<key>WorkingDirectory</key><string>${s.dir}</string>`);
     expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "load")).toBe(true);
     expect(loadConfig(s.dir).relaunch.allowAdded).toContain("Bash(npm:*)");
+  });
+
+  it("writes ~/.autoloop/env (0600) with the API key and the resolved claude path", async () => {
+    const s = setup();
+    expect(await run(["init", "--relaunch"], deps(s))).toBe(0);
+    const content = readFileSync(s.envFile, "utf8");
+    expect(content).toContain("AUTOLOOP_API_KEY=al_k");
+    expect(content).toContain("CLAUDE_BIN=/opt/homebrew/bin/claude");   // via `which claude`
+    expect(statSync(s.envFile).mode & 0o777).toBe(0o600);               // holds a secret
   });
 
   it("is idempotent: re-running adds no duplicate hook or allow entries", async () => {
@@ -1287,6 +1338,7 @@ describe("init --relaunch / --uninstall / status", () => {
     expect(st.permissions.allow).not.toContain("Bash(autoloop:*)");
     expect(existsSync(s.plistPath)).toBe(false);
     expect(existsSync(s.lockFile)).toBe(false);
+    expect(existsSync(s.envFile)).toBe(false);                // holds the API key — removed
     expect(loadConfig(s.dir).relaunch).toBeUndefined();
     expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "unload")).toBe(true);
   });
