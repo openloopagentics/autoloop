@@ -20,6 +20,7 @@ export interface SelectableLoop {
   id: string; isMain: boolean;
   goal?: string; name?: string; status?: string; order?: number;
   startedAt?: unknown; // server-stamped at loop create — shown on the row, drives ordering
+  updatedAt?: unknown; // last write — drives the zombie-running → paused display rule
   currentPhaseId?: string | null; currentTaskId?: string | null;
   previewUrl?: string | null;
 }
@@ -33,12 +34,14 @@ export function basePath(teamId: string, slug: string, loopId?: string): [string
 /** Explicit loops (latest startedAt first — see newestFirst) + a synthesized `main`
  *  (always last — the oldest, pre-loop data) when the project has legacy
  *  project-direct data. `main` carries the PROJECT doc's status/phase/task. */
-export function buildLoopList(loops: Loop[], project: Project | null | undefined, hasProjectDirectData: boolean): SelectableLoop[] {
+export function buildLoopList(loops: Loop[], project: Project | null | undefined, hasProjectDirectData: boolean, now: number = Date.now()): SelectableLoop[] {
   const list: SelectableLoop[] = [...loops]
     .sort(newestFirst)
     .map((l) => ({
-      id: l.id, isMain: false, goal: l.goal, name: l.name, status: l.status, order: l.order,
-      startedAt: l.startedAt,
+      id: l.id, isMain: false, goal: l.goal, name: l.name,
+      status: displayLoopStatus(l, now), // zombie running → paused (display rule)
+      order: l.order,
+      startedAt: l.startedAt, updatedAt: l.updatedAt,
       currentPhaseId: l.currentPhaseId, currentTaskId: l.currentTaskId,
       previewUrl: l.previewUrl,
     }));
@@ -99,21 +102,38 @@ export function phaseProgress(phases: Phase[]): { done: number; total: number } 
   return { done, total: phases.length };
 }
 
-export function loopIsRunning(loop: { status?: string }): boolean {
-  return loop.status === "running";
+/** A loop still marked "running" but untouched for this long is a zombie. */
+export const STALE_RUNNING_MS = 3 * 3600_000;
+
+/** UI display status: a loop stuck "running" with no write for 3+ hours (stale pre-backstop
+ *  close, dead session) renders as "paused" instead of pretending an agent is live.
+ *  Pure presentation — the stored status is untouched. Staleness reads updatedAt
+ *  (refreshed on every loop/derive write), falling back to startedAt. */
+export function displayLoopStatus(
+  loop: { status?: string; updatedAt?: unknown; startedAt?: unknown },
+  now: number = Date.now(),
+): string | undefined {
+  if (loop.status !== "running") return loop.status;
+  const last = tsMillis(loop.updatedAt) ?? tsMillis(loop.startedAt);
+  return last !== null && now - last > STALE_RUNNING_MS ? "paused" : loop.status;
 }
 
-/** A project's effective status. "running" only when a loop is actually running; otherwise the
- *  latest loop's status (so a project with no running loop reflects its loops, not a stale flag).
- *  Falls back to the stored project status when the project has no loops. */
+export function loopIsRunning(loop: { status?: string; updatedAt?: unknown; startedAt?: unknown }): boolean {
+  return displayLoopStatus(loop) === "running";
+}
+
+/** A project's effective status. "running" only when a loop is GENUINELY running (zombies
+ *  display as paused); otherwise the latest loop's display status. Falls back to the
+ *  stored project status when the project has no loops. */
 export function effectiveProjectStatus(
-  loops: { id: string; status?: string; order?: number; startedAt?: unknown }[],
+  loops: { id: string; status?: string; order?: number; startedAt?: unknown; updatedAt?: unknown }[],
   projectStatus?: string,
+  now: number = Date.now(),
 ): string | undefined {
   if (loops.length === 0) return projectStatus;
-  if (loops.some((l) => l.status === "running")) return "running";
+  if (loops.some((l) => displayLoopStatus(l, now) === "running")) return "running";
   const latest = [...loops].sort(newestFirst)[0];
-  return latest?.status ?? projectStatus;
+  return (latest ? displayLoopStatus(latest, now) : undefined) ?? projectStatus;
 }
 
 /** Hook arg for a selectable loop: undefined for main (project-direct), else its id. */

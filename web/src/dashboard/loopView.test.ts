@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { basePath, buildLoopList, defaultSelectedLoop, groupLoopRuns, phaseProgress, loopIsRunning } from "./loopView";
+import { basePath, buildLoopList, defaultSelectedLoop, displayLoopStatus, effectiveProjectStatus, groupLoopRuns, phaseProgress, loopIsRunning, STALE_RUNNING_MS } from "./loopView";
 import type { Loop, Phase, Project } from "./types";
 
 describe("basePath", () => {
@@ -8,6 +8,31 @@ describe("basePath", () => {
   });
   it("inserts loops/<id> with a loopId", () => {
     expect(basePath("t", "web", "l1")).toEqual(["teams", "t", "projects", "web", "loops", "l1"]);
+  });
+});
+
+describe("displayLoopStatus (zombie rule)", () => {
+  const NOW = 10 * STALE_RUNNING_MS;
+  it("running + fresh updatedAt stays running", () => {
+    expect(displayLoopStatus({ status: "running", updatedAt: NOW - 60_000 }, NOW)).toBe("running");
+  });
+  it("running but untouched for 3+ hours renders as paused", () => {
+    expect(displayLoopStatus({ status: "running", updatedAt: NOW - STALE_RUNNING_MS - 1 }, NOW)).toBe("paused");
+  });
+  it("falls back to startedAt when updatedAt is missing", () => {
+    expect(displayLoopStatus({ status: "running", startedAt: NOW - STALE_RUNNING_MS - 1 }, NOW)).toBe("paused");
+    expect(displayLoopStatus({ status: "running", startedAt: NOW - 60_000 }, NOW)).toBe("running");
+  });
+  it("non-running statuses and timeless running pass through untouched", () => {
+    expect(displayLoopStatus({ status: "completed", updatedAt: 0 }, NOW)).toBe("completed");
+    expect(displayLoopStatus({ status: "running" }, NOW)).toBe("running"); // no timestamps → benefit of the doubt
+  });
+  it("buildLoopList maps a zombie to paused; loopIsRunning and effectiveProjectStatus ignore zombies", () => {
+    const zombie = { id: "z", status: "running", updatedAt: NOW - STALE_RUNNING_MS - 1, order: 1 };
+    const list = buildLoopList([zombie], { slug: "web" } as Project, false, NOW);
+    expect(list[0].status).toBe("paused");
+    expect(loopIsRunning(list[0])).toBe(false);
+    expect(effectiveProjectStatus([zombie], "running", NOW)).toBe("paused");
   });
 });
 
