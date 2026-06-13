@@ -7,11 +7,18 @@ struct ScenarioCard: View {
     let scenario: Scenario
     let scores: [Score]
     let testRuns: [TestRun]
+    /// Independent-verification evidence (loop-scoped). Empty → no badge.
+    var verifications: [Verification] = []
 
     private var state: ScenarioState {
         deriveScenarioState(scenario.asRec,
                             scores: scores.map(\.asRec),
                             testRuns: testRuns.map(\.asRec))
+    }
+
+    /// Verdict for the scenario's LATEST test run (older runs ignored) — annotation, not a gate.
+    private var verdict: String? {
+        scenarioVerification(scenario.id, latestTestRunId: state.latestTest?.id, verifications.map(\.asRec))
     }
 
     private var threshold: Int { scenario.threshold ?? DEFAULT_THRESHOLD }
@@ -34,6 +41,7 @@ struct ScenarioCard: View {
                 Text(scenario.title ?? scenario.id)
                     .font(.subheadline.bold())
                 Spacer()
+                if let v = verdict { verificationBadge(v) }
                 stateChip
             }
 
@@ -70,6 +78,17 @@ struct ScenarioCard: View {
     }
 
     // MARK: - Sub-views
+
+    /// ✓ Verified (confirmed) / ✗ Refuted — evidence on the latest test run.
+    private func verificationBadge(_ verdict: String) -> some View {
+        let confirmed = verdict == "confirmed"
+        return Label(confirmed ? "Verified" : "Refuted", systemImage: confirmed ? "checkmark.seal.fill" : "xmark.seal.fill")
+            .font(.caption2)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background((confirmed ? Color.green : Color.red).opacity(0.15))
+            .foregroundStyle(confirmed ? Color.green : Color.red)
+            .clipShape(Capsule())
+    }
 
     private var stateChip: some View {
         let isMet = state.state == .met

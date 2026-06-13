@@ -52,6 +52,8 @@ struct VisionTabView: View {
     private var documents: [DocumentRec] { store.documents.data }
     private var allScores: [Score]    { tabStore.allScores.data }
     private var allTestRuns: [TestRun] { tabStore.allTestRuns.data }
+    private var allVerifications: [Verification] { tabStore.allVerifications.data }
+    private var visionChanges: [VisionChange] { tabStore.visionChanges.data }
 
     private var loopIds: [String] { store.loops.data.map(\.id) }
 
@@ -79,6 +81,14 @@ struct VisionTabView: View {
                 // Documents section
                 if !documents.isEmpty {
                     documentsSection
+                }
+
+                // Vision changes feed (changes made by loops)
+                if !visionChanges.isEmpty {
+                    VisionChangesFeed(changes: visionChanges) { id in
+                        Task { await tabStore.reject(id) }
+                    }
+                    .padding(.horizontal)
                 }
 
                 // Empty state when nothing is loaded yet
@@ -265,7 +275,8 @@ struct VisionTabView: View {
     private func scenarioRow(_ scenario: Scenario) -> some View {
         ScenarioCard(scenario: scenario,
                      scores: allScores,
-                     testRuns: allTestRuns)
+                     testRuns: allTestRuns,
+                     verifications: allVerifications)
             .padding(.horizontal)
             .modifier(EditDeleteContextMenu(
                 enabled: store.editable,
