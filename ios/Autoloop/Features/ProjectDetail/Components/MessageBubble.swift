@@ -16,7 +16,8 @@ struct MessageBubble: View {
                     .background(isUser ? Color.accentColor.opacity(0.18) : Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 HStack(spacing: 8) {
-                    if let time = relativeTime(message.createdAt) {
+                    let time = relativeTime(message.createdAt)
+                    if !time.isEmpty {
                         Text(time)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -31,16 +32,4 @@ struct MessageBubble: View {
             if !isUser { Spacer(minLength: 40) }
         }
     }
-}
-
-/// just now / Xm ago / Xh ago / Xd ago. Returns nil when there's no date.
-func relativeTime(_ date: Date?) -> String? {
-    guard let date else { return nil }
-    let diff = Date().timeIntervalSince(date)
-    let min = Int((diff / 60).rounded())
-    if min < 1 { return "just now" }
-    if min < 60 { return "\(min)m ago" }
-    let hr = Int((Double(min) / 60).rounded())
-    if hr < 24 { return "\(hr)h ago" }
-    return "\(Int((Double(hr) / 24).rounded()))d ago"
 }

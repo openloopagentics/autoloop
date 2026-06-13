@@ -7,7 +7,7 @@ struct RollupStrip: View {
     let status: String?
 
     private var runningCount: Int {
-        loops.filter { loopIsRunning($0.status) }.count
+        loops.filter { loopIsRunning(status: $0.status) }.count
     }
 
     var body: some View {

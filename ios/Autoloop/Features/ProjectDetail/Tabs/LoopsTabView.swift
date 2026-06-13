@@ -12,6 +12,7 @@ struct LoopsTabView: View {
     @StateObject private var tabStore = LoopsTabStore()
 
     private var loops: [SelectableLoop] { store.loopList }
+    private var groups: [LoopGroup] { groupLoopRuns(loops) }
 
     private var selectedProgress: (done: Int, total: Int) {
         phaseProgress(tabStore.phases.data.map(\.asPhaseRec))
@@ -33,21 +34,29 @@ struct LoopsTabView: View {
                         EmptyState(text: "No loops yet.")
                     }
                 } else {
-                    ForEach(loops, id: \.id) { loop in
-                        let isSelected = loop.id == store.resolvedSelectedId
-                        VStack(alignment: .leading, spacing: 12) {
-                            LoopRow(
-                                loop: loop,
-                                selected: isSelected,
-                                progress: isSelected ? selectedProgress : nil,
-                                met: isSelected ? selectedMet : nil,
-                                onSelect: { store.selectedId = loop.id }
-                            )
-                            if isSelected {
-                                detailView
+                    ForEach(groups, id: \.label) { group in
+                        Text(groupLabel(group.label))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .padding(.horizontal)
+                            .padding(.top, 4)
+                        ForEach(group.loops, id: \.id) { loop in
+                            let isSelected = loop.id == store.resolvedSelectedId
+                            VStack(alignment: .leading, spacing: 12) {
+                                LoopRow(
+                                    loop: loop,
+                                    selected: isSelected,
+                                    progress: isSelected ? selectedProgress : nil,
+                                    met: isSelected ? selectedMet : nil,
+                                    onSelect: { store.selectedId = loop.id }
+                                )
+                                if isSelected {
+                                    detailView
+                                }
                             }
+                            .padding(.horizontal)
                         }
-                        .padding(.horizontal)
                     }
                 }
             }
@@ -61,6 +70,14 @@ struct LoopsTabView: View {
         }
         .onDisappear {
             tabStore.stop()
+        }
+    }
+
+    private func groupLabel(_ key: String) -> String {
+        switch key {
+        case "legacy": return "Legacy"
+        case "earlier": return "Earlier"
+        default: return key
         }
     }
 

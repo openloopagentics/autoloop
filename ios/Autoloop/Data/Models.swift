@@ -10,20 +10,26 @@ struct Loop: Identifiable {
     let status: String?
     let startedAt: Date?
     let endedAt: Date?
+    let updatedAt: Date?       // last write — drives the zombie-running → paused display rule
     let currentPhaseId: String?
     let currentTaskId: String?
+    let previewUrl: String?    // agent-reported preview deploy; nil means "no link"
     init(id: String, goal: String? = nil, name: String? = nil, order: Int? = nil,
          status: String? = nil, startedAt: Date? = nil, endedAt: Date? = nil,
-         currentPhaseId: String? = nil, currentTaskId: String? = nil) {
+         updatedAt: Date? = nil, currentPhaseId: String? = nil, currentTaskId: String? = nil,
+         previewUrl: String? = nil) {
         self.id = id; self.goal = goal; self.name = name; self.order = order
         self.status = status; self.startedAt = startedAt; self.endedAt = endedAt
+        self.updatedAt = updatedAt
         self.currentPhaseId = currentPhaseId; self.currentTaskId = currentTaskId
+        self.previewUrl = previewUrl
     }
     init(id: String, data: [String: Any]) {
         self.init(id: id, goal: data.str("goal"), name: data.str("name"), order: data.int("order"),
                   status: data.str("status"), startedAt: data.date("startedAt"),
-                  endedAt: data.date("endedAt"), currentPhaseId: data.str("currentPhaseId"),
-                  currentTaskId: data.str("currentTaskId"))
+                  endedAt: data.date("endedAt"), updatedAt: data.date("updatedAt"),
+                  currentPhaseId: data.str("currentPhaseId"),
+                  currentTaskId: data.str("currentTaskId"), previewUrl: data.str("previewUrl"))
     }
 }
 
@@ -101,12 +107,15 @@ struct Goal: Identifiable {
     let title: String?
     let description: String?
     let order: Int?
-    init(id: String, title: String? = nil, description: String? = nil, order: Int? = nil) {
+    let createdAt: Date?
+    init(id: String, title: String? = nil, description: String? = nil, order: Int? = nil,
+         createdAt: Date? = nil) {
         self.id = id; self.title = title; self.description = description; self.order = order
+        self.createdAt = createdAt
     }
     init(id: String, data: [String: Any]) {
         self.init(id: id, title: data.str("title"), description: data.str("description"),
-                  order: data.int("order"))
+                  order: data.int("order"), createdAt: data.date("createdAt"))
     }
 }
 
@@ -118,10 +127,13 @@ struct Scenario: Identifiable {
     let order: Int?
     let threshold: Int?
     let rubric: [RubricCriterion]?  // flattened from rubric.criteria
+    let createdAt: Date?
     init(id: String, goalId: String? = nil, title: String? = nil, description: String? = nil,
-         order: Int? = nil, threshold: Int? = nil, rubric: [RubricCriterion]? = nil) {
+         order: Int? = nil, threshold: Int? = nil, rubric: [RubricCriterion]? = nil,
+         createdAt: Date? = nil) {
         self.id = id; self.goalId = goalId; self.title = title; self.description = description
         self.order = order; self.threshold = threshold; self.rubric = rubric
+        self.createdAt = createdAt
     }
     init(id: String, data: [String: Any]) {
         let criteriaArray = (data["rubric"] as? [String: Any])?["criteria"] as? [[String: Any]]
@@ -131,7 +143,8 @@ struct Scenario: Identifiable {
         }
         self.init(id: id, goalId: data.str("goalId"), title: data.str("title"),
                   description: data.str("description"), order: data.int("order"),
-                  threshold: data.int("threshold"), rubric: rubric?.isEmpty == false ? rubric : nil)
+                  threshold: data.int("threshold"), rubric: rubric?.isEmpty == false ? rubric : nil,
+                  createdAt: data.date("createdAt"))
     }
 }
 
@@ -143,15 +156,20 @@ struct ProjectTask: Identifiable {
     let order: Int?
     let status: String?
     let scenarioIds: [String]?
+    let createdAt: Date?
+    let loopId: String?   // client-attached during timeline merge (undefined = project-direct)
     init(id: String, phaseId: String? = nil, title: String? = nil, order: Int? = nil,
-         status: String? = nil, scenarioIds: [String]? = nil) {
+         status: String? = nil, scenarioIds: [String]? = nil, createdAt: Date? = nil,
+         loopId: String? = nil) {
         self.id = id; self.phaseId = phaseId; self.title = title; self.order = order
         self.status = status; self.scenarioIds = scenarioIds
+        self.createdAt = createdAt; self.loopId = loopId
     }
     init(id: String, data: [String: Any]) {
         self.init(id: id, phaseId: data.str("phaseId"), title: data.str("title"),
                   order: data.int("order"), status: data.str("status"),
-                  scenarioIds: data["scenarioIds"] as? [String])
+                  scenarioIds: data["scenarioIds"] as? [String],
+                  createdAt: data.date("createdAt"))
     }
 }
 
@@ -164,12 +182,15 @@ struct Score: Identifiable {
     let by: String?
     let note: String?
     let commitSha: String?
+    let createdAt: Date?
     init(id: String, scenarioId: String? = nil, taskId: String? = nil,
          criteria: [String: Double]? = nil, composite: Double? = nil,
-         by: String? = nil, note: String? = nil, commitSha: String? = nil) {
+         by: String? = nil, note: String? = nil, commitSha: String? = nil,
+         createdAt: Date? = nil) {
         self.id = id; self.scenarioId = scenarioId; self.taskId = taskId
         self.criteria = criteria; self.composite = composite
         self.by = by; self.note = note; self.commitSha = commitSha
+        self.createdAt = createdAt
     }
     init(id: String, data: [String: Any]) {
         let criteriaRaw = data["criteria"] as? [String: Any]
@@ -184,7 +205,8 @@ struct Score: Identifiable {
         }
         self.init(id: id, scenarioId: data.str("scenarioId"), taskId: data.str("taskId"),
                   criteria: criteriaDecoded, composite: data.double("composite"),
-                  by: data.str("by"), note: data.str("note"), commitSha: data.str("commitSha"))
+                  by: data.str("by"), note: data.str("note"), commitSha: data.str("commitSha"),
+                  createdAt: data.date("createdAt"))
     }
 }
 
@@ -197,18 +219,19 @@ struct TestRun: Identifiable {
     let issues: [String]?
     let summary: String?
     let loopId: String?
+    let createdAt: Date?
     init(id: String, scenarioId: String? = nil, taskId: String? = nil,
          passed: Int? = nil, failed: Int? = nil, issues: [String]? = nil,
-         summary: String? = nil, loopId: String? = nil) {
+         summary: String? = nil, loopId: String? = nil, createdAt: Date? = nil) {
         self.id = id; self.scenarioId = scenarioId; self.taskId = taskId
         self.passed = passed; self.failed = failed; self.issues = issues
-        self.summary = summary; self.loopId = loopId
+        self.summary = summary; self.loopId = loopId; self.createdAt = createdAt
     }
     init(id: String, data: [String: Any]) {
         self.init(id: id, scenarioId: data.str("scenarioId"), taskId: data.str("taskId"),
                   passed: data.int("passed"), failed: data.int("failed"),
                   issues: data["issues"] as? [String], summary: data.str("summary"),
-                  loopId: data.str("loopId"))
+                  loopId: data.str("loopId"), createdAt: data.date("createdAt"))
     }
 }
 
@@ -341,6 +364,85 @@ struct SessionDoc: Identifiable {
                   startedAt: (data["startedAt"] as? NSNumber)?.doubleValue ?? 0,
                   endedAt: (data["endedAt"] as? NSNumber)?.doubleValue ?? 0,
                   entries: entries)
+    }
+}
+
+// MARK: - SP4 Vision-Growth / Ideas / Verification Models
+
+struct Idea: Identifiable {
+    let id: String
+    let title: String?
+    let rationale: String?
+    let status: String?        // "proposed" | "accepted" | "rejected" | "done" (default proposed)
+    let order: Int?
+    let by: String?            // "agent" | "user"
+    let originLoopId: String?  // which loop proposed it
+    let builtInLoopId: String? // which loop implemented it
+    let createdAt: Date?
+    let updatedAt: Date?
+    let decidedAt: Date?
+    init(id: String, title: String? = nil, rationale: String? = nil, status: String? = nil,
+         order: Int? = nil, by: String? = nil, originLoopId: String? = nil,
+         builtInLoopId: String? = nil, createdAt: Date? = nil, updatedAt: Date? = nil,
+         decidedAt: Date? = nil) {
+        self.id = id; self.title = title; self.rationale = rationale; self.status = status
+        self.order = order; self.by = by; self.originLoopId = originLoopId
+        self.builtInLoopId = builtInLoopId; self.createdAt = createdAt
+        self.updatedAt = updatedAt; self.decidedAt = decidedAt
+    }
+    init(id: String, data: [String: Any]) {
+        self.init(id: id, title: data.str("title"), rationale: data.str("rationale"),
+                  status: data.str("status"), order: data.int("order"), by: data.str("by"),
+                  originLoopId: data.str("originLoopId"), builtInLoopId: data.str("builtInLoopId"),
+                  createdAt: data.date("createdAt"), updatedAt: data.date("updatedAt"),
+                  decidedAt: data.date("decidedAt"))
+    }
+}
+
+struct Verification: Identifiable {
+    let id: String
+    let scenarioId: String?
+    let taskId: String?
+    let testRunId: String?
+    let verdict: String?    // "confirmed" | "refuted"
+    let summary: String?
+    let by: String?
+    let createdAt: Date?
+    init(id: String, scenarioId: String? = nil, taskId: String? = nil, testRunId: String? = nil,
+         verdict: String? = nil, summary: String? = nil, by: String? = nil, createdAt: Date? = nil) {
+        self.id = id; self.scenarioId = scenarioId; self.taskId = taskId; self.testRunId = testRunId
+        self.verdict = verdict; self.summary = summary; self.by = by; self.createdAt = createdAt
+    }
+    init(id: String, data: [String: Any]) {
+        self.init(id: id, scenarioId: data.str("scenarioId"), taskId: data.str("taskId"),
+                  testRunId: data.str("testRunId"), verdict: data.str("verdict"),
+                  summary: data.str("summary"), by: data.str("by"), createdAt: data.date("createdAt"))
+    }
+}
+
+struct VisionChange: Identifiable {
+    let id: String
+    let op: String?          // "upsert-goal" | "upsert-scenario"
+    let targetId: String?
+    let payloadTitle: String? // payload.title — what the change names the target
+    let reason: String?
+    let originLoopId: String?
+    let status: String?      // "applied" | "rejected"
+    let createdAt: Date?
+    let decidedAt: Date?
+    init(id: String, op: String? = nil, targetId: String? = nil, payloadTitle: String? = nil,
+         reason: String? = nil, originLoopId: String? = nil, status: String? = nil,
+         createdAt: Date? = nil, decidedAt: Date? = nil) {
+        self.id = id; self.op = op; self.targetId = targetId; self.payloadTitle = payloadTitle
+        self.reason = reason; self.originLoopId = originLoopId; self.status = status
+        self.createdAt = createdAt; self.decidedAt = decidedAt
+    }
+    init(id: String, data: [String: Any]) {
+        let payload = data["payload"] as? [String: Any]
+        self.init(id: id, op: data.str("op"), targetId: data.str("targetId"),
+                  payloadTitle: payload?.str("title"), reason: data.str("reason"),
+                  originLoopId: data.str("originLoopId"), status: data.str("status"),
+                  createdAt: data.date("createdAt"), decidedAt: data.date("decidedAt"))
     }
 }
 
@@ -480,13 +582,14 @@ struct Project: Identifiable, Equatable {
     let currentTaskId: String?
     let visionOwner: String?  // "web" | "loop"
     let design: ProjectDesign?
+    let createdAt: Date?      // project created — growth-replay scrubber range start
     var id: String { slug }
     init(slug: String, title: String? = nil, status: String? = nil, currentLoopId: String? = nil,
          currentPhaseId: String? = nil, currentTaskId: String? = nil,
-         visionOwner: String? = nil, design: ProjectDesign? = nil) {
+         visionOwner: String? = nil, design: ProjectDesign? = nil, createdAt: Date? = nil) {
         self.slug = slug; self.title = title; self.status = status; self.currentLoopId = currentLoopId
         self.currentPhaseId = currentPhaseId; self.currentTaskId = currentTaskId
-        self.visionOwner = visionOwner; self.design = design
+        self.visionOwner = visionOwner; self.design = design; self.createdAt = createdAt
     }
     init(slug: String, data: [String: Any]) {
         self.init(slug: slug, title: data.str("title"), status: data.str("status"),
@@ -494,6 +597,7 @@ struct Project: Identifiable, Equatable {
                   currentPhaseId: data.str("currentPhaseId"),
                   currentTaskId: data.str("currentTaskId"),
                   visionOwner: data.str("visionOwner"),
-                  design: (data["design"] as? [String: Any]).flatMap { ProjectDesign(data: $0) })
+                  design: (data["design"] as? [String: Any]).flatMap { ProjectDesign(data: $0) },
+                  createdAt: data.date("createdAt"))
     }
 }

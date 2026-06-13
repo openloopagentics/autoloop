@@ -23,6 +23,8 @@ final class MessagesTabStore: ObservableObject {
     private var currentScopes: Set<String> = []
     /// Ordered loop ids as last seen (newest first), used to order output.
     private var orderedLoopIds: [String] = []
+    /// Per-loop display label (day · #order) keyed by loop id.
+    private var labelByLoop: [String: String] = [:]
 
     private var teamId = ""
     private var slug = ""
@@ -42,10 +44,20 @@ final class MessagesTabStore: ObservableObject {
     /// the web's useSessionLog returns empty for the project-direct scope and
     /// SessionLogTab iterates loops only, so we do NOT subscribe a project-direct scope.
     func subscribeSessions(loops: [Loop]) {
-        // Newest loop first (order desc, then id desc) — mirrors SessionLogTab.tsx.
-        orderedLoopIds = loops
-            .sorted { ($0.order ?? 0, $0.id) > ($1.order ?? 0, $1.id) }
-            .map(\.id)
+        // Newest loop first (startedAt desc, then order desc, then id desc) and day-grouped —
+        // mirrors SessionLogTab.tsx using groupLoopRuns over the selectable loop list.
+        let selectable = buildLoopList(loops.map(\.asLoopRec), project: nil, hasProjectDirectData: false)
+        let groups = groupLoopRuns(selectable)
+        orderedLoopIds = []
+        labelByLoop = [:]
+        for g in groups {
+            let dayLabel = g.label == "earlier" ? "Earlier" : (g.label == "legacy" ? "Legacy" : g.label)
+            for loop in g.loops {
+                orderedLoopIds.append(loop.id)
+                let iter = loop.order.map { " · #\($0)" } ?? ""
+                labelByLoop[loop.id] = "\(dayLabel)\(iter)"
+            }
+        }
 
         let newScopes: Set<String> = Set(orderedLoopIds)
 
@@ -80,7 +92,7 @@ final class MessagesTabStore: ObservableObject {
         var out: [(scopeLabel: String, sessions: [SessionDoc])] = []
         for loopId in orderedLoopIds {
             let sessions = byScope[loopId] ?? []
-            if !sessions.isEmpty { out.append((scopeLabel: loopId, sessions: sessions)) }
+            if !sessions.isEmpty { out.append((scopeLabel: labelByLoop[loopId] ?? loopId, sessions: sessions)) }
         }
         sessionsByScope = out
     }
@@ -103,6 +115,7 @@ final class MessagesTabStore: ObservableObject {
         byScope.removeAll()
         currentScopes.removeAll()
         orderedLoopIds.removeAll()
+        labelByLoop.removeAll()
         sessionsByScope = []
     }
 }

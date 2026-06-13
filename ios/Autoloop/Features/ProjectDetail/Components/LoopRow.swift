@@ -23,6 +23,11 @@ struct LoopRow: View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
+                    if !loop.isMain, let order = loop.order {
+                        Text("#\(order)")
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                     Text(displayName)
                         .font(.headline)
                         .foregroundStyle(.primary)
@@ -31,6 +36,12 @@ struct LoopRow: View {
                     }
                     Spacer()
                     Image(systemName: selected ? "chevron.down" : "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                let started = relativeTime(loop.startedAt)
+                if !started.isEmpty {
+                    Text("started \(started)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -43,6 +54,12 @@ struct LoopRow: View {
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                }
+                if let preview = loop.previewUrl, let url = URL(string: preview) {
+                    Link(destination: url) {
+                        Label("Preview", systemImage: "arrow.up.right.square")
+                            .font(.caption)
+                    }
                 }
             }
             .padding()

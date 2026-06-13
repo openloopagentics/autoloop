@@ -5,10 +5,11 @@ import Foundation
 extension Loop {
     var asLoopRec: LoopRec {
         LoopRec(id: id, goal: goal, name: name, status: status, order: order,
-                currentPhaseId: currentPhaseId, currentTaskId: currentTaskId)
+                startedAt: startedAt, updatedAt: updatedAt,
+                currentPhaseId: currentPhaseId, currentTaskId: currentTaskId, previewUrl: previewUrl)
     }
     var asStatusLoop: StatusLoop {
-        StatusLoop(id: id, status: status, order: order)
+        StatusLoop(id: id, status: status, order: order, startedAt: startedAt, updatedAt: updatedAt)
     }
 }
 
