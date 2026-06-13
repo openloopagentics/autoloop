@@ -49,3 +49,17 @@ extension TestRun {
         TestRunRec(id: id, scenarioId: scenarioId, failed: failed)
     }
 }
+
+// MARK: - Trend Rec bridges
+
+extension ProjectTask {
+    var asTrendTaskRec: TrendTaskRec { TrendTaskRec(scenarioIds: scenarioIds) }
+}
+
+extension Bug {
+    var asTrendBugRec: TrendBugRec { TrendBugRec(status: status) }
+}
+
+extension Commit {
+    var asTrendCommitRec: TrendCommitRec { TrendCommitRec(tokensTotal: tokens?.total) }
+}
