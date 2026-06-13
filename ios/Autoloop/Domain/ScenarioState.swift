@@ -5,9 +5,9 @@ let DEFAULT_THRESHOLD = 80
 protocol Identified { var id: String { get } }
 struct IdItem: Identified { var id: String }
 
-struct ScenarioRec: Identified { var id: String; var threshold: Int? = nil }
-struct ScoreRec: Identified { var id: String; var scenarioId: String?; var composite: Double? = nil }
-struct TestRunRec: Identified { var id: String; var scenarioId: String?; var failed: Int? = nil }
+struct ScenarioRec: Identified { var id: String; var threshold: Int? = nil; var createdAt: Date? = nil }
+struct ScoreRec: Identified { var id: String; var scenarioId: String?; var composite: Double? = nil; var createdAt: Date? = nil }
+struct TestRunRec: Identified { var id: String; var scenarioId: String?; var failed: Int? = nil; var createdAt: Date? = nil }
 
 /// Lexically greatest id (ULID-keyed => id order == time order).
 func latestById<T: Identified>(_ items: [T]) -> T? {

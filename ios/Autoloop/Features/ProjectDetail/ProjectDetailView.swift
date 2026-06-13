@@ -31,6 +31,7 @@ struct ProjectDetailView: View {
                     LoopsTabView(store: store).tag(ProjectDetailTab.loops)
                     TestsTabView(store: store).tag(ProjectDetailTab.tests)
                     BugsTabView(store: store).tag(ProjectDetailTab.bugs)
+                    MapTabView(store: store).tag(ProjectDetailTab.map)
                     IdeasTabView(store: store).tag(ProjectDetailTab.ideas)
                     MessagesTabView(store: store).tag(ProjectDetailTab.messages)
                 }
