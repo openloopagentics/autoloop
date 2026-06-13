@@ -54,6 +54,7 @@ export function AppShell() {
         <div className="spacer" />
 
         <div className="hdr-actions hdr-actions--desktop">
+          <a className="help-link" href="/how-it-works.html" target="_blank" rel="noopener">How does it work?</a>
           <NavLink to="/getting-started" className="help-link">Getting started</NavLink>
 
           <NotificationsBell />
@@ -110,6 +111,7 @@ export function AppShell() {
                 {it.label}
               </NavLink>
             ))}
+            <a href="/how-it-works.html" target="_blank" rel="noopener">How does it work?</a>
             <NavLink to="/getting-started">Getting started</NavLink>
             <hr className="rule" />
             <span className="email">{user?.email}</span>
