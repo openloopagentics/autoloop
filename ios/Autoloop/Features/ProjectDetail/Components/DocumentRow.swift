@@ -52,6 +52,19 @@ struct DocumentRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+        } else if document.format == "json" {
+            // JSON documents render as a preformatted code block, not markdown.
+            if let content = document.content, !content.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(content)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
         } else if let content = document.content, !content.isEmpty {
             MarkdownView(text: content)
         }

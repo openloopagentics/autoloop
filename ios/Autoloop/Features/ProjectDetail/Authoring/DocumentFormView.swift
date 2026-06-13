@@ -45,6 +45,7 @@ struct DocumentFormView: View {
                     Picker("Format", selection: $format) {
                         Text("markdown").tag("markdown")
                         Text("url").tag("url")
+                        Text("json").tag("json")
                     }
                 }
                 Section("Content") {
