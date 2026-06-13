@@ -4,10 +4,14 @@ import { AppError } from "../errors.js";
 import { isTerminal, type Status } from "../status.js";
 import { computeCurrentLoopId } from "../derive.js";
 import type { LoopBody } from "../schemas.js";
+import { sweepToTerminal } from "./backstop.js";
 
 export async function upsertLoop(teamId: string, slug: string, loopId: string, body: LoopBody): Promise<void> {
   const projectRef = db().doc(`teams/${teamId}/projects/${slug}`);
   const loopRef = projectRef.collection("loops").doc(loopId);
+  // Terminal-transition flag, carried OUT of the transaction: the sweep runs after
+  // the commit. Reassigned (not just narrowed) on every attempt, so tx retries stay correct.
+  let sweepStatus: Status | null = null;
   await db().runTransaction(async (tx) => {
     // --- all reads first ---
     const projectSnap = await tx.get(projectRef);
@@ -23,12 +27,19 @@ export async function upsertLoop(teamId: string, slug: string, loopId: string, b
     const newStatus: Status = (body.status ?? existing.status) as Status;
     const newOrder: number = (body.order ?? existing.order) as number;
 
+    // Transition INTO terminal: was non-terminal (or absent) before, terminal after.
+    const wasTerminal = !creating && existing.status !== undefined && isTerminal(existing.status as Status);
+    sweepStatus = isTerminal(newStatus) && !wasTerminal ? newStatus : null;
+
     const data: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
     if (creating) { data.startedAt = FieldValue.serverTimestamp(); data.endedAt = null; }
     if (body.goal !== undefined) data.goal = body.goal;
     if (body.name !== undefined) data.name = body.name;
     if (body.order !== undefined) data.order = body.order;
     if (body.status !== undefined) data.status = body.status;
+    // null is stored as-is (the web hides the link for null OR absent) — exactly how
+    // commits.ts stores commit.url; never FieldValue.delete(). Omitted ⇒ byte-stable doc.
+    if (body.previewUrl !== undefined) data.previewUrl = body.previewUrl;
     // endedAt = the FIRST terminal transition; once set it is never updated.
     if (isTerminal(newStatus) && !existing.endedAt) data.endedAt = FieldValue.serverTimestamp();
 
@@ -41,4 +52,6 @@ export async function upsertLoop(teamId: string, slug: string, loopId: string, b
     tx.set(loopRef, data, { merge: true });
     tx.set(projectRef, { currentLoopId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   });
+  // Post-tx, best-effort: sweepToTerminal never throws (it logs and continues).
+  if (sweepStatus !== null) await sweepToTerminal(loopRef, sweepStatus);
 }

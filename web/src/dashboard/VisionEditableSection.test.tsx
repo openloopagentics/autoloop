@@ -88,4 +88,16 @@ describe("VisionEditableSection in-place edit", () => {
     expect(screen.queryByLabelText(/goal title/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/document title/i)).toBeInTheDocument();
   });
+
+  it("shows the ✓ verification badge when the latest test-run is confirmed", () => {
+    render(
+      <VisionEditableSection
+        teamId="t1" slug="web"
+        goals={goals} scenarios={scenarios} documents={documents}
+        scores={[{ id: "01A", scenarioId: "login", composite: 92 }]}
+        testRuns={[{ id: "01A", scenarioId: "login", passed: 6, failed: 0 }]}
+        verifications={[{ id: "01V", scenarioId: "login", testRunId: "01A", verdict: "confirmed" }]} />,
+    );
+    expect(screen.getByTitle("Independently verified")).toHaveTextContent("✓");
+  });
 });

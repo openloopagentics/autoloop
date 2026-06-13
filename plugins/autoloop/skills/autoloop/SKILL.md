@@ -29,6 +29,41 @@ session, not inside a subagent.** Subagents implement code; you report status.
 - An initialised **`.autoloop.json`** (`autoloop init --team <t> --project <slug>`)
   and `AUTOLOOP_API_KEY` in the env.
 
+## Step 0 — Resume check (before ANY setup)
+
+If `.autoloop.json` exists, ask the server whether a loop is already mid-flight
+BEFORE doing any setup:
+
+```bash
+autoloop loop resume    # human header + the full state bundle as pretty JSON
+```
+
+**Lock:** Run `autoloop status`; when it reports `relaunchInstalled: true`: claim the
+project before driving it — `autoloop lock acquire`. If it exits 1, another live
+session is already driving this project: report that and end this session.
+
+If the state shows a **non-terminal loop** (`state.loop.status` is not
+completed/failed/cancelled):
+
+- **Skip Step 1 entirely** — no `vision import`, no `project set`, no new
+  `loop start`. The plan already lives on the server; re-running setup would
+  clobber it.
+- **Rebuild the working plan from `state`**: `state.phases` + `state.tasks`
+  carry `order` and `status`. The next task is the **first non-terminal task by
+  phase order, then task order** — the header names it (`next: …`).
+- **Drain `state.pendingMessages` FIRST** (they are oldest-first): act on each,
+  then `autoloop messages ack <id>`. A message may change scope or direction —
+  honor it before picking up the next task.
+- Then continue the normal **Step 2** per-task loop from that next task
+  (re-run `autoloop session-log` so the session-log hook points at this
+  session — the bare team-less verb; `init --session-log` without `--team` exits 1).
+- If `state.loop.status` is `paused`: resume into **Step 4 (Paused)** instead —
+  unless a pending message says to resume or change course, in which case do
+  what it says.
+
+If there is no non-terminal loop (the CLI prints `no active loop`), proceed to
+Step 1 as normal.
+
 ## Step 1 — Setup (once per run)
 
 ```bash
@@ -98,6 +133,9 @@ autoloop commit --task <taskId> --agent <agentId>
 autoloop test-run <scenarioId> --task <taskId> --passed <n> --failed <m> \
   --summary "test: web/src/foo.test.tsx › 'hero rotates' | cmd: npm test -- foo | <pass/fail conclusion>" \
   [--issue "<file::test> expected X, got Y"]   # repeat per failure
+#    Record the `autoloop: id <ULID>` line each test-run prints — you need it
+#    for the verification step in 3a. (If you lost one, re-run the test and
+#    submit a fresh test-run.)
 
 # 3. Open a bug for EVERY concrete defect found. It must be traceable:
 #    --scenario + --task link it; --description carries the test that caught it,
@@ -139,6 +177,32 @@ autoloop task set <taskId> --status completed
 After closing the task:
 - If a phase is fully done: `autoloop phase set <phaseId> --status completed`
 - If a scenario is unmet: `autoloop revise --scenario <s> --reason "<why>" --change <op>:<id>`
+- **If the task added or reshaped components** (a new module/service/screen, a moved
+  boundary): update the product map. Maintain `map.json` in the repo — read the existing
+  one if any (or start from `{"nodes":[],"edges":[]}`), **merge** the new/changed
+  components and edges into it (never replace wholesale, never send a fragment — the
+  upload is an idempotent PUT of the full map), then:
+
+  ```bash
+  autoloop doc add --id product-map --kind product-map --title "Product map" --format json --file map.json
+  ```
+
+  Shape: `{"nodes":[{"id":"api","label":"REST API","kind":"service","scenarioIds":["login-works"]}],"edges":[{"from":"web","to":"api"}]}` —
+  node ids lowercase (`[a-z0-9._-]`), `scenarioIds` reference vision scenarios. Keep it
+  **coarse**: components are modules/services/screens, not files.
+- If this task's work surfaced a **learning that changes the vision** — a new scenario
+  discovered while testing, a threshold that proved wrong, a new goal implied by user
+  messages — record it as a vision change with the learning as the reason:
+
+  ```bash
+  autoloop vision propose --op upsert-scenario --target <id> --file payload.json \
+    --reason "<the learning that motivated this change>" --origin-loop <loopId>
+  ```
+
+  (`payload.json` holds the goal/scenario body, same shape as a direct PUT.) Then keep
+  building immediately — autonomous-with-veto: the change applies now and the user can
+  reject it from the dashboard later. If the proposal added a **new scenario**, add a
+  task tagged to it to the remaining plan so it gets built and tested this loop.
 - **Poll for messages** — run the pull/ack loop below. The subagent may have run for
   several minutes; messages that arrived during that window are waiting here.
 
@@ -153,7 +217,9 @@ done
 ```
 
 - If any message is a **stop/pause**: finish the current task cleanly, then go to
-  **Step 4 (Paused — wait for resume)**. Do NOT end the session.
+  **Step 4 (Paused — wait for resume)**. Do NOT end the session except via
+  Step 4a's pause-handoff (when `relaunchInstalled: true`, that path releases the
+  lock and exits deliberately — the wake job becomes the listener).
 - If any message changes scope or direction: adjust the remaining task plan accordingly.
 
 **Now go back to 2a for the next task.**
@@ -163,7 +229,9 @@ done
 ### 3a. Scenario verification sweep (do this BEFORE closing)
 
 Before closing the loop, account for **every scenario that belongs to this loop
-iteration** — i.e. the union of `scenarioIds` across all of this loop's tasks.
+iteration** — i.e. the union of `scenarioIds` across all of this loop's tasks,
+**including any scenarios this loop added via `autoloop vision propose`** — proposed
+scenarios join the plan and are swept like any other.
 For each such scenario, confirm there is:
 1. a **test-run** with `failed = 0` (a real automated test that passes), AND
 2. a **score** with `composite >= threshold`.
@@ -177,6 +245,31 @@ For any scenario missing either:
 Do not close the loop with implemented-but-untested scenarios silently sitting
 unmet. Either they have a passing test (met) or a revision explaining why not.
 
+**Independent verification (mandatory, after the sweep, before 3b):**
+
+1. Collect, for every scenario in this loop, its **latest test-run id** — each
+   `autoloop test-run` prints `autoloop: id <ULID>`; record it when you submit —
+   plus the exact command and test file/names from that run's `--summary`
+   (already mandatory per Traceability).
+2. Dispatch **one verifier subagent** with a clean context. Its prompt contains
+   ONLY the list of `{scenarioId, testRunId, command, expected pass/fail}` plus
+   repo access. It replays each command and reports the actual pass/fail counts
+   per scenario. It does not see the implementation conversation and calls no
+   `autoloop` commands.
+3. For each scenario, submit the verdict yourself:
+
+```bash
+autoloop verify <scenarioId> --test-run <testRunId> --verdict confirmed|refuted \
+  [--task <taskId>] --summary "<command> → <actual result>"
+```
+
+   Verdict mapping: the verifier's actual counts match the recorded run (and
+   `failed = 0`) → `confirmed`; anything else → `refuted`.
+
+4. A `refuted` verdict means the scenario is **unmet** regardless of its score —
+   record a revision (the existing unmet path) and do not count it met in the
+   closing summary.
+
 ### 3b. Close the loop
 
 ```bash
@@ -187,6 +280,27 @@ autoloop phase set <id> --status completed  # for every finished phase
 # Close the loop:
 autoloop loop set <loopId> --status completed   # or --status cancelled
 ```
+
+Release the lock (`autoloop lock release`) **ONLY when this session is actually
+ending** — at Step 4a's pause-handoff or on an explicit shutdown. When
+immediately starting the next loop (the default), **keep holding the lock**; it
+guards the whole session's driving lifetime, not one loop.
+
+**Deploy a preview and report its URL** (best-effort, before the summary).
+Deploy however **this project** deploys — do not assume a stack:
+
+- Firebase-hosted project → the documented recipe is a preview channel:
+  `firebase hosting:channel:deploy <loopId>` — copy the channel URL it prints.
+- Anything else → use the project's own deploy/preview story (npm script, CI
+  preview, static host, …).
+
+```bash
+autoloop loop set <loopId> --preview-url "<url>"   # the URL the deploy PRINTED
+```
+
+If the project has **no deploy story**, skip this step and say so in the
+summary. **Never fabricate a URL** — only report a URL an actual deploy
+printed. (`--preview-url ""` clears a stale link.)
 
 Print a brief **"N/M scenarios met"** summary: which met/unmet, composites,
 open bugs, revisions, and the dashboard URL (https://daloop-42b47.web.app).
@@ -204,39 +318,62 @@ done
 
 If a stop message arrives during the drain, go to the stopping path above.
 Otherwise, **immediately start the next loop.** Autoloop is a loop — running is
-the default, stopping is the exception. Generate 5 new improvement ideas based
-on what's already been built, open `loop start loop-YYYY-MM-DD-<n>` with the
-next order number, plan its tasks, and go back to Step 2. Do NOT ask the user
-whether to continue. Do NOT suggest the next round as an option. Just run it.
+the default, stopping is the exception.
+
+**Ideas backlog (durable between loops — the user steers it from the dashboard):**
+
+1. **Propose (at loop close):** run `autoloop idea list` first, then generate **at
+   least 5** improvement ideas from what this loop built and learned. Skip any idea
+   that semantically duplicates an existing non-rejected idea in the list. Record
+   each new one (defaults: `--status proposed --order 100`):
+   ```bash
+   autoloop idea add <idea-slug> --title "<imperative summary>" \
+     --rationale "<the learning that produced it>" --origin-loop <loopId>
+   ```
+2. **Pick (at the next loop start):** run `autoloop idea list`; build the FIRST
+   `accepted` idea, else the FIRST `proposed` idea (the list is already ordered:
+   accepted → proposed, by the user's priority). **Never build a `rejected` idea.**
+   The chosen idea's title + rationale seed the new loop's `--goal` and plan.
+3. **Mark done (when the idea ships):** when the loop that built it closes with its
+   scenarios met:
+   ```bash
+   autoloop idea set <idea-slug> --status done --built-in-loop <loopId>
+   ```
+
+Open `loop start loop-YYYY-MM-DD-<n>` with the next order number, plan its tasks,
+and go back to Step 2. Do NOT ask the user whether to continue. Do NOT suggest the
+next round as an option. Just run it.
 
 **The only valid reasons to stop building are:**
-1. The user sent a **stop/pause** message → go to **Step 4 (Paused)**, keep the
-   session alive and polling. (This is a pause, not an exit.)
+1. The user sent a **stop/pause** message → go to **Step 4 (Paused)** — with
+   relaunch machinery installed the paused session hands off to the wake job and
+   exits (4a); without it, it stays alive polling (4b). (This is a pause, not a
+   permanent exit.)
 2. The user gave an explicit iteration count and you've reached it (e.g. "run 3 rounds").
 3. Genuine context or token exhaustion — you physically cannot continue.
 
-**Only end the session** on an explicit **shutdown/exit/quit/"we're done"** message.
+**Only end the session** on an explicit **shutdown/exit/quit/"we're done"** message —
+or via Step 4a's deliberate pause-handoff exit when `relaunchInstalled: true`.
 
 Anything else — "a sensible cap", "one round is enough", "the app looks good" —
 is a rationalization. Ignore it and start the next loop.
 
 A scenario is **met** in this summary if AND ONLY IF, for that scenario, you
-submitted BOTH:
+submitted ALL of:
 1. a score with `composite >= threshold` (default 80), AND
-2. a test-run with `failed = 0`.
+2. a test-run with `failed = 0`, AND
+3. its latest test-run was NOT `refuted` by verification.
 
-If either is missing, the scenario is **unmet** — even if the composite is high.
-This matches exactly what the UI shows. Do not report a scenario as "met" based
-on the score alone.
+If any of these is missing, the scenario is **unmet** — even if the composite is
+high. Conditions 1–2 match the UI's met/unmet state; a refuted verdict
+additionally shows as ✗ Refuted there — report such a scenario as unmet even
+though its met-state may still read met. Do not report a scenario as "met"
+based on the score alone.
 
-## Step 4 — Paused: keep polling, act on the next message
+## Step 4 — Paused
 
-A **stop/pause** message does NOT end your session. It parks the loop in a paused
-state where you **keep polling for the user's next message and act on whatever it
-says** — it will rarely be the literal word "resume"; it's any prompt (a new
-instruction, a scope change, "keep going", "fix the header", "build X next", etc.).
+A **stop/pause** message does NOT terminate the loop. On entering pause:
 
-On entering pause:
 ```bash
 autoloop messages ack <stopMsgId>
 autoloop loop set <loopId> --status paused
@@ -244,8 +381,37 @@ autoloop loop set <loopId> --status paused
 autoloop messages send --text "Paused. Send any message and I'll act on it and resume."
 ```
 
-Then poll indefinitely until a message arrives — the session stays alive the whole
-time, so a message sent from the dashboard reaches you here:
+**Check `autoloop status` and branch on `relaunchInstalled`:**
+
+### 4a. Relaunch machinery installed (`relaunchInstalled: true`)
+
+Drain briefly, then **exit the session** — the wake job is the listener now, not you.
+Burning tokens in an indefinite sleep-poll is exactly what the machinery replaces.
+
+```bash
+# Short drain window (4 polls × 30 s = 2 min) in case the user replies immediately:
+for i in 1 2 3 4; do
+  autoloop messages pull   # act on + ack anything that arrives; resume per the message
+  sleep 30
+done
+# Nothing arrived — hand off to the wake job and END this session:
+autoloop lock release
+```
+
+Then **end the session**. The launchd wake job (every 5 min) relaunches a headless
+driver when a dashboard message arrives for the paused loop; the new session's Step 0
+resume check rebuilds the plan and acts on the message. The SessionEnd hook will see
+the loop is `paused` and correctly NOT relaunch (pause is woken by messages only).
+
+**How the user actually stops Autoloop:** set the loop to a terminal status
+(send a shutdown message, or `autoloop loop set <loopId> --status cancelled`) — or
+remove the machinery entirely with `autoloop init --relaunch --uninstall`.
+
+### 4b. No relaunch machinery (`relaunchInstalled: false`) — fallback
+
+Keep the session alive and poll indefinitely — with no wake job, an exited session
+would orphan the loop:
+
 ```bash
 # Wait-for-next-message loop. Keep going; do NOT exit the session.
 while true; do
@@ -255,21 +421,16 @@ while true; do
 done
 ```
 
-When a message arrives:
+### Handling the message (both branches)
+
 1. `autoloop messages ack <id>` for each.
 2. **Do exactly what it says.** Treat it as a fresh user instruction:
-   - If it's a directive to keep building / continue / a new feature → `autoloop loop
-     set <loopId> --status running` (or `loop start` a new iteration), then go back
-     to **Step 2** and run it.
-   - If it changes scope/plan → adjust the plan, then resume Step 2.
-   - Only if it explicitly says to **shut down / exit / quit / we're done** → close
-     the loop terminally (Step 3b) and end the session.
-3. After handling, if you're building again you're back in the normal loop; if the
-   message was itself another pause, return to the wait-for-next-message loop above.
-
-**Never end the session on a plain stop/pause.** Ending is only for an explicit
-shutdown/exit message or genuine context exhaustion. As long as the session is
-alive, a stop must leave you polling so the user's next dashboard message is picked up.
+   - A directive to keep building / continue / a new feature → `autoloop loop set
+     <loopId> --status running` (or `loop start` a new iteration), then back to **Step 2**.
+   - A scope/plan change → adjust the plan, then resume Step 2.
+   - Only an explicit **shut down / exit / quit / we're done** → close the loop
+     terminally (Step 3b, including `lock release`) and end the session.
+3. Another pause → return to the start of Step 4.
 
 ## Rules
 
@@ -277,13 +438,27 @@ alive, a stop must leave you polling so the user's next dashboard message is pic
 - **Report in this session.** All `autoloop` CLI calls happen here, not in subagents.
 - **Best-effort.** If an `autoloop` command warns, note it once and continue.
 - **Honest scoring.** Don't inflate composites; an unmet scenario driving a revision is the loop working correctly.
+- **Vision growth goes through `vision propose`.** Whenever a loop's learnings warrant
+  expanding or tightening the vision (a new scenario discovered while testing, a
+  threshold that proved wrong, a new goal implied by user messages), it MUST use
+  `autoloop vision propose --reason "<the learning>"` — **never** bare `goal`/`scenario`
+  PUT verbs (`goal set` / `scenario set` / direct PUTs remain only for `vision import`
+  at setup). This records why + what changed, with one-click user veto. Newly proposed
+  scenarios join the plan as tasks tagged to them.
 - **No silent truncation.** If a cap stops the loop, the summary must say which scenarios remain unmet.
 - **test-run is required.** A score alone does not make a scenario met. Always submit `autoloop test-run` before `autoloop score` for every scenario a task advances. Skipping test-run means the scenario will show as "unmet" in the UI regardless of the composite.
 - **Real tests, real numbers.** Every scenario in the loop needs an executable automated test that actually verifies it. The `--passed`/`--failed` counts must come from running that test — never fabricated. Implementing a feature without a test for its scenario leaves the scenario unmet, which is the defect we're avoiding.
 - **No scenario left behind.** Before closing a loop, run the Step 3a sweep: every scenario tagged to this loop's tasks must end either met (passing test + score) or with a revision explaining why not. Never close a loop with implemented-but-untested scenarios silently unmet.
+- **Verification is independent.** The verifier subagent never implements code and the implementer never verifies; refuted = unmet.
 - **Traceability is mandatory.** Every test-run names the exact test (file + test name) and command in its `--summary`; every bug links `--scenario` + `--task` and records the catching test, commit sha, and expected-vs-actual in `--description`; fixed bugs cite the fixing commit. Vague "tests pass" summaries or bugs with no scenario/test/commit reference must be redone.
 - **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
-- **Pause ≠ exit.** A stop/pause message parks you in Step 4 polling for the next message — it never ends the session. Only an explicit shutdown/exit message (or context exhaustion) ends it. While the session is alive, always be polling so a dashboard message lands. The next message may be any prompt, not the word "resume" — act on whatever it says.
+- **Pause parks the loop, never orphans it.** With relaunch machinery installed
+  (`autoloop status` → `relaunchInstalled: true`), a paused session drains briefly,
+  releases the lock and EXITS — the 5-min wake job relaunches on the next dashboard
+  message. Without it, the session stays alive polling (Step 4b) — exiting would
+  orphan the loop. Either way the next message may be any prompt, not the word
+  "resume" — act on whatever it says. Only an explicit shutdown/exit message (or a
+  terminal loop status) actually stops Autoloop.
 
 ## Example (two tasks)
 
@@ -315,6 +490,10 @@ autoloop commit --task search
 autoloop test-run search-works --task search --passed 6 --failed 0 --summary "Search returns relevant results."
 autoloop score search-works --task search --criterion correctness=4 --criterion ux=4 --composite 85 --commit <sha>
 autoloop task set search --status completed       # ← dashboard: search is done
+
+# pre-close verification sweep (3a): verifier subagent replays both commands
+autoloop verify login-works --test-run <ulid-from-login-test-run> --verdict confirmed --summary "npm test -- login → 8/8"
+autoloop verify search-works --test-run <ulid-from-search-test-run> --verdict confirmed --summary "npm test -- search → 6/6"
 
 autoloop phase set build --status completed
 autoloop loop set loop-2026-06-04 --status completed

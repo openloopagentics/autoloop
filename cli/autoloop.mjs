@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync, readdirSync } from "node:fs";
-import { join, basename } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync, readdirSync, rmSync, openSync, chmodSync } from "node:fs";
+import { join, basename, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 
 export const STATUSES = ["queued", "running", "blocked", "paused", "completed", "failed", "cancelled"];
+export const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
 const ID_RE = /^[a-z0-9._-]+$/;
 const CONFIG_FILE = ".autoloop.json";
 const LEGACY_CONFIG_FILE = ".daloop.json"; // back-compat: pre-rename config name
@@ -105,6 +106,7 @@ export async function report(req, deps) {
   if (res.ok) {
     try {
       const b = await res.json();
+      if (typeof b?.id === "string") err(`autoloop: id ${b.id}`);
       if (Array.isArray(b?.pendingMessages) && b.pendingMessages.length) {
         err(`autoloop: 📨 ${b.pendingMessages.length} message(s) from the user — run \`autoloop messages pull\``);
       }
@@ -123,12 +125,18 @@ export async function report(req, deps) {
 }
 
 /**
- * Fetch JSON from a GET endpoint and print the parsed result to stdout via log.
+ * Fetch JSON from a GET endpoint and print the result to stdout via log.
  * Best-effort: never throws; on failure prints a warning to err and returns 0.
- * deps: { env, fetchImpl, log, err }.
+ * deps: { env, fetchImpl, log, err, label?, render? } — label names the verb in
+ * warnings (default "messages pull"); render(body) formats the output (default:
+ * JSON of body.messages ?? body).
  */
 export async function fetchJson(req, deps) {
-  const { env = process.env, fetchImpl = fetch, log = (m) => console.log(m), err = (m) => console.error(m) } = deps;
+  const {
+    env = process.env, fetchImpl = fetch, log = (m) => console.log(m), err = (m) => console.error(m),
+    label = "messages pull",
+    render = (body) => JSON.stringify(body.messages ?? body, null, 2),
+  } = deps;
   const key = env.AUTOLOOP_API_KEY;
   if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
 
@@ -139,22 +147,85 @@ export async function fetchJson(req, deps) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     });
   } catch (e) {
-    err(`autoloop: messages pull failed (network): ${e.message}`);
+    err(`autoloop: ${label} failed (network): ${e.message}`);
     return 0;
   }
 
   if (res.ok) {
     try {
       const body = await res.json();
-      log(JSON.stringify(body.messages ?? body, null, 2));
+      log(render(body));
     } catch (e) {
-      err(`autoloop: messages pull failed (parse): ${e.message}`);
+      err(`autoloop: ${label} failed (parse): ${e.message}`);
     }
     return 0;
   }
 
-  err(`autoloop: messages pull failed (${res.status})`);
+  err(`autoloop: ${label} failed (${res.status})`);
   return 0;
+}
+
+/**
+ * Raw GET helper: returns { ok, status, body } (body null when unparseable) or null on a
+ * network error. Throws UsageError for a missing key. fetchJson stays the print-to-stdout
+ * wrapper; this is the building block for verbs that need the parsed body / status.
+ */
+export async function getJson(url, deps) {
+  const { env = process.env, fetchImpl = fetch } = deps;
+  const key = env.AUTOLOOP_API_KEY;
+  if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
+  try {
+    const res = await fetchImpl(url, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` } });
+    let body = null;
+    try { body = await res.json(); } catch { /* no/invalid body */ }
+    return { ok: res.ok, status: res.status, body };
+  } catch { return null; }
+}
+
+/**
+ * Fetch the resume state bundle, following the loopId fallback chain:
+ * explicit → cfg.currentLoopId → the server project's currentLoopId (one extra hop via the
+ * project-direct /state). Returns { state, loopId } or null on any network/HTTP failure.
+ */
+export async function fetchResumeState(cfg, env, fetchImpl, { loopId: explicitLoopId, urlFlag } = {}) {
+  const api = resolveApiUrl(cfg, env, urlFlag);
+  const base = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
+  const get = (id) => getJson(id ? `${base}/loops/${id}/state` : `${base}/state`, { env, fetchImpl });
+  let loopId = explicitLoopId ?? cfg.currentLoopId ?? null;
+  let res = await get(loopId);
+  if (!loopId && res?.ok && res.body?.state?.project?.currentLoopId) {
+    loopId = res.body.state.project.currentLoopId;
+    res = await get(loopId);
+  }
+  if (!res?.ok || !res.body?.state) return null;
+  return { state: res.body.state, loopId };
+}
+
+/** First non-terminal task by phase order, then task order (the driver's "next task"). */
+export function firstNonTerminalTask(state) {
+  const phaseOrder = new Map((state.phases ?? []).map((p) => [p.id, p.order]));
+  const planOrder = [...(state.tasks ?? [])].sort((a, b) =>
+    ((phaseOrder.get(a.phaseId) ?? Infinity) - (phaseOrder.get(b.phaseId) ?? Infinity)) || (a.order - b.order));
+  return planOrder.find((t) => !TERMINAL_STATUSES.includes(t.status)) ?? null;
+}
+
+/** Human header: loop id/status, N/M tasks terminal, K pending messages, next task. */
+export function resumeHeader(state) {
+  const tasks = state.tasks ?? [];
+  const terminal = tasks.filter((t) => TERMINAL_STATUSES.includes(t.status)).length;
+  const next = firstNonTerminalTask(state);
+  const lines = [];
+  if (state.loop) lines.push(`loop ${state.loop.id} — ${state.loop.status}`);
+  lines.push(`${terminal}/${tasks.length} tasks terminal, ${(state.pendingMessages ?? []).length} pending messages`);
+  lines.push(next ? `next: ${next.id} — ${next.title} (phase ${next.phaseId})` : "next: none (all tasks terminal)");
+  return lines.join("\n");
+}
+
+/** --check semantics: a non-terminal, NON-paused loop exists. (Paused loops are woken by
+ *  the wake job on a message, not relaunched by SessionEnd.) */
+export function isResumable(state) {
+  const s = state?.loop?.status;
+  return !!s && !TERMINAL_STATUSES.includes(s) && s !== "paused";
 }
 
 /** Locate a subagent's transcript by agentId and sum its token usage.
@@ -241,6 +312,286 @@ function installSessionLogHook(env, log) {
   log(`autoloop: real-time session-log hooks (PostToolUse + SubagentStop) installed → ${settingsPath} (CLI: ${stableCli})`);
 }
 
+// ── Phase 2: relaunch machinery ─────────────────────────────────────────────
+// New home for host-side state: ~/.autoloop/{autoloop-cli.mjs, run/, logs/}.
+// Deliberate divergence from the session-log hook's ~/.claude/autoloop-cli.mjs
+// stable copy — that one stays where it is and converges later.
+
+export function autoloopHome(env) {
+  const home = env.HOME || env.USERPROFILE || "";
+  if (!home) throw new UsageError("HOME not set");
+  return join(home, ".autoloop");
+}
+export function lockPath(env, teamId, slug) { return join(autoloopHome(env), "run", `${teamId}-${slug}.lock`); }
+
+export function readLock(path) {
+  if (!existsSync(path)) return null;
+  try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; } // corrupt ⇒ treat as absent
+}
+
+/** Liveness = kill -0. */
+export function defaultIsAlive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
+
+/** ps lookup for the ancestor walk: pid → { ppid, comm } | null. */
+export function defaultPsLookup(pid) {
+  try {
+    const out = execFileSync("ps", ["-o", "ppid=,comm=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    const m = out.match(/^\s*(\d+)\s+(.*)$/);
+    return m ? { ppid: Number(m[1]), comm: m[2] } : null;
+  } catch { return null; }
+}
+
+/**
+ * Walk our own ancestor chain (via ps -o ppid=) to the nearest `claude` process — the
+ * Claude Code SESSION pid, not this short-lived CLI child. found:false ⇒ pid is the
+ * direct parent (caller warns; --pid overrides for hook shims that have session context).
+ */
+export function findClaudeSessionPid(startPid, psLookup) {
+  const parent = psLookup(startPid)?.ppid ?? null;
+  let pid = parent;
+  for (let hops = 0; pid && pid > 1 && hops < 20; hops++) {
+    const info = psLookup(pid);
+    if (!info) break;
+    if (basename(info.comm || "") === "claude") return { pid, found: true };
+    pid = info.ppid;
+  }
+  return { pid: parent, found: false };
+}
+
+/** Classify a lockfile: "none" | "dead" (steal) | "ours" (this session) | "live-other". */
+export function evaluateLock(lock, isAlive, selfSessionPid) {
+  if (!lock || typeof lock.pid !== "number") return "none";
+  if (!isAlive(lock.pid)) return "dead";
+  if (selfSessionPid !== null && lock.pid === selfSessionPid) return "ours";
+  return "live-other";
+}
+
+export const RELAUNCH_MAX = 3;                       // > 3 relaunches in 30 min ⇒ stop (crash loop)
+export const RELAUNCH_WINDOW_MS = 30 * 60 * 1000;
+
+export function stampsPath(env, key) { return join(autoloopHome(env), "run", `${key}.stamps.json`); }
+export function readStamps(path) {
+  if (!existsSync(path)) return [];
+  try { const v = JSON.parse(readFileSync(path, "utf8")); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
+/** true ⇒ STOP relaunching: RELAUNCH_MAX stamps already inside the rolling window
+ *  (the relaunch being considered would be the >3rd within 30 minutes). */
+export function backoffExceeded(stamps, nowMs, max = RELAUNCH_MAX, windowMs = RELAUNCH_WINDOW_MS) {
+  return (stamps ?? []).filter((t) => nowMs - t < windowMs).length >= max;
+}
+
+/** Pure decision for the SessionEnd shim. "ours" may proceed — that session is ending anyway. */
+export function decideSessionEndRelaunch({ lockState, resumable, backoff }) {
+  if (lockState === "live-other") return { relaunch: false, reason: "another live session holds the lock" };
+  if (!resumable) return { relaunch: false, reason: "no non-terminal, non-paused loop (loop resume --check failed)" };
+  if (backoff) return { relaunch: false, reason: `backoff: more than ${RELAUNCH_MAX} relaunches in 30 minutes` };
+  return { relaunch: true, reason: "resumable loop, no live lock, under backoff" };
+}
+
+/** Pure decision for the wake job: paused loop + pending message + no live lock. */
+export function decideWake({ lockState, loopStatus, hasPendingMessages }) {
+  if (lockState === "live-other" || lockState === "ours") return { wake: false, reason: "a live session holds the lock" };
+  if (loopStatus !== "paused") return { wake: false, reason: `loop status is ${loopStatus ?? "none"} — wake only resumes paused loops` };
+  if (!hasPendingMessages) return { wake: false, reason: "no pending user messages" };
+  return { wake: true, reason: "paused loop with pending messages and no live lock" };
+}
+
+/** Launch the headless driver, fully detached (nohup-equivalent): stdin /dev/null, output
+ *  appended to ~/.autoloop/logs/<slug>.log, detached + unref so the parent can exit.
+ *  acceptEdits + the installed permissions.allow list — NEVER --dangerously-skip-permissions. */
+export function launchHeadless({ cwd, slug, env, spawnImpl, log }) {
+  const logDir = join(autoloopHome(env), "logs");
+  mkdirSync(logDir, { recursive: true });
+  const logFile = join(logDir, `${slug}.log`);
+  const out = openSync(logFile, "a");
+  // launchd/cron parents carry a bare env: spawn the absolute claude path (CLAUDE_BIN from
+  // ~/.autoloop/env) and pass the API key through so the session's own autoloop calls work.
+  const childEnv = { ...process.env };
+  for (const k of ["AUTOLOOP_API_KEY", "AUTOLOOP_API_URL"]) {
+    if (env[k] && !childEnv[k]) childEnv[k] = env[k];
+  }
+  if (env.CLAUDE_BIN) childEnv.PATH = `${dirname(env.CLAUDE_BIN)}${childEnv.PATH ? ":" + childEnv.PATH : ""}`;
+  const child = spawnImpl(env.CLAUDE_BIN || "claude", ["-p", "/autoloop", "--permission-mode", "acceptEdits"],
+    { cwd, detached: true, stdio: ["ignore", out, out], env: childEnv });
+  child.unref?.();
+  log(`autoloop: relaunched headless driver (pid ${child.pid ?? "?"}) — log: ${logFile}`);
+}
+
+/** Append one line to ~/.autoloop/logs/hooks.log — diagnosable, never fails the hook. */
+export function hookLog(env, tag, msg, nowMs = Date.now()) {
+  try {
+    mkdirSync(join(autoloopHome(env), "logs"), { recursive: true });
+    writeFileSync(join(autoloopHome(env), "logs", "hooks.log"),
+      `[${new Date(nowMs).toISOString()}] ${tag}: ${msg}\n`, { flag: "a" });
+  } catch { /* never fail the hook over logging */ }
+}
+
+/** Parse KEY=VALUE lines (the ~/.autoloop/env file). Ignores blank lines and #-comments;
+ *  values may contain '='. Pure. */
+export function parseEnvFile(text) {
+  const out = {};
+  for (const line of String(text).split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const i = t.indexOf("=");
+    if (i <= 0) continue;
+    out[t.slice(0, i)] = t.slice(i + 1);
+  }
+  return out;
+}
+
+/** Merge ~/.autoloop/env into env — REAL env always wins; file fills the gaps.
+ *  launchd/cron jobs inherit no shell env, so the hooks load this before any API call.
+ *  Never throws. */
+export function loadAutoloopEnv(env) {
+  try {
+    const p = join(autoloopHome(env), "env");
+    if (!existsSync(p)) return env;
+    const fileVals = parseEnvFile(readFileSync(p, "utf8"));
+    const merged = { ...env };
+    for (const [k, v] of Object.entries(fileVals)) {
+      if (merged[k] === undefined || merged[k] === "") merged[k] = v;
+    }
+    return merged;
+  } catch { return env; }
+}
+
+const RELAUNCH_HOOK_MARKER = "hook session-end";
+export const BASE_ALLOW = ["Bash(autoloop:*)", "Bash(git:*)"];
+
+/** Marker files in the project root → permission allowlist for the headless run. Pure.
+ *  acceptEdits alone cannot run Bash; in headless mode anything outside the allowlist is
+ *  denied and logged (never prompted) — the user EXTENDS this list rather than the
+ *  installer going permission-less. --dangerously-skip-permissions is deliberately not used. */
+export function detectAllowlist(filesPresent) {
+  const f = new Set(filesPresent);
+  const out = [...BASE_ALLOW];
+  if (f.has("package.json")) out.push("Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)");
+  if (f.has("pnpm-lock.yaml")) out.push("Bash(pnpm:*)");
+  if (f.has("yarn.lock")) out.push("Bash(yarn:*)");
+  if (f.has("Makefile")) out.push("Bash(make:*)");
+  if (f.has("Cargo.toml")) out.push("Bash(cargo:*)");
+  if (f.has("go.mod")) out.push("Bash(go:*)");
+  if (f.has("pyproject.toml") || f.has("requirements.txt")) out.push("Bash(python:*)", "Bash(pytest:*)", "Bash(uv:*)");
+  return out;
+}
+
+/** launchd plist for the 5-min wake job. WorkingDirectory is baked in — launchd has no cwd. */
+export function wakePlist({ label, nodePath, stableCli, projDir, logPath }) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${nodePath}</string>
+    <string>${stableCli}</string>
+    <string>hook</string>
+    <string>wake</string>
+  </array>
+  <key>WorkingDirectory</key><string>${projDir}</string>
+  <key>StartInterval</key><integer>300</integer>
+  <key>StandardOutPath</key><string>${logPath}</string>
+  <key>StandardErrorPath</key><string>${logPath}</string>
+</dict>
+</plist>
+`;
+}
+
+/** Install (or uninstall) the relaunch machinery: stable CLI copy under ~/.autoloop/,
+ *  SessionEnd hook + permissions.allow in the PROJECT .claude/settings.json (project-level,
+ *  unlike the session-log hook's global install — the shim needs the project cwd), and the
+ *  launchd wake job. Idempotent: prior autoloop entries are filtered before re-adding
+ *  (the installSessionLogHook versioned pattern). */
+function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall = false }) {
+  const cfg = loadConfig(projDir); // requires an initialized project — teamId/slug name the lock + plist
+  const home = autoloopHome(env);
+  const stableCli = join(home, "autoloop-cli.mjs");
+  const settingsPath = join(projDir, ".claude", "settings.json");
+  const plistPath = join(env.HOME || env.USERPROFILE || "", "Library", "LaunchAgents", `com.autoloop.wake.${cfg.projectSlug}.plist`);
+
+  let settings = {};
+  if (existsSync(settingsPath)) { try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { settings = {}; } }
+  settings.hooks = settings.hooks ?? {};
+  settings.permissions = settings.permissions ?? {};
+  settings.permissions.allow = settings.permissions.allow ?? [];
+  settings.hooks.SessionEnd = (settings.hooks.SessionEnd ?? [])
+    .filter((h) => !h.hooks?.some((hh) => hh.command?.includes(RELAUNCH_HOOK_MARKER)));
+
+  if (uninstall) {
+    const added = cfg.relaunch?.allowAdded ?? [];
+    settings.permissions.allow = settings.permissions.allow.filter((a) => !added.includes(a));
+    mkdirSync(join(projDir, ".claude"), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    if (existsSync(plistPath)) {
+      try { execImpl("launchctl", ["unload", plistPath]); } catch { /* not loaded */ }
+      rmSync(plistPath);
+    }
+    const lockFile = lockPath(env, cfg.teamId, cfg.projectSlug);
+    if (existsSync(lockFile)) rmSync(lockFile);
+    const envFile = join(home, "env"); // holds the API key — remove on uninstall
+    if (existsSync(envFile)) rmSync(envFile);
+    delete cfg.relaunch;
+    saveConfig(projDir, cfg);
+    log("autoloop: relaunch machinery uninstalled (SessionEnd hook, added allowlist entries, wake job, lock, env file)");
+    return 0;
+  }
+
+  // 1. ~/.autoloop home + a stable, version-independent CLI copy (refreshed on every install)
+  mkdirSync(join(home, "run"), { recursive: true });
+  mkdirSync(join(home, "logs"), { recursive: true });
+  try { copyFileSync(process.argv[1], stableCli); }
+  catch (e) { err(`autoloop: could not copy CLI to ${stableCli}: ${e.message}`); return 1; }
+
+  // 1b. ~/.autoloop/env — launchd/cron jobs inherit no shell env; the hook shims load
+  //     this file (real env wins). 0600: it holds the API key.
+  const envFile = join(home, "env");
+  const claudeBin = (() => {
+    try { const p = String(execImpl("which", ["claude"])).trim(); return p || null; } catch { return null; }
+  })();
+  const envLines = [];
+  if (env.AUTOLOOP_API_KEY) envLines.push(`AUTOLOOP_API_KEY=${env.AUTOLOOP_API_KEY}`);
+  else err("autoloop: AUTOLOOP_API_KEY is not set — the wake job cannot reach the API until you add it to " + envFile);
+  if (env.AUTOLOOP_API_URL) envLines.push(`AUTOLOOP_API_URL=${env.AUTOLOOP_API_URL}`);
+  if (claudeBin) envLines.push(`CLAUDE_BIN=${claudeBin}`);
+  else err("autoloop: `claude` not found on PATH — relaunches will fail until you add CLAUDE_BIN to " + envFile);
+  writeFileSync(envFile, envLines.join("\n") + "\n", { mode: 0o600 });
+  chmodSync(envFile, 0o600); // writeFileSync mode applies only on create — enforce on refresh too
+
+  // 2. SessionEnd hook (NOT Stop — Stop fires once per turn while the session is alive and
+  //    would spawn a competing driver; SessionEnd fires only on actual termination).
+  settings.hooks.SessionEnd.push({ hooks: [{ type: "command", command: `node "${stableCli}" hook session-end` }] });
+
+  // 3. permissions.allow for the headless `claude -p "/autoloop" --permission-mode acceptEdits`
+  let files; try { files = readdirSync(projDir); } catch { files = []; }
+  const wanted = detectAllowlist(files);
+  const added = wanted.filter((a) => !settings.permissions.allow.includes(a));
+  settings.permissions.allow.push(...added);
+  mkdirSync(join(projDir, ".claude"), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+
+  // 4. wake job: launchd on macOS; documented crontab line elsewhere
+  const logPath = join(home, "logs", `${cfg.projectSlug}.wake.log`);
+  if (platform === "darwin") {
+    mkdirSync(join(env.HOME || env.USERPROFILE || "", "Library", "LaunchAgents"), { recursive: true });
+    writeFileSync(plistPath, wakePlist({ label: `com.autoloop.wake.${cfg.projectSlug}`, nodePath: process.execPath, stableCli, projDir, logPath }));
+    try { execImpl("launchctl", ["unload", plistPath]); } catch { /* not loaded yet */ }
+    try { execImpl("launchctl", ["load", plistPath]); log(`autoloop: wake job loaded (every 5 min) → ${plistPath}`); }
+    catch (e) { err(`autoloop: wrote ${plistPath} but launchctl load failed: ${e.message} — load it manually`); }
+  } else {
+    log(`autoloop: non-macOS host — install the wake job with this crontab line:\n*/5 * * * * cd ${projDir} && ${process.execPath} ${stableCli} hook wake >> ${logPath} 2>&1`);
+  }
+
+  // 5. marker: `autoloop status` reports relaunchInstalled; --uninstall removes ONLY allowAdded
+  const prevAdded = cfg.relaunch?.allowAdded ?? [];
+  cfg.relaunch = { installedAt: new Date().toISOString(), allowAdded: [...new Set([...prevAdded, ...added])] };
+  saveConfig(projDir, cfg);
+  log(`autoloop: relaunch machinery installed (SessionEnd hook + allowlist → ${settingsPath}; CLI: ${stableCli})`);
+  return 0;
+}
+
 /**
  * Run an autoloop command. Returns an exit code (0 ok, 1 usage error).
  * deps: { cwd, env, fetchImpl, gitRun, log, err } — all injectable for tests.
@@ -252,6 +603,12 @@ export async function run(argv, deps = {}) {
     gitRun,
     log = (m) => console.log(m),
     err = (m) => console.error(m),
+    psLookup = defaultPsLookup,
+    isAlive = defaultIsAlive,
+    spawnImpl = spawn,
+    execImpl = execFileSync,
+    platform = process.platform,
+    now = Date.now,
   } = deps;
 
   // Back-compat: accept the pre-rename DALOOP_* env vars as fallbacks for AUTOLOOP_*.
@@ -271,10 +628,16 @@ export async function run(argv, deps = {}) {
   try {
     // Single-word verbs may take a positional arg (e.g. `score <scenarioId>`), so they
     // must NOT fold the positional into the dispatch key. Two-word verbs (e.g. `phase start`) do.
-    const ONE_WORD = new Set(["init", "commit", "score", "test-run", "revise"]);
+    const ONE_WORD = new Set(["init", "commit", "score", "test-run", "revise", "verify"]);
     const dispatchKey = ONE_WORD.has(cmd) ? cmd : `${cmd} ${sub ?? ""}`.trim();
     switch (dispatchKey) {
       case "init": {
+        // `autoloop init --relaunch [--uninstall]` manages host-side relaunch machinery for an
+        // ALREADY-initialized project — no --team needed (mirrors the init --session-log /
+        // `session-log` pair).
+        if (flags.relaunch && !flags.team) {
+          return installRelaunch(cwd, env, { log, err, execImpl, platform, uninstall: !!flags.uninstall });
+        }
         const teamId = flags.team, projectSlug = flags.project;
         if (!teamId || !projectSlug) throw new UsageError("init requires --team <teamId> --project <slug>");
         validateId("teamId", teamId);
@@ -283,6 +646,7 @@ export async function run(argv, deps = {}) {
         saveConfig(cwd, { apiUrl, teamId, projectSlug, currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
         log(`autoloop: initialized .autoloop.json (team=${teamId}, project=${projectSlug})`);
         if (flags["session-log"]) installSessionLogHook(env, log);
+        if (flags.relaunch) return installRelaunch(cwd, env, { log, err, execImpl, platform, uninstall: !!flags.uninstall });
         return 0;
       }
       case "init --session-log":
@@ -355,17 +719,128 @@ export async function run(argv, deps = {}) {
       }
       case "loop set": {
         const loopId = positionals[2]; validateId("loopId", loopId);
-        if (!flags.status) throw new UsageError("loop set requires --status <s>");
-        validateStatus(flags.status);
+        const body = {};
+        if (flags.status) {
+          validateStatus(flags.status);
+          body.status = flags.status;
+        }
+        if (flags["preview-url"] !== undefined) {
+          const v = oneFlag("preview-url", flags["preview-url"]);
+          if (typeof v !== "string") throw new UsageError('--preview-url requires a value (use "" to clear)');
+          body.previewUrl = v === "" ? null : v; // empty string clears (stored as null)
+        }
+        if (Object.keys(body).length === 0) throw new UsageError("loop set requires at least one of --status/--preview-url");
         const cfg = loadConfig(cwd);
-        const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
-        if (TERMINAL_STATUSES.includes(flags.status)) {
+        if (flags.status && TERMINAL_STATUSES.includes(flags.status)) {
           cfg.currentLoopId = null;
           saveConfig(cwd, cfg);
         }
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/loops/${loopId}`;
-        return report({ method: "PUT", url, body: { status: flags.status } },
+        return report({ method: "PUT", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "loop resume": {
+        const cfg = loadConfig(cwd);
+        const explicit = positionals[2];
+        if (explicit) validateId("loopId", explicit);
+        const fetched = await fetchResumeState(cfg, env, fetchImpl, { loopId: explicit, urlFlag: flags.url });
+        if (flags.check) {
+          // --check: the EXIT CODE is the contract — 0 iff a non-terminal, non-paused loop
+          // exists; silent so hook shims can branch on it. Any failure ⇒ 1.
+          return fetched && isResumable(fetched.state) ? 0 : 1;
+        }
+        // plain resume is best-effort and ALWAYS exits 0 (exit code only means something with --check)
+        if (!fetched) { err("autoloop: loop resume failed (network or HTTP error)"); return 0; }
+        const { state } = fetched;
+        if (!state.loop || TERMINAL_STATUSES.includes(state.loop.status)) err("autoloop: no active loop");
+        log(resumeHeader(state));
+        log(JSON.stringify(state, null, 2));
+        return 0;
+      }
+      case "lock acquire": {
+        const cfg = loadConfig(cwd);
+        let pid;
+        if (flags.pid !== undefined) {
+          pid = Number(flags.pid);
+          if (!Number.isInteger(pid) || pid <= 0) throw new UsageError(`--pid must be a positive integer, got '${flags.pid}'`);
+        } else {
+          const found = findClaudeSessionPid(process.pid, psLookup);
+          if (!found.pid) throw new UsageError("could not determine a session pid — pass --pid <n>");
+          if (!found.found) err("autoloop: no `claude` ancestor found — recording the direct parent pid (pass --pid to override)");
+          pid = found.pid;
+        }
+        const path = lockPath(env, cfg.teamId, cfg.projectSlug);
+        const state = evaluateLock(readLock(path), isAlive, pid);
+        if (state === "live-other") { err(`autoloop: lock held by live pid ${readLock(path).pid} — not acquiring`); return 1; }
+        if (state === "dead") err(`autoloop: stealing stale lock (recorded pid is dead)`);
+        mkdirSync(join(autoloopHome(env), "run"), { recursive: true });
+        writeFileSync(path, JSON.stringify({ pid, acquiredAt: new Date(now()).toISOString() }) + "\n");
+        log(`autoloop: lock acquired (pid ${pid}) → ${path}`);
+        return 0;
+      }
+      case "lock release": {
+        const cfg = loadConfig(cwd);
+        const path = lockPath(env, cfg.teamId, cfg.projectSlug);
+        if (existsSync(path)) { rmSync(path); log(`autoloop: lock released → ${path}`); }
+        else log("autoloop: no lock to release");
+        return 0;
+      }
+      case "hook session-end": {
+        // SessionEnd shim — fires when the Claude Code session actually TERMINATES.
+        // (Deliberately NOT Stop: Stop fires at the end of every turn while the session is
+        // still alive — wiring it would spawn a competing driver against a live session.)
+        // Best-effort: ALWAYS exit 0; a failing hook must never break Claude Code.
+        // launchd/cron-launched shims inherit no shell env — fill the gaps from ~/.autoloop/env.
+        const henv = loadAutoloopEnv(env);
+        const hook = readHookStdin();                  // { session_id, cwd, ... }
+        const projDir = hook?.cwd || cwd;
+        let cfg;
+        try { cfg = loadConfig(projDir); } catch (e) { hookLog(henv, "session-end", `skip: ${e.message}`, now()); return 0; }
+        const key = `${cfg.teamId}-${cfg.projectSlug}`;
+        const lockFile = lockPath(henv, cfg.teamId, cfg.projectSlug);
+        // "ours" = the lock pid is THIS ending session's claude ancestor — it may hand off.
+        const self = findClaudeSessionPid(process.pid, psLookup);
+        const lockState = evaluateLock(readLock(lockFile), isAlive, self.pid ?? null);
+
+        const stamps = readStamps(stampsPath(henv, key)).filter((t) => now() - t < RELAUNCH_WINDOW_MS);
+        const backoff = backoffExceeded(stamps, now());
+        // resumable? — the same probe as `loop resume --check`, in-process
+        const fetched = await fetchResumeState(cfg, henv, fetchImpl);
+        const resumable = !!fetched && isResumable(fetched.state);
+
+        const d = decideSessionEndRelaunch({ lockState, resumable, backoff });
+        hookLog(henv, "session-end", `lock=${lockState} resumable=${resumable} backoff=${backoff} → ${d.relaunch ? "RELAUNCH" : "skip"} (${d.reason})`, now());
+        if (!d.relaunch) return 0;
+
+        if (existsSync(lockFile)) rmSync(lockFile);    // release: this session is gone; the relaunch re-acquires
+        mkdirSync(join(autoloopHome(henv), "run"), { recursive: true });
+        writeFileSync(stampsPath(henv, key), JSON.stringify([...stamps, now()]));
+        launchHeadless({ cwd: projDir, slug: cfg.projectSlug, env: henv, spawnImpl, log });
+        return 0;
+      }
+      case "hook wake": {
+        // launchd interval shim (every 5 min; WorkingDirectory = project dir, baked into the
+        // plist because launchd jobs have no cwd context). Linux runs the same verb from cron.
+        // launchd/cron jobs inherit no shell env — fill the gaps from ~/.autoloop/env.
+        const henv = loadAutoloopEnv(env);
+        let cfg;
+        try { cfg = loadConfig(cwd); } catch (e) { hookLog(henv, "wake", `skip: ${e.message}`, now()); return 0; }
+        const lockFile = lockPath(henv, cfg.teamId, cfg.projectSlug);
+        const lockState = evaluateLock(readLock(lockFile), isAlive, null); // no claude ancestor under launchd
+
+        const fetched = await fetchResumeState(cfg, henv, fetchImpl);     // `loop resume` JSON
+        const loopStatus = fetched?.state?.loop?.status;
+        // pending messages — same probe as `messages pull --check`, in-process (GET only, never acks)
+        const api = resolveApiUrl(cfg, henv, undefined);
+        const msgs = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`, { env: henv, fetchImpl });
+        const hasPendingMessages = !!(msgs?.ok && Array.isArray(msgs.body?.messages) && msgs.body.messages.length > 0);
+
+        const d = decideWake({ lockState, loopStatus, hasPendingMessages });
+        hookLog(henv, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
+        if (!d.wake) return 0;
+        if (lockState === "dead") rmSync(lockFile);    // steal the stale lock; the new session re-acquires
+        launchHeadless({ cwd, slug: cfg.projectSlug, env: henv, spawnImpl, log });
+        return 0;
       }
       case "goal set": {
         const id = positionals[2]; validateId("goalId", id);
@@ -431,6 +906,12 @@ export async function run(argv, deps = {}) {
           catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
           format = "markdown";
         } else { format = "url"; content = flags.url; }
+        if (flags.format) {
+          if (!["markdown", "url", "json"].includes(flags.format)) {
+            throw new UsageError(`--format must be markdown|url|json, got '${flags.format}'`);
+          }
+          format = flags.format;
+        }
         const docId = flags.id ? (validateId("docId", flags.id), flags.id) : slugify(flags.title);
         // NOTE: --url is overloaded here (it's the DOCUMENT url, not an API-base override),
         // so resolve the API base from cfg/env only — pass `undefined` as the flag override.
@@ -474,6 +955,57 @@ export async function run(argv, deps = {}) {
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
         return report({ method: "PUT", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "idea add": {
+        const id = positionals[2]; validateId("ideaId", id);
+        if (typeof flags.title !== "string") throw new UsageError("idea add requires --title <t>");
+        const status = flags.status || "proposed";
+        if (!["proposed", "accepted", "rejected", "done"].includes(status)) throw new UsageError(`--status must be proposed|accepted|rejected|done, got '${status}'`);
+        const order = typeof flags.order === "string" ? Number(flags.order) : 100;
+        if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
+        const body = { title: flags.title, status, order };
+        if (typeof flags["rationale-file"] === "string") {
+          try { body.rationale = readFileSync(join(cwd, flags["rationale-file"]), "utf8"); }
+          catch (e) { throw new UsageError(`could not read --rationale-file '${flags["rationale-file"]}': ${e.message}`); }
+        } else if (typeof flags.rationale === "string") {
+          body.rationale = flags.rationale;
+        }
+        if (flags["origin-loop"]) { validateId("origin-loop", flags["origin-loop"]); body.originLoopId = flags["origin-loop"]; }
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/ideas/${id}`;
+        return report({ method: "PUT", url, body },
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "idea set": {
+        const id = positionals[2]; validateId("ideaId", id);
+        const body = {};
+        if (flags.status) {
+          if (!["proposed", "accepted", "rejected", "done"].includes(flags.status)) throw new UsageError(`--status must be proposed|accepted|rejected|done, got '${flags.status}'`);
+          body.status = flags.status;
+        }
+        if (typeof flags.title === "string") body.title = flags.title;
+        if (typeof flags.order === "string") {
+          const order = Number(flags.order);
+          if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
+          body.order = order;
+        }
+        if (typeof flags.rationale === "string") body.rationale = flags.rationale;
+        if (flags["origin-loop"]) { validateId("origin-loop", flags["origin-loop"]); body.originLoopId = flags["origin-loop"]; }
+        if (flags["built-in-loop"]) { validateId("built-in-loop", flags["built-in-loop"]); body.builtInLoopId = flags["built-in-loop"]; }
+        if (Object.keys(body).length === 0) throw new UsageError("idea set requires at least one of --status/--title/--order/--rationale/--origin-loop/--built-in-loop");
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/ideas/${id}`;
+        return report({ method: "PUT", url, body },
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "idea list": {
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/ideas`;
+        return fetchJson({ method: "GET", url }, {
+          env, fetchImpl, log, err, label: "idea list",
+          render: (b) => (b.ideas ?? []).map((i) => `[${i.status}] ${i.order} ${i.id} — ${i.title}`).join("\n") || "(no ideas)",
+        });
       }
       case "commit": {
         oneFlag("task", flags.task);
@@ -546,6 +1078,24 @@ export async function run(argv, deps = {}) {
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/testRuns`;
         return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
+      case "verify": {
+        oneFlag("test-run", flags["test-run"]); oneFlag("verdict", flags.verdict);
+        const scenarioId = positionals[1]; validateId("scenarioId", scenarioId);
+        if (typeof flags["test-run"] !== "string") throw new UsageError("verify requires --test-run <testRunId>");
+        if (!["confirmed", "refuted"].includes(flags.verdict)) throw new UsageError(`--verdict must be confirmed|refuted, got '${flags.verdict}'`);
+        // testRunId is a server ULID (uppercase) — deliberately NOT validateId'd.
+        const body = { scenarioId, testRunId: String(flags["test-run"]), verdict: flags.verdict };
+        if (flags.task) { validateId("task", flags.task); body.taskId = flags.task; }
+        if (flags["summary-file"]) {
+          try { body.summary = readFileSync(join(cwd, flags["summary-file"]), "utf8"); }
+          catch (e) { throw new UsageError(`could not read --summary-file '${flags["summary-file"]}': ${e.message}`); }
+        } else if (flags.summary) {
+          body.summary = flags.summary;
+        }
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/verifications`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
       case "revise": {
         oneFlag("scenario", flags.scenario);
         if (!flags.scenario || !flags.reason) throw new UsageError("revise requires --scenario <s> --reason <text>");
@@ -592,10 +1142,36 @@ export async function run(argv, deps = {}) {
         }
         return worst; // best-effort: 0 unless strict and some report failed
       }
+      case "vision propose": {
+        oneFlag("op", flags.op); oneFlag("target", flags.target); oneFlag("file", flags.file); oneFlag("reason", flags.reason);
+        if ([flags.op, flags.target, flags.file, flags.reason].some((v) => typeof v !== "string")) {
+          throw new UsageError("vision propose requires --op <upsert-goal|upsert-scenario> --target <id> --file <payload.json> --reason <text>");
+        }
+        if (!["upsert-goal", "upsert-scenario"].includes(flags.op)) {
+          throw new UsageError(`--op must be upsert-goal|upsert-scenario, got '${flags.op}'`);
+        }
+        validateId("target", flags.target);
+        let payload;
+        try { payload = JSON.parse(readFileSync(join(cwd, flags.file), "utf8")); }
+        catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
+        const body = { op: flags.op, targetId: flags.target, payload, reason: flags.reason };
+        if (flags["origin-loop"]) { validateId("origin-loop", flags["origin-loop"]); body.originLoopId = flags["origin-loop"]; }
+        const cfg = loadConfig(cwd);
+        // Project-level on purpose (no loopSeg): vision changes are project vision, never loop-scoped.
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/vision-changes`;
+        return report({ method: "POST", url, body },
+          { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
       case "messages pull": {
         const cfg = loadConfig(cwd);
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
+        if (flags.check) {
+          // silent probe for the wake shim: exit 0 iff pending user messages exist.
+          // GET only — pulling NEVER acks; any failure ⇒ 1 (can't confirm pending).
+          const res = await getJson(url, { env, fetchImpl });
+          return res?.ok && Array.isArray(res.body?.messages) && res.body.messages.length > 0 ? 0 : 1;
+        }
         return fetchJson({ method: "GET", url }, { env, fetchImpl, log, err });
       }
       case "messages ack": {
@@ -620,6 +1196,17 @@ export async function run(argv, deps = {}) {
           return 0;
         }
         throw new UsageError("state requires --current-loop");
+      }
+      case "status": {
+        // Minimal status report — the relaunch marker is what the driver skill branches on.
+        const cfg = loadConfig(cwd);
+        log(JSON.stringify({
+          teamId: cfg.teamId,
+          projectSlug: cfg.projectSlug,
+          currentLoopId: cfg.currentLoopId ?? null,
+          relaunchInstalled: !!cfg.relaunch,
+        }, null, 2));
+        return 0;
       }
       case "session push": {
         // Debug log — every hook firing appends here so failures are diagnosable.

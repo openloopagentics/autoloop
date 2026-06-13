@@ -1,8 +1,11 @@
 import { deriveScenarioState, DEFAULT_THRESHOLD } from "../scenarioState";
-import type { Scenario, Score, TestRun } from "../types";
+import { scenarioVerification } from "../verificationView";
+import { VerificationBadge } from "./VerificationBadge";
+import type { Scenario, Score, TestRun, Verification } from "../types";
 
-function ScenarioRow({ scenario, scores, testRuns }: { scenario: Scenario; scores: Score[]; testRuns: TestRun[] }) {
+function ScenarioRow({ scenario, scores, testRuns, verifications = [] }: { scenario: Scenario; scores: Score[]; testRuns: TestRun[]; verifications?: Verification[] }) {
   const { state, latestComposite, latestTest } = deriveScenarioState(scenario, scores, testRuns);
+  const verdict = scenarioVerification(scenario.id, latestTest?.id ?? null, verifications);
   const threshold = scenario.threshold ?? DEFAULT_THRESHOLD;
   const pct = Math.max(0, Math.min(100, latestComposite ?? 0));
   return (
@@ -11,7 +14,7 @@ function ScenarioRow({ scenario, scores, testRuns }: { scenario: Scenario; score
         <span className="scnrow-title">{scenario.title ?? scenario.id}</span>
         {scenario.description && <span className="scnrow-desc dim">{scenario.description}</span>}
       </td>
-      <td className="scnrow-status"><span className={`scnbadge scn-${state}`}>{state}</span></td>
+      <td className="scnrow-status"><span className={`scnbadge scn-${state}`}>{state}</span>{" "}<VerificationBadge verdict={verdict} compact showUnverified /></td>
       <td className="scnrow-score">
         <div className="scorebar" role="img" aria-label={`composite ${latestComposite ?? 0} of 100, threshold ${threshold}`}>
           <div className="scorebar-fill" style={{ width: `${pct}%` }} />
@@ -26,7 +29,7 @@ function ScenarioRow({ scenario, scores, testRuns }: { scenario: Scenario; score
   );
 }
 
-export function ScenarioTable({ scenarios, scores, testRuns }: { scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[] }) {
+export function ScenarioTable({ scenarios, scores, testRuns, verifications = [] }: { scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; verifications?: Verification[] }) {
   return (
     <table className="scntable">
       <thead>
@@ -38,7 +41,7 @@ export function ScenarioTable({ scenarios, scores, testRuns }: { scenarios: Scen
         </tr>
       </thead>
       <tbody>
-        {scenarios.map((s) => <ScenarioRow key={s.id} scenario={s} scores={scores} testRuns={testRuns} />)}
+        {scenarios.map((s) => <ScenarioRow key={s.id} scenario={s} scores={scores} testRuns={testRuns} verifications={verifications} />)}
       </tbody>
     </table>
   );

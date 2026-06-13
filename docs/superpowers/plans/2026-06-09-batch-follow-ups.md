@@ -1,0 +1,94 @@
+# Self-evolution batch — accumulated fast-follow items
+
+Non-blocking findings from per-plan final reviews. Each is deliberate scope
+(documented in its plan/spec) or inherited pattern — captured here so they
+aren't lost when the batch ships.
+
+## From plan 1 (independent verification)
+
+1. **Tests tab lacks verification badges.** `web/src/dashboard/tabs/TestsTab.tsx`
+   renders per-scenario runs (from `useAllTestRuns`) without the
+   Verified/Refuted layer. Companion to #2.
+2. **Cross-loop Vision badges.** Vision tab's test-runs are cross-loop
+   (`useAllTestRuns`) but verifications are selected-loop scope — a
+   verification in another loop won't badge. Fix = `useAllVerifications`
+   aggregator (spec deliberately excluded it).
+3. **Web-initiated project close never sweeps.** `routes/userProjects.ts`
+   discards `applyProjectUpsert`'s terminal-transition return; a *web-owned*
+   project with agent-written project-direct phases/tasks closed from the
+   dashboard leaves them unswept. Agent path is the documented sole trigger.
+4. **Legacy `upsertPhase` doesn't stamp `visionOwner: "loop"`** (unlike
+   `upsertTask`), so a phases-only project-direct project stays web-editable;
+   web terminal-close then skips the sweep (cosmetic stale `currentPhaseId`).
+   One-line consistency fix candidate.
+5. **CLI bare-flag leniency on `--summary`/`--task`** (verify + the
+   pre-existing score/test-run pattern): bare flags leak booleans to the
+   server (400) instead of a local UsageError. Inherited inconsistency.
+
+## From plan 2 (ideas backlog)
+
+6. **`idea list` doesn't surface rationales** — output is `[status] order id —
+   title` only, but the skill's Pick step says the chosen idea's *rationale*
+   seeds the loop plan, and dedup is judged from titles alone. Across session
+   death the rationale is unreachable by the agent. Tiny fix: `idea list
+   --json` (fetchJson default render) or append truncated rationale per line.
+   Spec-level gap, not an implementation defect.
+7. **`ideaIdFor` doesn't strip `_`** — `__weird__` yields a Firestore-reserved
+   doc id (`__.*__`) that would 500. Extend the strip class to `[-._]+`.
+8. **Missing-status band default diverges** server (band 9/last) vs web
+   (proposed/band 1) — unreachable via the API; only hand-written docs.
+9. **Latency-compensation flicker**: a just-added idea sorts to its band's end
+   until serverTimestamp commits (web null-createdAt sorts last). Cosmetic.
+
+## From plan 3 (vision growth)
+
+10. **Idea-seeded vision growth at loop start** — SKILL.md's 2e bullet triggers
+    on "this task's work surfaced a learning", but the ideas Pick step (loop
+    start) can also imply a new goal/scenario; the general Rules entry covers
+    it, but a one-line nudge in the Pick step would remove ambiguity.
+11. **Unbounded feed queries** — `useVisionChanges` (like `useIdeas`/
+    `useTeamNotifications`) has no `limit()`; long-lived projects load every
+    change ever. Codebase-wide pattern; fix together if ever needed.
+
+## From plan 4 (preview + trends)
+
+12. **`previewUrl`/`commit.url` accept any URL scheme** — `z.string().url()`
+    passes `javascript:`/`data:` URLs rendered as anchors. Mitigated
+    (member-only writers, noopener noreferrer); an `https?:` refine on both
+    fields would tighten it.
+13. **Commits refetch fans out window-wide** — any loop's task-set change
+    re-runs one-shot commit reads for every window loop (plan's own code;
+    bounded at 20). Revisit if read volume matters, esp. with product-map
+    reusing the layer.
+14. **Firebase channel-id charset** — loopIds may contain `.`/`_` which
+    `hosting:channel:deploy` disallows; skill step is best-effort so it just
+    skips, but a sanitize hint in the prose would help.
+
+## From plan 5 (product map)
+
+15. **Stale panel during replay** — a side panel opened live stays open while
+    scrubbing (clicks disabled but pickedNode not cleared). One-liner: clear
+    pickedNode when replay starts (MapTab).
+16. **Untested seam** — no test pins "components excluded from replay"
+    (correct by construction today; a refactor could regress silently).
+17. **PRODUCT_MAP_MAX_BYTES uses UTF-16 length** vs the server's byte cap —
+    multibyte docs near 100KB may disagree client/server. Cosmetic.
+18. **Live tasks have no hue band** (no loopId on live task docs) while live
+    bugs do. Cosmetic asymmetry.
+
+## From plan 6 (resumable loops)
+
+19. ~~launchd wake job env gap (under launchd `hook wake` lacked
+    `AUTOLOOP_API_KEY` — UsageError every 5 min, wake never fired — and
+    `launchHeadless` spawned bare `claude`, rarely on launchd's default
+    PATH)~~ — FIXED in 0.18.0: installer writes `~/.autoloop/env` (0600,
+    API key + CLAUDE_BIN via `which claude`); hook shims load it (real env
+    wins); `launchHeadless` spawns CLAUDE_BIN with the key in the child env.
+    Plist stays secret-free; fixes the Linux cron variant too.
+20. **Pre-lock-era sessions unprotected** — a driver started before
+    `init --relaunch` holds no lock; a SessionEnd relaunch elsewhere could
+    spawn a competing driver. Inherent protocol limit; note in checklist runs.
+21. **Manual OS-wiring checklist (10 items)** in the resumable-loops plan
+    Task 12 Step 4 — REMAINING for a human on a real macOS host with
+    AUTOLOOP_API_KEY; record outcomes in the PR description.
+22. ~~Lock released between loops~~ — FIXED pre-merge in 0.17.2 (lock now held for the session lifetime).

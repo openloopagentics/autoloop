@@ -7,7 +7,7 @@ export const idPattern = /^[a-z0-9._-]+$/;
 
 const status = z.enum(STATUSES);
 
-const contentFormat = z.enum(["markdown", "url"]);
+const contentFormat = z.enum(["markdown", "url", "json"]);
 const CONTENT_MAX_BYTES = 100 * 1024;
 
 const design = z.object({
@@ -63,6 +63,17 @@ export const bugBody = z.object({
   status: bugStatus.optional(),              // required-on-create in the service
 });
 export type BugBody = z.infer<typeof bugBody>;
+
+const ideaStatus = z.enum(["proposed", "accepted", "rejected", "done"]);
+export const ideaBody = z.object({
+  title: z.string().min(1).optional(),       // required-on-create in the service
+  rationale: z.string().max(CONTENT_MAX_BYTES, "idea.rationale exceeds 100KB").optional(),
+  status: ideaStatus.optional(),             // required-on-create in the service
+  order: z.number().int().optional(),        // required-on-create in the service
+  originLoopId: id.optional(),
+  builtInLoopId: id.optional(),
+});
+export type IdeaBody = z.infer<typeof ideaBody>;
 
 export const goalBody = z.object({
   title: z.string().min(1).optional(),
@@ -123,12 +134,33 @@ export const testRunBody = z.object({
   summary: z.string().max(CONTENT_MAX_BYTES, "testRun.summary exceeds 100KB").optional(),
 });
 
+export const verificationBody = z.object({
+  scenarioId: id,
+  taskId: id.optional(),
+  testRunId: z.string().min(1),          // server ULIDs are uppercase — NOT idPattern
+  verdict: z.enum(["confirmed", "refuted"]),
+  summary: z.string().max(CONTENT_MAX_BYTES, "verification.summary exceeds 100KB").optional(),
+  by: z.string().min(1).optional(),
+});
+export type VerificationBody = z.infer<typeof verificationBody>;
+
 export const revisionBody = z.object({
   trigger: z.object({ scenarioId: id, reason: z.string().min(1) }),
   // changes carry op + taskId plus optional op-specific detail (title/order/...). passthrough
   // keeps that detail; the loop, not Autoloop, defines its meaning.
   changes: z.array(z.object({ op: z.enum(["add", "replace", "reorder", "drop"]), taskId: id }).passthrough()).min(1),
 });
+
+// Vision change: propose-and-apply event. `payload` is re-validated per-op in the
+// service with goalBody/scenarioBody so error messages match direct upserts.
+export const visionChangeBody = z.object({
+  op: z.enum(["upsert-goal", "upsert-scenario"]),
+  targetId: id,
+  payload: z.record(z.string(), z.unknown()),
+  reason: z.string().min(1),
+  originLoopId: id.optional(),
+});
+export type VisionChangeBody = z.infer<typeof visionChangeBody>;
 
 export type GoalBody = z.infer<typeof goalBody>;
 export type ScenarioBody = z.infer<typeof scenarioBody>;
@@ -143,6 +175,7 @@ export const loopBody = z.object({
   name: z.string().min(1).optional(),
   order: z.number().int().optional(),
   status: status.optional(),
+  previewUrl: z.string().url().nullable().optional(),
 });
 export type LoopBody = z.infer<typeof loopBody>;
 

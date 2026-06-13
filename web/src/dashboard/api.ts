@@ -47,10 +47,18 @@ export async function deleteDocument(teamId: string, slug: string, id: string): 
   await ok(await fetch(u(teamId, slug, `/documents/${id}`), { method: "DELETE", headers: await headers() }));
 }
 
+export async function putUserIdea(teamId: string, slug: string, id: string, body: object): Promise<void> {
+  await ok(await fetch(u(teamId, slug, `/ideas/${id}`), { method: "PUT", headers: await headers(), body: JSON.stringify(body) }));
+}
+
 export async function postMessage(teamId: string, slug: string, text: string): Promise<void> {
   await ok(await fetch(u(teamId, slug, "/messages"), { method: "POST", headers: await headers(), body: JSON.stringify({ text }) }));
 }
 
 export async function deleteProject(teamId: string, slug: string): Promise<void> {
   await ok(await fetch(u(teamId, slug), { method: "DELETE", headers: await headers() }));
+}
+
+export async function rejectVisionChange(teamId: string, slug: string, changeId: string): Promise<void> {
+  await ok(await fetch(u(teamId, slug, `/vision-changes/${changeId}/reject`), { method: "POST", headers: await headers() }));
 }

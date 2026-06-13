@@ -244,16 +244,22 @@ async function seedProjectTree(teamId: string) {
     await fs.doc(`teams/${teamId}/projects/web/tasks/t1/commits/c1`).set({ message: "m", author: "a" });
     await fs.doc(`teams/${teamId}/projects/web/scores/01ABC`).set({ scenarioId: "s1", taskId: "t1", composite: 80 });
     await fs.doc(`teams/${teamId}/projects/web/testRuns/01DEF`).set({ scenarioId: "s1", taskId: "t1", passed: 1, failed: 0 });
+    await fs.doc(`teams/${teamId}/projects/web/verifications/01VRF`).set({ scenarioId: "s1", testRunId: "01DEF", verdict: "confirmed", by: "verifier" });
     await fs.doc(`teams/${teamId}/projects/web/revisions/01GHI`).set({ trigger: { scenarioId: "s1", reason: "x" }, changes: [] });
     await fs.doc(`teams/${teamId}/projects/web/documents/d1`).set({ kind: "vision", title: "V", format: "markdown", content: "x" });
     await fs.doc(`teams/${teamId}/projects/web/bugs/b1`).set({ title: "B", status: "open" });
+    await fs.doc(`teams/${teamId}/projects/web/ideas/i1`).set({ title: "I", status: "proposed", order: 1, by: "agent" });
     await fs.doc(`teams/${teamId}/projects/web/messages/m1`).set({ text: "hello", author: "user", status: "pending" });
+    await fs.doc(`teams/${teamId}/projects/web/visionChanges/01VC`).set({
+      op: "upsert-goal", targetId: "g1", payload: { title: "G" }, prior: null, reason: "r", status: "applied",
+    });
     // loop subtree: covered by the recursive match /projects/{slug}/{document=**} rule (no rules change).
     await fs.doc(`teams/${teamId}/projects/web/loops/l1`).set({ goal: "g", order: 1, status: "running" });
     await fs.doc(`teams/${teamId}/projects/web/loops/l1/phases/p1`).set({ name: "A", order: 1, status: "running" });
     await fs.doc(`teams/${teamId}/projects/web/loops/l1/tasks/t1`).set({ phaseId: "p1", title: "T", order: 1, status: "running" });
     await fs.doc(`teams/${teamId}/projects/web/loops/l1/tasks/t1/commits/c1`).set({ message: "m", author: "a" });
     await fs.doc(`teams/${teamId}/projects/web/loops/l1/scores/01XYZ`).set({ scenarioId: "s1", taskId: "t1", composite: 80 });
+    await fs.doc(`teams/${teamId}/projects/web/loops/l1/verifications/01VRF`).set({ scenarioId: "s1", testRunId: "01DEF", verdict: "confirmed", by: "verifier" });
     await fs.doc(`teams/${teamId}/projects/web/loops/l1/bugs/b1`).set({ title: "B", status: "open" });
   });
 }
@@ -296,7 +302,8 @@ describe("rules: projects + isolation", () => {
 describe("rules: loop-contract subcollections", () => {
   const paths = [
     "goals/g1", "scenarios/s1", "tasks/t1", "tasks/t1/commits/c1",
-    "scores/01ABC", "testRuns/01DEF", "revisions/01GHI", "documents/d1", "bugs/b1", "messages/m1",
+    "scores/01ABC", "testRuns/01DEF", "revisions/01GHI", "documents/d1", "bugs/b1", "ideas/i1", "messages/m1",
+    "verifications/01VRF", "visionChanges/01VC",
   ];
   it("members can read every loop-contract doc", async () => {
     await seedTeam("t1", "alice"); await seedMember("t1", "alice", "member"); await seedProjectTree("t1");
@@ -318,7 +325,7 @@ describe("rules: loop-contract subcollections", () => {
 describe("rules: loop subcollections", () => {
   const paths = [
     "loops/l1", "loops/l1/phases/p1", "loops/l1/tasks/t1",
-    "loops/l1/tasks/t1/commits/c1", "loops/l1/scores/01XYZ", "loops/l1/bugs/b1",
+    "loops/l1/tasks/t1/commits/c1", "loops/l1/scores/01XYZ", "loops/l1/verifications/01VRF", "loops/l1/bugs/b1",
   ];
   it("members can read every loop-scoped doc", async () => {
     await seedTeam("t1", "alice"); await seedMember("t1", "alice", "member"); await seedProjectTree("t1");

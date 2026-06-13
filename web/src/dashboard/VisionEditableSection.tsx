@@ -5,7 +5,7 @@ import { ScenarioForm, type ScenarioBody } from "./components/edit/ScenarioForm"
 import { DocumentForm, type DocumentBody } from "./components/edit/DocumentForm";
 import { ErrorNote } from "./components/ErrorNote";
 import { putGoal, deleteGoal, putScenario, deleteScenario, putDocument, deleteDocument } from "./api";
-import type { Goal, Scenario, Score, TestRun, DocumentRec } from "./types";
+import type { Goal, Scenario, Score, TestRun, DocumentRec, Verification } from "./types";
 
 function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -21,10 +21,11 @@ function genId(title: string, taken: Set<string>, prefix: string): string {
 }
 
 export function VisionEditableSection({
-  teamId, slug, goals, scenarios, scores, testRuns, documents,
+  teamId, slug, goals, scenarios, scores, testRuns, documents, verifications = [],
 }: {
   teamId: string; slug: string;
   goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; documents: DocumentRec[];
+  verifications?: Verification[];
 }) {
   const [open, setOpen] = useState<null | "goal" | "scenario" | "document">(null);
   const [editing, setEditing] = useState<null | { kind: "goal" | "scenario" | "document"; id: string }>(null);
@@ -107,7 +108,7 @@ export function VisionEditableSection({
       {error && <ErrorNote message={error} />}
 
       {(goals.length > 0 || scenarios.length > 0) && (
-        <VisionSection goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} />
+        <VisionSection goals={goals} scenarios={scenarios} scores={scores} testRuns={testRuns} verifications={verifications} />
       )}
 
       {(goals.length > 0 || scenarios.length > 0 || documents.length > 0) && (

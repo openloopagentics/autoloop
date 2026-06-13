@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody } from "../src/schemas.js";
+import { idPattern, projectBody, phaseBody, commitBody, goalBody, scenarioBody, taskBody, documentBody, scoreBody, testRunBody, revisionBody, bugBody, verificationBody, ideaBody, visionChangeBody } from "../src/schemas.js";
 
 describe("idPattern", () => {
   it("accepts safe slugs and rejects unsafe ones", () => {
@@ -97,6 +97,96 @@ describe("bugBody", () => {
   it("drops unknown keys (plain z.object)", () => {
     const parsed = bugBody.parse({ title: "X", status: "open", createdAt: "nope" });
     expect("createdAt" in parsed).toBe(false);
+  });
+});
+
+describe("verificationBody", () => {
+  it("accepts a minimal verification", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "01ARZ3NDEKTSV4RRFFQ69G5FAV", verdict: "confirmed" }).success).toBe(true);
+  });
+  it("accepts an UPPERCASE ULID testRunId (deliberately NOT idPattern)", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "01HZXYABCDEF0123456789ABCD", verdict: "refuted" }).success).toBe(true);
+  });
+  it("accepts the optional fields", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", taskId: "t1", testRunId: "01A", verdict: "confirmed", summary: "npm test → 6/6", by: "verifier" }).success).toBe(true);
+  });
+  it("rejects an unknown verdict", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "01A", verdict: "maybe" }).success).toBe(false);
+  });
+  it("rejects a missing or empty testRunId", () => {
+    expect(verificationBody.safeParse({ scenarioId: "s1", verdict: "confirmed" }).success).toBe(false);
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "", verdict: "confirmed" }).success).toBe(false);
+  });
+  it("rejects a non-idPattern scenarioId", () => {
+    expect(verificationBody.safeParse({ scenarioId: "Bad Id", testRunId: "01A", verdict: "confirmed" }).success).toBe(false);
+  });
+  it("rejects a summary over 100KB", () => {
+    const big = "x".repeat(100 * 1024 + 1);
+    expect(verificationBody.safeParse({ scenarioId: "s1", testRunId: "01A", verdict: "confirmed", summary: big }).success).toBe(false);
+  });
+  it("drops unknown keys (plain z.object)", () => {
+    const parsed = verificationBody.parse({ scenarioId: "s1", testRunId: "01A", verdict: "confirmed", createdAt: "nope" });
+    expect("createdAt" in parsed).toBe(false);
+  });
+});
+
+describe("ideaBody", () => {
+  it("accepts a minimal proposed idea", () => {
+    expect(ideaBody.safeParse({ title: "Dark mode", status: "proposed", order: 100 }).success).toBe(true);
+  });
+  it("accepts the optional fields", () => {
+    expect(ideaBody.safeParse({ title: "X", rationale: "users asked", status: "accepted", order: 1, originLoopId: "loop-1", builtInLoopId: "loop-2" }).success).toBe(true);
+  });
+  it("accepts a partial body (all fields optional — required-on-create is the service's job)", () => {
+    expect(ideaBody.safeParse({ status: "rejected" }).success).toBe(true);
+  });
+  it("rejects an unknown status", () => {
+    expect(ideaBody.safeParse({ title: "X", status: "maybe", order: 1 }).success).toBe(false);
+  });
+  it("rejects a non-integer order", () => {
+    expect(ideaBody.safeParse({ title: "X", status: "proposed", order: 1.5 }).success).toBe(false);
+  });
+  it("rejects a non-idPattern originLoopId", () => {
+    expect(ideaBody.safeParse({ title: "X", status: "proposed", order: 1, originLoopId: "Bad Id" }).success).toBe(false);
+  });
+  it("rejects a rationale over 100KB", () => {
+    const big = "x".repeat(100 * 1024 + 1);
+    expect(ideaBody.safeParse({ title: "X", status: "proposed", order: 1, rationale: big }).success).toBe(false);
+  });
+  it("drops unknown keys, including a client-supplied by (plain z.object)", () => {
+    const parsed = ideaBody.parse({ title: "X", status: "proposed", order: 1, by: "agent", createdAt: "nope" });
+    expect("by" in parsed).toBe(false);
+    expect("createdAt" in parsed).toBe(false);
+  });
+});
+
+describe("visionChangeBody", () => {
+  const base = { op: "upsert-goal", targetId: "g1", payload: { title: "G" }, reason: "learned X" };
+  it("accepts a minimal change", () => {
+    expect(visionChangeBody.safeParse(base).success).toBe(true);
+  });
+  it("accepts an optional originLoopId", () => {
+    expect(visionChangeBody.safeParse({ ...base, originLoopId: "loop-2026-06-09" }).success).toBe(true);
+  });
+  it("accepts upsert-scenario", () => {
+    expect(visionChangeBody.safeParse({ ...base, op: "upsert-scenario" }).success).toBe(true);
+  });
+  it("rejects an unknown op (no deletes)", () => {
+    expect(visionChangeBody.safeParse({ ...base, op: "delete-goal" }).success).toBe(false);
+  });
+  it("rejects an empty reason", () => {
+    expect(visionChangeBody.safeParse({ ...base, reason: "" }).success).toBe(false);
+  });
+  it("rejects a missing payload", () => {
+    expect(visionChangeBody.safeParse({ op: "upsert-goal", targetId: "g1", reason: "r" }).success).toBe(false);
+  });
+  it("rejects a non-idPattern targetId", () => {
+    expect(visionChangeBody.safeParse({ ...base, targetId: "Bad Id" }).success).toBe(false);
+  });
+  it("drops unknown keys (plain z.object)", () => {
+    const parsed = visionChangeBody.parse({ ...base, status: "rejected", prior: { x: 1 } });
+    expect("status" in parsed).toBe(false);
+    expect("prior" in parsed).toBe(false);
   });
 });
 
