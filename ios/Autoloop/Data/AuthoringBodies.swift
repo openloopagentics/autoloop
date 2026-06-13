@@ -58,6 +58,26 @@ struct ScenarioBody {
     }
 }
 
+struct IdeaBody {
+    var title: String?
+    var rationale: String?
+    var status: String?   // proposed | accepted | rejected | done
+    var order: Int?
+    var originLoopId: String?
+    var builtInLoopId: String?
+
+    var jsonObject: [String: Any] {
+        var d: [String: Any] = [:]
+        if let v = title { d["title"] = v }
+        if let v = rationale { d["rationale"] = v }
+        if let v = status { d["status"] = v }
+        if let v = order { d["order"] = v }
+        if let v = originLoopId { d["originLoopId"] = v }
+        if let v = builtInLoopId { d["builtInLoopId"] = v }
+        return d
+    }
+}
+
 struct DocumentBody {
     var kind: String
     var title: String

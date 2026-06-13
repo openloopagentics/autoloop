@@ -95,6 +95,20 @@ enum RestClient {
         try await send(method: "DELETE", url: url(teamId, slug, "/documents/\(id)"), jsonBody: nil)
     }
 
+    // MARK: - Idea writes
+
+    /// PUT /ideas/{id} — create / accept / reject / reorder / mark done.
+    static func putIdea(teamId: String, slug: String, id: String, body: IdeaBody) async throws {
+        try await send(method: "PUT", url: url(teamId, slug, "/ideas/\(id)"), jsonBody: body.jsonObject)
+    }
+
+    // MARK: - Vision-change writes
+
+    /// POST /vision-changes/{id}/reject — revert an applied change to its prior state.
+    static func rejectVisionChange(teamId: String, slug: String, id: String) async throws {
+        try await send(method: "POST", url: url(teamId, slug, "/vision-changes/\(id)/reject"), jsonBody: [:])
+    }
+
     // MARK: - Project writes
 
     /// DELETE project (no rest path).

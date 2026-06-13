@@ -91,6 +91,30 @@ func messagesQuery(teamId: String, slug: String) -> Query {
         .order(by: FieldPath.documentID())
 }
 
+/// Ideas are project-direct (they outlive the loop that proposed them); sorted in memory by band.
+func ideasQuery(teamId: String, slug: String) -> Query {
+    Firestore.firestore()
+        .collection("teams").document(teamId)
+        .collection("projects").document(slug)
+        .collection("ideas")
+        .order(by: FieldPath.documentID())
+}
+
+/// Vision changes — project-direct, ULID-keyed (id desc = newest first).
+func visionChangesQuery(teamId: String, slug: String) -> Query {
+    Firestore.firestore()
+        .collection("teams").document(teamId)
+        .collection("projects").document(slug)
+        .collection("visionChanges")
+        .order(by: FieldPath.documentID(), descending: true)
+}
+
+/// Verifications — loop-scoped evidence on test runs.
+func verificationsQuery(teamId: String, slug: String, loopId: String?) -> Query {
+    collectionRef(segments: basePath(teamId: teamId, slug: slug, loopId: loopId), name: "verifications")
+        .order(by: FieldPath.documentID())
+}
+
 // MARK: - Loop-scoped query builders (basePath + collection)
 
 func phasesQuery(teamId: String, slug: String, loopId: String?) -> Query {
