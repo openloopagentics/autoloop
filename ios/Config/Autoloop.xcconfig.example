@@ -1,0 +1,2 @@
+// Copy to Autoloop.xcconfig and fill in. Mirrors web/.env VITE_API_URL.
+API_BASE_URL = https:/$()/your-region-your-project.cloudfunctions.net

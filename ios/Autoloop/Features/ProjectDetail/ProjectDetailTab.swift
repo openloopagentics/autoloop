@@ -1,0 +1,18 @@
+import Foundation
+
+enum ProjectDetailTab: String, CaseIterable, Identifiable {
+    case dashboard, vision, loops, tests, bugs, map, ideas, messages
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .dashboard: "Dashboard"
+        case .vision: "Vision"
+        case .loops: "Loops"
+        case .tests: "Tests"
+        case .bugs: "Bugs"
+        case .map: "Map"
+        case .ideas: "Ideas"
+        case .messages: "Messages"
+        }
+    }
+}

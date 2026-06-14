@@ -1,0 +1,65 @@
+import Foundation
+
+// MARK: - Loop → LoopRec / StatusLoop
+
+extension Loop {
+    var asLoopRec: LoopRec {
+        LoopRec(id: id, goal: goal, name: name, status: status, order: order,
+                startedAt: startedAt, updatedAt: updatedAt,
+                currentPhaseId: currentPhaseId, currentTaskId: currentTaskId, previewUrl: previewUrl)
+    }
+    var asStatusLoop: StatusLoop {
+        StatusLoop(id: id, status: status, order: order, startedAt: startedAt, updatedAt: updatedAt)
+    }
+}
+
+// MARK: - Project → ProjectRec
+
+extension Project {
+    var asProjectRec: ProjectRec {
+        ProjectRec(slug: slug, status: status,
+                   currentPhaseId: currentPhaseId, currentTaskId: currentTaskId)
+    }
+}
+
+// MARK: - Phase → PhaseRec
+
+extension Phase {
+    var asPhaseRec: PhaseRec {
+        PhaseRec(status: status)
+    }
+}
+
+// MARK: - Scenario / Score / TestRun → …Rec
+
+extension Scenario {
+    var asRec: ScenarioRec {
+        ScenarioRec(id: id, threshold: threshold)
+    }
+}
+
+extension Score {
+    var asRec: ScoreRec {
+        ScoreRec(id: id, scenarioId: scenarioId, composite: composite)
+    }
+}
+
+extension TestRun {
+    var asRec: TestRunRec {
+        TestRunRec(id: id, scenarioId: scenarioId, failed: failed)
+    }
+}
+
+// MARK: - Trend Rec bridges
+
+extension ProjectTask {
+    var asTrendTaskRec: TrendTaskRec { TrendTaskRec(scenarioIds: scenarioIds) }
+}
+
+extension Bug {
+    var asTrendBugRec: TrendBugRec { TrendBugRec(status: status) }
+}
+
+extension Commit {
+    var asTrendCommitRec: TrendCommitRec { TrendCommitRec(tokensTotal: tokens?.total) }
+}
