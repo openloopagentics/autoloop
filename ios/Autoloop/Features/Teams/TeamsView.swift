@@ -25,6 +25,7 @@ struct TeamsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .appBackground(palette)
             .navigationTitle("Teams")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showPending = true } label: {

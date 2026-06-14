@@ -50,6 +50,7 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .appBackground(palette)
         .navigationTitle("Dashboard")
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear { store.start() }
         .onDisappear { store.stop() }
         .toolbar {

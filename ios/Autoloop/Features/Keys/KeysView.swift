@@ -83,6 +83,7 @@ struct KeysView: View {
                 }
         }
         .navigationTitle("API keys")
+        .navigationBarTitleDisplayMode(.inline)
         .task { await store.refresh() }
     }
 }

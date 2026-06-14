@@ -69,6 +69,7 @@ struct AdminView: View {
                 }
         }
         .navigationTitle("Admin")
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear { Task { await store.refresh() } }
     }
 }
