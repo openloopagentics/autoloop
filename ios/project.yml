@@ -20,9 +20,12 @@ targets:
   Autoloop:
     type: application
     platform: iOS
-    sources: [Autoloop]
-    resources:
+    sources:
+      - path: Autoloop
+      # GoogleService-Info.plist is a resource (xcodegen has no top-level `resources` key —
+      # it must be a source with buildPhase: resources). optional → generates without the secret.
       - path: Config/GoogleService-Info.plist
+        buildPhase: resources
         optional: true
     dependencies:
       - package: Firebase
@@ -45,7 +48,7 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLSchemes:
-              - REVERSED_CLIENT_ID_PLACEHOLDER
+              - com.googleusercontent.apps.609946116962-794sm2nnf221g32sohthcsd2qs84v104
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openloopagentics.autoloop
