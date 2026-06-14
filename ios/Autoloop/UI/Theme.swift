@@ -31,6 +31,11 @@ final class ThemeStore: ObservableObject {
         current = t
         defaults.set(id, forKey: THEME_KEY)
     }
+
+    /// The full design-system palette for the active theme.
+    var palette: Palette { .named(current.id) }
+    /// Drives `preferredColorScheme` so system chrome (status bar, controls) matches.
+    var colorScheme: ColorScheme { palette.isDark ? .dark : .light }
 }
 
 extension Color {

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DashboardView: View {
+    @Environment(\.palette) private var palette
     @StateObject private var store = DashboardStore()
     @State private var renaming: ProjectRow?
     @State private var newTitle = ""
@@ -20,14 +21,17 @@ struct DashboardView: View {
                         ProjectDetailView(teamId: row.teamId, slug: row.project.slug)
                     } label: {
                         HStack {
-                            VStack(alignment: .leading) {
-                                Text(row.project.title ?? row.project.slug).font(.headline)
-                                Text(row.teamId).font(.caption).foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(row.project.title ?? row.project.slug)
+                                    .font(.serif(16)).foregroundStyle(palette.fg)
+                                Text(row.teamId).font(.caption).foregroundStyle(palette.fgMeta)
                             }
                             Spacer()
                             if let s = row.project.status { StatusBadge(status: s) }
                         }
                     }
+                    .listRowBackground(palette.surfaceRaised)
+                    .listRowSeparatorTint(palette.borderSoft)
                     .swipeActions {
                         Button("Rename") { renaming = row; newTitle = row.project.title ?? "" }
                         if store.canDelete(teamId: row.teamId) {
@@ -40,8 +44,11 @@ struct DashboardView: View {
                         }
                     }
                 }
+                .scrollContentBackground(.hidden)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appBackground(palette)
         .navigationTitle("Dashboard")
         .onAppear { store.start() }
         .onDisappear { store.stop() }

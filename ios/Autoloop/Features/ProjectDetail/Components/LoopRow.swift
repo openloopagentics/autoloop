@@ -64,7 +64,7 @@ struct LoopRow: View {
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial)
+            .cardSurface()
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(selected ? Color.accentColor : Color.clear, lineWidth: 2)

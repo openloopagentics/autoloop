@@ -35,7 +35,7 @@ struct TrendsStrip: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
             .padding()
-            .background(.regularMaterial)
+            .cardSurface()
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal)
         }

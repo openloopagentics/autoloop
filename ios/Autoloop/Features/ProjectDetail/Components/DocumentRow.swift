@@ -25,7 +25,7 @@ struct DocumentRow: View {
             bodyView
         }
         .padding()
-        .background(.regularMaterial)
+        .cardSurface()
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 

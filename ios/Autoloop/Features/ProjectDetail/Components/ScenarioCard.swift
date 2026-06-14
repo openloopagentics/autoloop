@@ -73,7 +73,7 @@ struct ScenarioCard: View {
             }
         }
         .padding()
-        .background(.regularMaterial)
+        .cardSurface()
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 

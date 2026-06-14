@@ -1,14 +1,16 @@
 import SwiftUI
 struct StatusBadge: View {
+    @Environment(\.palette) private var palette
     let status: String
-    private var color: Color {
-        switch statusColor(status) {
-        case .gray: return .gray; case .blue: return .blue; case .red: return .red
-        case .amber: return .orange; case .green: return .green
-        }
-    }
     var body: some View {
-        Text(status).font(.caption).padding(.horizontal, 8).padding(.vertical, 2)
-            .background(color.opacity(0.18)).foregroundStyle(color).clipShape(Capsule())
+        let color = palette.statusColor(status)
+        Text(status)
+            .font(.system(size: 11, weight: .semibold))
+            .textCase(.uppercase)
+            .tracking(0.5)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.16))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
     }
 }

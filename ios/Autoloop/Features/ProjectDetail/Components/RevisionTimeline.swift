@@ -43,7 +43,7 @@ struct RevisionTimeline: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.regularMaterial)
+                    .cardSurface()
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .padding(.horizontal)
                 }

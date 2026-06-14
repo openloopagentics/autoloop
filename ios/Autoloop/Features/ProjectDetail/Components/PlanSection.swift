@@ -84,7 +84,7 @@ private struct PlanPhaseBlock: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial)
+        .cardSurface()
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -168,7 +168,7 @@ struct LegacyPhaseItem: View {
             }
         }
         .padding()
-        .background(.regularMaterial)
+        .cardSurface()
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .onAppear {
             commitsStore.startPhase(teamId: teamId, slug: slug, phaseId: phase.id, loopArg: loopArg)

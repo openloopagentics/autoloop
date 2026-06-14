@@ -70,7 +70,7 @@ struct IdeasTabView: View {
             .disabled(busy || title.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .padding()
-        .background(.regularMaterial)
+        .cardSurface()
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
     }
@@ -151,7 +151,7 @@ private struct IdeaRow: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial)
+        .cardSurface()
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

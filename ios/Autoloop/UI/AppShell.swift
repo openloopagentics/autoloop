@@ -3,6 +3,7 @@ import SwiftUI
 struct AppShell: View {
     @EnvironmentObject var auth: AuthStore
     @EnvironmentObject var theme: ThemeStore
+    @Environment(\.palette) private var palette
     @State private var showProfile = false
 
     var body: some View {
@@ -25,6 +26,26 @@ struct AppShell: View {
             }
         }
         .sheet(isPresented: $showProfile) { profileSheet }
+        .onAppear { applyChrome(palette) }
+        .onChange(of: theme.current.id) { _ in applyChrome(palette) }
+    }
+
+    /// Tint the nav + tab bars with the theme's deep surface so system chrome matches the board.
+    private func applyChrome(_ p: Palette) {
+        let nav = UINavigationBarAppearance()
+        nav.configureWithOpaqueBackground()
+        nav.backgroundColor = UIColor(p.surfaceDeep)
+        nav.titleTextAttributes = [.foregroundColor: UIColor(p.fg)]
+        nav.largeTitleTextAttributes = [.foregroundColor: UIColor(p.fg)]
+        UINavigationBar.appearance().standardAppearance = nav
+        UINavigationBar.appearance().scrollEdgeAppearance = nav
+        UINavigationBar.appearance().compactAppearance = nav
+
+        let tab = UITabBarAppearance()
+        tab.configureWithOpaqueBackground()
+        tab.backgroundColor = UIColor(p.surface)
+        UITabBar.appearance().standardAppearance = tab
+        UITabBar.appearance().scrollEdgeAppearance = tab
     }
 
     private var profileSheet: some View {

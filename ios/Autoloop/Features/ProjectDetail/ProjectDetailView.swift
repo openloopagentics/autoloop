@@ -3,6 +3,7 @@ import SwiftUI
 struct ProjectDetailView: View {
     let teamId: String
     let slug: String
+    @Environment(\.palette) private var palette
     @StateObject private var store: ProjectDetailStore
     @State private var tab: ProjectDetailTab = .dashboard
 
@@ -38,6 +39,8 @@ struct ProjectDetailView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appBackground(palette)
         .navigationTitle(store.project?.title ?? slug)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { store.start() }

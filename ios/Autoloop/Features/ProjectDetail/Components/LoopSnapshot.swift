@@ -77,7 +77,7 @@ struct LoopSnapshot: View {
             }
         }
         .padding()
-        .background(.regularMaterial)
+        .cardSurface()
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
     }
