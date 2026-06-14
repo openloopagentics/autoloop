@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import FirebaseFirestore
 
 /// Ideas backlog for the Ideas tab. Ideas are project-direct (they outlive the loop that
@@ -10,6 +11,13 @@ final class IdeasTabStore: ObservableObject {
 
     private var teamId = ""
     private var slug = ""
+    private var bag: Set<AnyCancellable> = []
+
+    // Forward the nested CollectionStore's changes — otherwise the view (which observes only
+    // this store) never re-renders when the listener loads, and the spinner never clears.
+    init() {
+        ideas.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+    }
 
     func subscribe(teamId: String, slug: String) {
         self.teamId = teamId

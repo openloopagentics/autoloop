@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import FirebaseFirestore
 
 /// Project-wide (all-scope) scores + testRuns for the Vision tab.
@@ -16,6 +17,15 @@ final class VisionTabStore: ObservableObject {
     @Published var rejectError: String?
     private var teamId = ""
     private var slug = ""
+    private var bag: Set<AnyCancellable> = []
+
+    // Forward nested-store changes so the view re-renders when listeners load.
+    init() {
+        for c in [allScores.objectWillChange, allTestRuns.objectWillChange,
+                  allVerifications.objectWillChange, visionChanges.objectWillChange] {
+            c.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+        }
+    }
 
     func subscribe(teamId: String, slug: String, loopIds: [String]) {
         self.teamId = teamId

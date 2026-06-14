@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import FirebaseFirestore
 
 /// Project-wide (all-scope) test runs for the Tests tab.
@@ -8,6 +9,12 @@ import FirebaseFirestore
 @MainActor
 final class TestsTabStore: ObservableObject {
     let allTestRuns = AllScopeStore<TestRun>()
+
+    private var bag: Set<AnyCancellable> = []
+    // Forward nested-store changes so the view re-renders when listeners load.
+    init() {
+        allTestRuns.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+    }
 
     func subscribe(teamId: String, slug: String, loopIds: [String]) {
         allTestRuns.update(

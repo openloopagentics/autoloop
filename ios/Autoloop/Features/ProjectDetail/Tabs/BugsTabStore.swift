@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import FirebaseFirestore
 
 /// All-scope bugs for the Bugs tab.
@@ -9,6 +10,12 @@ import FirebaseFirestore
 @MainActor
 final class BugsTabStore: ObservableObject {
     let allBugs = AllScopeStore<Bug>()
+
+    private var bag: Set<AnyCancellable> = []
+    // Forward nested-store changes so the view re-renders when listeners load.
+    init() {
+        allBugs.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+    }
 
     func subscribe(teamId: String, slug: String, loopIds: [String]) {
         allBugs.update(

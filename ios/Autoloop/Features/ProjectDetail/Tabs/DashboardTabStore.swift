@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import FirebaseFirestore
 
 /// Loop-scoped data for the Dashboard tab.
@@ -12,6 +13,14 @@ final class DashboardTabStore: ObservableObject {
     let tasks     = CollectionStore<ProjectTask>()
     let scores    = CollectionStore<Score>()
     let testRuns  = CollectionStore<TestRun>()
+
+    private var bag: Set<AnyCancellable> = []
+    // Forward nested-store changes so the view re-renders when listeners load.
+    init() {
+        for c in [phases.objectWillChange, tasks.objectWillChange, scores.objectWillChange, testRuns.objectWillChange] {
+            c.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+        }
+    }
 
     func subscribe(teamId: String, slug: String, loopArg: String?) {
         phases.stop()

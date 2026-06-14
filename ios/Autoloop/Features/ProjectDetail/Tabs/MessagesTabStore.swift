@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import FirebaseFirestore
 
 /// Messages thread + per-scope Session Log for the Messages tab.
@@ -28,6 +29,12 @@ final class MessagesTabStore: ObservableObject {
 
     private var teamId = ""
     private var slug = ""
+    private var bag: Set<AnyCancellable> = []
+
+    // Forward the nested messages store's changes so the thread re-renders when it loads.
+    init() {
+        messages.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+    }
 
     // MARK: - Lifecycle
 

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import FirebaseFirestore
 
 /// Loop-scoped data for the SELECTED loop in the Loops tab.
@@ -15,6 +16,15 @@ final class LoopsTabStore: ObservableObject {
     let scores    = CollectionStore<Score>()
     let testRuns  = CollectionStore<TestRun>()
     let revisions = CollectionStore<Revision>()
+
+    private var bag: Set<AnyCancellable> = []
+    // Forward nested-store changes so the view re-renders when listeners load.
+    init() {
+        for c in [phases.objectWillChange, tasks.objectWillChange, scores.objectWillChange,
+                  testRuns.objectWillChange, revisions.objectWillChange] {
+            c.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+        }
+    }
 
     func subscribe(teamId: String, slug: String, loopArg: String?) {
         stop()
