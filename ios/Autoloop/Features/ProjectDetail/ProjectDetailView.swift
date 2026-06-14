@@ -20,11 +20,6 @@ struct ProjectDetailView: View {
                 EmptyState(text: "Project not found.")
             } else {
                 ProjectHeaderView(project: store.project!, status: store.effectiveStatus)
-                if store.loopList.count > 1 {
-                    LoopPicker(loops: store.loopList, selectedId: Binding(
-                        get: { store.resolvedSelectedId }, set: { store.selectedId = $0 }))
-                        .padding(.horizontal)
-                }
                 TabStrip(selection: $tab)
                 TabView(selection: $tab) {
                     DashboardTabView(store: store).tag(ProjectDetailTab.dashboard)
