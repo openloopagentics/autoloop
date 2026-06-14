@@ -42,6 +42,12 @@ targets:
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # actool's partial plist isn't merged into a static INFOPLIST_FILE, so set it explicitly.
+        CFBundleIconName: AppIcon
         API_BASE_URL: $(API_BASE_URL)
         # App uses only standard HTTPS — declare no non-exempt encryption so TestFlight
         # uploads skip the export-compliance prompt.
@@ -54,6 +60,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openloopagentics.autoloop
         DEVELOPMENT_TEAM: RL4G6WZ65Q
         CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"        # iPhone only (iOS-first; drops iPad asset reqs)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "1.0.0"      # version testers see
         CURRENT_PROJECT_VERSION: "1"    # bump every TestFlight upload
   AutoloopTests:
