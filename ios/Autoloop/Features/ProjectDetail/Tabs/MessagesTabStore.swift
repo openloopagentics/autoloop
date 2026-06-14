@@ -44,6 +44,10 @@ final class MessagesTabStore: ObservableObject {
     /// the web's useSessionLog returns empty for the project-direct scope and
     /// SessionLogTab iterates loops only, so we do NOT subscribe a project-direct scope.
     func subscribeSessions(loops: [Loop]) {
+        // Guard against firing before start() set the path: in a paged TabView this view's
+        // .onChange(of: loops) can fire while the tab is offscreen (onAppear not yet run), when
+        // teamId/slug are still empty — an empty Firestore path segment hard-crashes (FIRInvalidArgument).
+        guard !teamId.isEmpty, !slug.isEmpty else { return }
         // Newest loop first (startedAt desc, then order desc, then id desc) and day-grouped —
         // mirrors SessionLogTab.tsx using groupLoopRuns over the selectable loop list.
         let selectable = buildLoopList(loops.map(\.asLoopRec), project: nil, hasProjectDirectData: false)

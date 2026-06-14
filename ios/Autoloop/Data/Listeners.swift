@@ -40,6 +40,11 @@ func collectionRef(segments: [String], name: String) -> CollectionReference {
     let db = Firestore.firestore()
     precondition(segments.count >= 2 && segments.count % 2 == 0,
                  "basePath must have even length ≥ 2")
+    // An empty segment yields .document("") / .collection(""), which Firestore answers with an
+    // uncatchable Obj-C exception (FIRInvalidArgument → SIGABRT). Surface it as a Swift
+    // precondition with the offending path instead of crashing deep in C++.
+    precondition(segments.allSatisfy { !$0.isEmpty },
+                 "Firestore path has an empty segment: \(segments) / \(name)")
     var ref = db.collection(segments[0]).document(segments[1])
     var idx = 2
     while idx + 1 < segments.count {
