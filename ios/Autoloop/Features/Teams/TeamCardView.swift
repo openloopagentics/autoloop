@@ -7,6 +7,7 @@ import UIKit
 struct TeamCardView: View {
     let teamRef: TeamRef
     @EnvironmentObject var auth: AuthStore
+    @Environment(\.palette) private var palette
     @StateObject private var store: TeamCardStore
     @State private var error: String?
     @State private var copied = false
@@ -35,8 +36,8 @@ struct TeamCardView: View {
             membersSection
             if isManager { managerSection }
         }
-        .padding(12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .padding(DS.cardPad)
+        .cardSurface()
         .onAppear { store.start() }
         .onDisappear { store.stop() }
     }
@@ -44,7 +45,7 @@ struct TeamCardView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(displayName).font(.headline)
+                Text(displayName).font(.serif(16)).foregroundStyle(palette.fg)
                 Button {
                     UIPasteboard.general.string = teamRef.teamId
                     copied = true
@@ -60,8 +61,11 @@ struct TeamCardView: View {
             }
             Spacer()
             Text(viewerRole.rawValue)
-                .font(.caption)
-                .foregroundStyle(viewerRole == .owner ? .primary : .secondary)
+                .font(.system(size: 11, weight: .semibold)).textCase(.uppercase).tracking(0.5)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(palette.accentSoft)
+                .foregroundStyle(viewerRole == .owner ? palette.accent : palette.fgSoft)
+                .clipShape(Capsule())
         }
     }
 
