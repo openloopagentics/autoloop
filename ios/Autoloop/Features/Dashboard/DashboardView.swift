@@ -27,7 +27,8 @@ struct DashboardView: View {
                                 Text(row.teamId).font(.caption).foregroundStyle(palette.fgMeta)
                             }
                             Spacer()
-                            if let s = row.project.status { StatusBadge(status: s) }
+                            ProjectStatusBadge(teamId: row.teamId, slug: row.project.slug,
+                                               fallback: row.project.status)
                         }
                     }
                     .listRowBackground(palette.surfaceRaised)
@@ -105,5 +106,29 @@ struct DashboardView: View {
         do {
             try await RestClient.deleteProject(teamId: row.teamId, slug: row.project.slug)
         } catch { writeError = error.localizedDescription }
+    }
+}
+
+/// A project's EFFECTIVE status badge — mirrors web's ProjectCardContainer: derive it from the
+/// project's loops (running only if a loop genuinely is; zombie→paused; else latest loop's status),
+/// falling back to the stored project status. A per-project loops listener, like web's useLoops.
+private struct ProjectStatusBadge: View {
+    let teamId: String
+    let slug: String
+    let fallback: String?
+    @StateObject private var loops = CollectionStore<Loop>()
+
+    private var status: String? {
+        effectiveProjectStatus(loops.data.map(\.asStatusLoop), projectStatus: fallback)
+    }
+
+    var body: some View {
+        Group {
+            if let s = status { StatusBadge(status: s) }
+        }
+        .onAppear {
+            loops.start(query: loopsQuery(teamId: teamId, slug: slug)) { Loop(id: $0.documentID, data: $0.data()) }
+        }
+        .onDisappear { loops.stop() }
     }
 }
