@@ -29,8 +29,10 @@ struct LoopRow: View {
                             .foregroundStyle(.secondary)
                     }
                     Text(displayName)
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
+                        .lineLimit(selected ? 3 : 2)
+                        .truncationMode(.tail)
                     if let status = loop.status {
                         StatusBadge(status: status)
                     }
@@ -62,7 +64,7 @@ struct LoopRow: View {
                     }
                 }
             }
-            .padding()
+            .padding(DS.cardPad)
             .frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface()
             .overlay(
