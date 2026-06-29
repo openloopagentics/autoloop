@@ -1,15 +1,15 @@
-import type { Phase, Scenario, Score, TestRun, Task } from "../types";
+import type { Phase, Scenario, Score, TestRun, Task, Verification } from "../types";
 import type { SelectableLoop } from "../loopView";
 import { phaseProgress } from "../loopView";
 import { summarize } from "../scenarioState";
 import { StatusBadge } from "./StatusBadge";
 import { PreviewLink } from "./PreviewLink";
 
-export function LoopSnapshot({ loop, phases, tasks, scenarios, scores, testRuns }: {
-  loop: SelectableLoop; phases: Phase[]; tasks: Task[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[];
+export function LoopSnapshot({ loop, phases, tasks, scenarios, scores, testRuns, verifications = [] }: {
+  loop: SelectableLoop; phases: Phase[]; tasks: Task[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; verifications?: Verification[];
 }) {
   const prog = phaseProgress(phases);
-  const met = summarize(scenarios, scores, testRuns);
+  const met = summarize(scenarios, scores, testRuns, verifications);
   const currentTask = tasks.find((t) => t.id === loop.currentTaskId) ?? null;
   return (
     <section className="snapshot card">
