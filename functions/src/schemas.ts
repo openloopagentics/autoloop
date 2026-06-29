@@ -151,6 +151,23 @@ export const revisionBody = z.object({
   changes: z.array(z.object({ op: z.enum(["add", "replace", "reorder", "drop"]), taskId: id }).passthrough()).min(1),
 });
 
+// Decision: append-only reasoning event for the three "why" moments the loop can't
+// otherwise record (goal choice, task approach, dead-ends). Plan changes live in
+// revisionBody; vision changes in visionChangeBody. Server stamps id (ULID) + createdAt.
+export const decisionBody = z.object({
+  kind: z.enum(["goal-pick", "approach", "stuck"]),
+  summary: z.string().min(1).max(200),
+  rationale: z.string().min(1).max(4096),
+  alternatives: z.array(z.string().min(1).max(500)).max(10).optional(),
+  refs: z.object({
+    scenarioIds: z.array(id).optional(),
+    taskIds: z.array(id).optional(),
+    commitShas: z.array(id).optional(),
+  }).optional(),
+  by: z.string().max(200).optional(),
+});
+export type DecisionBody = z.infer<typeof decisionBody>;
+
 // Vision change: propose-and-apply event. `payload` is re-validated per-op in the
 // service with goalBody/scenarioBody so error messages match direct upserts.
 export const visionChangeBody = z.object({
