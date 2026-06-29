@@ -1,0 +1,59 @@
+import type { WhyModel, WhyDecision, SubjectState, DecisionKind } from "./whyModel";
+
+export type GraphNodeKind = "goal" | "scenario" | "task" | "bug" | "decision" | "evidence";
+export interface GraphNode {
+  id: string; kind: GraphNodeKind; label: string; state: SubjectState;
+  whyChip?: string; loopId?: string; decisionKind?: DecisionKind;
+}
+export interface GraphEdge { id: string; from: string; to: string; kind: "structure" | "affects" | "evidence"; label?: string; }
+
+export function buildWhyGraph(model: WhyModel, opts: { showReasoning: boolean }): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+
+  // Structural subject nodes (always)
+  for (const s of model.subjects) {
+    const topFail = s.explanation?.reasons.find((r) => !r.ok);
+    nodes.push({
+      id: s.id, kind: s.kind as GraphNodeKind, label: s.label,
+      state: s.explanation?.state ?? "neutral", loopId: s.loopId,
+      whyChip: s.kind === "scenario" && s.explanation?.state === "unmet" ? topFail?.text : undefined,
+    });
+  }
+  const nodeIds = new Set(nodes.map((n) => n.id));
+
+  // Structure edges (always)
+  for (const e of model.edges) if (e.type === "structure") edges.push({ id: `${e.from}->${e.to}`, from: e.from, to: e.to, kind: "structure" });
+
+  if (!opts.showReasoning) {
+    // Collapse each decision onto the incoming structure edge of the subject it affects.
+    // Pick the most recent decision per target (decisions are id-ordered → max id wins).
+    const byTarget = new Map<string, WhyDecision>();
+    for (const d of model.decisions) {
+      for (const sid of d.refs.scenarioIds.map((x) => `scenario:${x}`).concat(d.refs.taskIds.map((x) => `task:${x}`))) {
+        if (!nodeIds.has(sid)) continue;
+        const prev = byTarget.get(sid);
+        if (!prev || d.id > prev.id) byTarget.set(sid, d);
+      }
+    }
+    for (const [target, d] of byTarget) {
+      const edge = edges.find((e) => e.to === target && e.kind === "structure");
+      if (edge) {
+        const count = model.decisions.filter((x) =>
+          x.refs.scenarioIds.includes(target.replace(/^scenario:/, "")) || x.refs.taskIds.includes(target.replace(/^task:/, ""))).length;
+        edge.label = count > 1 ? `${d.summary} (+${count - 1} more)` : d.summary;
+      }
+    }
+    return { nodes, edges };
+  }
+
+  // Reasoning mode: add decision + evidence nodes and their edges.
+  for (const d of model.decisions) nodes.push({ id: d.id, kind: "decision", label: d.summary, state: "neutral", loopId: d.loopId, decisionKind: d.kind });
+  for (const ev of model.evidence) nodes.push({ id: ev.id, kind: "evidence", label: String((ev.detail.composite ?? ev.detail.verdict ?? ev.kind)), state: "neutral" });
+  const allIds = new Set(nodes.map((n) => n.id));
+  for (const e of model.edges) {
+    if (e.type === "affects" && allIds.has(e.from) && allIds.has(e.to)) edges.push({ id: `a:${e.from}->${e.to}`, from: e.from, to: e.to, kind: "affects" });
+    if (e.type === "evidence" && allIds.has(e.from) && allIds.has(e.to)) edges.push({ id: `e:${e.from}->${e.to}`, from: e.from, to: e.to, kind: "evidence" });
+  }
+  return { nodes, edges };
+}
