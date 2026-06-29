@@ -1004,6 +1004,7 @@ export async function run(argv, deps = {}) {
       }
       case "decision add": {
         const kind = flags.kind;
+        if (!kind) throw new UsageError("decision add requires --kind <goal-pick|approach|stuck>");
         if (!["goal-pick","approach","stuck"].includes(kind)) throw new UsageError(`--kind must be goal-pick|approach|stuck, got '${kind}'`);
         if (!flags.summary) throw new UsageError("decision add requires --summary <s>");
         if (!flags.reason) throw new UsageError("decision add requires --reason <r>");
@@ -1015,7 +1016,7 @@ export async function run(argv, deps = {}) {
         const com = asArray(flags.commit); if (com.length) { com.forEach((c) => validateId("commit", c)); refs.commitShas = com; }
         if (Object.keys(refs).length) body.refs = refs;
         const cfg = loadConfig(cwd);
-        const url = `${resolveApiUrl(cfg, env, oneFlag("url", flags.url))}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/decisions`;
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/decisions`;
         return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "idea add": {
