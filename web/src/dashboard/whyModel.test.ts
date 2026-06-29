@@ -121,4 +121,20 @@ describe("buildWhyModel", () => {
     const m = buildWhyModel({ ...base, verifications: [{ id: "V1", scenarioId: "s1", verdict: "refuted" }] });
     expect(m.evidence.some((e) => e.kind === "verification" && e.subjectId === "scenario:s1" && e.relation === "refutes")).toBe(true);
   });
+  it("skips an evidence row for a verification with no verdict", () => {
+    const m = buildWhyModel({ ...base, verifications: [{ id: "V1", scenarioId: "s1" }] });
+    expect(m.evidence.some((e) => e.kind === "verification")).toBe(false);
+  });
+  it("includes open bugs as subjects but NOT fixed ones", () => {
+    const m = buildWhyModel({ ...base, bugs: [
+      { id: "b1", scenarioId: "s1", severity: "low", status: "open" },
+      { id: "b2", scenarioId: "s1", severity: "low", status: "fixed" },
+    ] });
+    expect(m.subjects.some((x) => x.id === "bug:b1")).toBe(true);
+    expect(m.subjects.some((x) => x.id === "bug:b2")).toBe(false);
+  });
+  it("keeps a goal-op vision change's targetId out of scenarioIds (no affects edge)", () => {
+    const m = buildWhyModel({ ...base, revisions: [], visionChanges: [{ id: "V1", op: "upsert-goal", targetId: "g1", reason: "scope" }] });
+    expect(m.edges.some((e) => e.type === "affects" && e.from === "V1")).toBe(false);
+  });
 });
