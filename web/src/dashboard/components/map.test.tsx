@@ -31,7 +31,7 @@ const loops: SelectableLoop[] = [
 function renderTab(overrides: Partial<Parameters<typeof MapTab>[0]> = {}) {
   return render(<MapTab
     teamId="team" slug="proj"
-    loops={loops} selectedId="l2" onSelect={() => {}}
+    loops={loops} selectedId="l2" loopArg="l2" onSelect={() => {}}
     goals={[{ id: "g1", title: "Ship auth" }]}
     scenarios={[{ id: "login", goalId: "g1", title: "Login works", threshold: 80 }]}
     scores={[{ id: "01A", scenarioId: "login", composite: 90 }]}

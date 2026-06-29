@@ -134,7 +134,7 @@ export function ProjectDetail() {
                 {tab === "tests" && <TestsTab scenarios={scenarios.data} testRuns={allTestRuns.data} />}
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
                 {tab === "map" && (
-                  <MapTab teamId={teamId} slug={slug} loops={loopList} selectedId={selectedId} onSelect={setPicked}
+                  <MapTab teamId={teamId} slug={slug} loops={loopList} selectedId={selectedId} loopArg={loopArg} onSelect={setPicked}
                     goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data}
                     tasks={tasks.data} bugs={loopBugs.data} currentTaskId={selected?.currentTaskId}
                     verifications={verifications.data} revisions={revisions.data} visionChanges={visionChanges.data}

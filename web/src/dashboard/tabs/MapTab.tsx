@@ -14,6 +14,7 @@ import type { Bug, Goal, Idea, Revision, Scenario, Score, Task, TestRun, Verific
 export interface MapTabProps {
   teamId: string; slug: string;
   loops: SelectableLoop[]; selectedId: string; onSelect: (id: string) => void;
+  loopArg?: string;                          // scoped loop id (undefined for the synthetic "main" → project-direct path)
   goals: Goal[]; scenarios: Scenario[];
   scores: Score[]; testRuns: TestRun[];     // project-wide (all loops) — scenarios are project-level vision
   tasks: Task[]; bugs: Bug[];               // selected-loop scoped (same convention as the Loops tab)
@@ -27,18 +28,20 @@ export interface MapTabProps {
 
 export function MapTab(props: MapTabProps) {
   const {
-    teamId, slug, loops, selectedId, onSelect,
+    teamId, slug, loops, selectedId, onSelect, loopArg,
     goals, scenarios, scores, testRuns, tasks, bugs, currentTaskId,
     verifications = [], revisions = [], visionChanges = [], ideas = [], projectCreatedAt,
   } = props;
 
-  const decisions = useDecisions(teamId, slug, selectedId);
+  // loopArg (undefined for the synthetic "main") scopes decisions + the model's loopId the same
+  // way ProjectDetail scopes revisions/tasks/bugs — selectedId is for the LoopSelector UI only.
+  const decisions = useDecisions(teamId, slug, loopArg);
 
   const input = useMemo<BuildWhyModelInput>(() => ({
-    loopId: selectedId,
+    loopId: loopArg,
     goals, scenarios, tasks, bugs, scores, testRuns, verifications,
     revisions, visionChanges, decisions: decisions.data, ideas, currentTaskId,
-  }), [selectedId, goals, scenarios, tasks, bugs, scores, testRuns, verifications, revisions, visionChanges, decisions.data, ideas, currentTaskId]);
+  }), [loopArg, goals, scenarios, tasks, bugs, scores, testRuns, verifications, revisions, visionChanges, decisions.data, ideas, currentTaskId]);
 
   const [showReasoning, setShowReasoning] = useState(false);
   const [scrubT, setScrubT] = useState<number | null>(null); // null = live
