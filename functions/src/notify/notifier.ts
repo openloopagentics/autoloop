@@ -1,10 +1,21 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "../firestore.js";
 import { ulid } from "../ulid.js";
 import { decideScenarioNotification, allMet, type State } from "./decide.js";
 
+/** Notifications are reaped 30 days after creation. */
+const NOTIFICATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 async function writeNotification(teamId: string, n: { type: string; projectSlug: string; scenarioId?: string; title: string; message: string }) {
-  await db().doc(`teams/${teamId}/notifications/${ulid()}`).set({ ...n, createdAt: FieldValue.serverTimestamp() });
+  // expiresAt lets Firestore garbage-collect old notifications.
+  // OPERATOR ACTION REQUIRED: enable a Firestore TTL policy on the `expiresAt`
+  // field of the teams/{teamId}/notifications collection group — TTL is not
+  // automatic; without the policy these docs are never deleted.
+  await db().doc(`teams/${teamId}/notifications/${ulid()}`).set({
+    ...n,
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + NOTIFICATION_TTL_MS),
+  });
 }
 async function colById(path: string) {
   return (await db().collection(path).get()).docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Array<{ id: string }>;

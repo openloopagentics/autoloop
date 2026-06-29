@@ -66,13 +66,79 @@ describe("init", () => {
 });
 
 // @ts-ignore
-import { report, resolveApiUrl } from "../../cli/autoloop.mjs";
+import { report, resolveApiUrl, fetchWithRetry } from "../../cli/autoloop.mjs";
 
 describe("resolveApiUrl precedence", () => {
   it("flag > env > config", () => {
     expect(resolveApiUrl({ apiUrl: "c" }, { AUTOLOOP_API_URL: "e" }, "f")).toBe("f");
     expect(resolveApiUrl({ apiUrl: "c" }, { AUTOLOOP_API_URL: "e" }, undefined)).toBe("e");
     expect(resolveApiUrl({ apiUrl: "c" }, {}, undefined)).toBe("c");
+  });
+});
+
+describe("fetchWithRetry (timeout + transient retry)", () => {
+  const noSleep = async () => {}; // skip real backoff in tests
+  const resp = (status: number) => ({ ok: status < 400, status, json: async () => ({}) });
+
+  it("returns the first success without retrying", async () => {
+    let calls = 0;
+    const res: any = await fetchWithRetry("u", { method: "PUT" },
+      { fetchImpl: async () => { calls++; return resp(200); }, sleep: noSleep });
+    expect(res.status).toBe(200);
+    expect(calls).toBe(1);
+  });
+
+  it("retries a network error on an idempotent method, then succeeds", async () => {
+    let calls = 0;
+    const res: any = await fetchWithRetry("u", { method: "PUT" }, {
+      sleep: noSleep,
+      fetchImpl: async () => { calls++; if (calls < 3) throw new Error("ECONNRESET"); return resp(200); },
+    });
+    expect(res.status).toBe(200);
+    expect(calls).toBe(3);
+  });
+
+  it("retries HTTP 5xx then returns the last response when retries are exhausted", async () => {
+    let calls = 0;
+    const res: any = await fetchWithRetry("u", { method: "PUT" },
+      { sleep: noSleep, fetchImpl: async () => { calls++; return resp(503); } });
+    expect(res.status).toBe(503);
+    expect(calls).toBe(3); // initial + 2 retries
+  });
+
+  it("does NOT retry a 4xx", async () => {
+    let calls = 0;
+    const res: any = await fetchWithRetry("u", { method: "PUT" },
+      { sleep: noSleep, fetchImpl: async () => { calls++; return resp(400); } });
+    expect(res.status).toBe(400);
+    expect(calls).toBe(1);
+  });
+
+  it("does NOT retry a network error on a non-idempotent POST", async () => {
+    let calls = 0;
+    await expect(fetchWithRetry("u", { method: "POST" },
+      { sleep: noSleep, fetchImpl: async () => { calls++; throw new Error("net"); } }))
+      .rejects.toThrow(/net/);
+    expect(calls).toBe(1);
+  });
+
+  it("retries a 429 even on a non-idempotent POST (server never processed it)", async () => {
+    let calls = 0;
+    const res: any = await fetchWithRetry("u", { method: "POST" },
+      { sleep: noSleep, fetchImpl: async () => { calls++; return resp(429); } });
+    expect(res.status).toBe(429);
+    expect(calls).toBe(3);
+  });
+
+  it("aborts a hung request via the per-attempt timeout", async () => {
+    let signalled = false;
+    await expect(fetchWithRetry("u", { method: "PUT" }, {
+      sleep: noSleep, attempts: 1, timeoutMs: 5,
+      fetchImpl: (_u: string, init: any) => new Promise((_res, rej) => {
+        init.signal.addEventListener("abort", () => { signalled = true; rej(new Error("aborted")); });
+      }),
+    })).rejects.toThrow();
+    expect(signalled).toBe(true);
   });
 });
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   collection, collectionGroup, doc, documentId, limit, onSnapshot, orderBy, query, where,
+  type Query, type QuerySnapshot,
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import type { Notification } from "../notifications/types";
@@ -9,22 +10,49 @@ import type { Bug, Commit, DocumentRec, Goal, Idea, Loop, Message, Phase, Projec
 
 interface Result<T> { data: T; loading: boolean; error: string | null; }
 
-export function useMyTeams(): Result<TeamRef[]> {
-  const [data, setData] = useState<TeamRef[]>([]);
+/**
+ * Generic Firestore collection-query subscription. Removes the loading/error/data
+ * boilerplate repeated across the single-query hooks below.
+ *
+ * - `makeQuery` builds the query from the current deps; return `null` to skip the
+ *   subscription (e.g. missing ids), in which case data resets to `initial`.
+ * - `parse` maps a snapshot to the hook's data shape.
+ * - Subscribes WITH an error callback so listener errors surface in `error` rather
+ *   than silently leaving stale data; cleans up on unmount and re-subscribes on dep change.
+ */
+function useFirestoreQuery<T>(
+  makeQuery: () => Query | null,
+  parse: (snap: QuerySnapshot) => T,
+  initial: T,
+  deps: unknown[],
+): Result<T> {
+  const [data, setData] = useState<T>(initial);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) { setLoading(false); return; }
-    const q = query(collectionGroup(db, "members"), where("uid", "==", uid));
+    const q = makeQuery();
+    if (!q) { setData(initial); setLoading(false); return; }
+    setLoading(true);
+    setError(null);
     return onSnapshot(q,
-      (snap) => {
-        setData(snap.docs.map((d) => ({ teamId: d.ref.parent.parent?.id ?? "", role: d.data().role })).filter((t) => t.teamId));
-        setLoading(false);
-      },
+      (snap) => { setData(parse(snap)); setLoading(false); },
       (e) => { setError(e.message); setLoading(false); });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
   return { data, loading, error };
+}
+
+export function useMyTeams(): Result<TeamRef[]> {
+  return useFirestoreQuery<TeamRef[]>(
+    () => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return null;
+      return query(collectionGroup(db, "members"), where("uid", "==", uid));
+    },
+    (snap) => snap.docs.map((d) => ({ teamId: d.ref.parent.parent?.id ?? "", role: d.data().role })).filter((t) => t.teamId),
+    [],
+    [],
+  );
 }
 
 export function useTeam(teamId: string): Result<Team | null> {
@@ -41,16 +69,12 @@ export function useTeam(teamId: string): Result<Team | null> {
 }
 
 export function useTeamProjects(teamId: string): Result<Project[]> {
-  const [data, setData] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    return onSnapshot(collection(db, "teams", teamId, "projects"),
-      (snap) => { setData(snap.docs.map((d) => ({ slug: d.id, ...(d.data() as object) })) as Project[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Project[]>(
+    () => collection(db, "teams", teamId, "projects"),
+    (snap) => snap.docs.map((d) => ({ slug: d.id, ...(d.data() as object) })) as Project[],
+    [],
+    [teamId],
+  );
 }
 
 export function useProject(teamId: string, slug: string): Result<Project | null | undefined> {
@@ -67,200 +91,129 @@ export function useProject(teamId: string, slug: string): Result<Project | null 
 }
 
 export function usePhases(teamId: string, slug: string, loopId?: string): Result<Phase[]> {
-  const [data, setData] = useState<Phase[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "phases"), orderBy("order"));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Phase[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Phase[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "phases"), orderBy("order")),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Phase[],
+    [],
+    [teamId, slug, loopId],
+  );
 }
 
 export function useCommits(teamId: string, slug: string, phaseId: string, loopId?: string): Result<Commit[]> {
-  const [data, setData] = useState<Commit[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "phases", phaseId, "commits"), orderBy("createdAt", "desc"));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ sha: d.id, ...(d.data() as object) })) as Commit[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, phaseId, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Commit[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "phases", phaseId, "commits"), orderBy("createdAt", "desc")),
+    (snap) => snap.docs.map((d) => ({ sha: d.id, ...(d.data() as object) })) as Commit[],
+    [],
+    [teamId, slug, phaseId, loopId],
+  );
 }
 
 export function useGoals(teamId: string, slug: string): Result<Goal[]> {
-  const [data, setData] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, "teams", teamId, "projects", slug, "goals"), orderBy("order"));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Goal[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug]);
-  return { data, loading, error };
+  return useFirestoreQuery<Goal[]>(
+    () => query(collection(db, "teams", teamId, "projects", slug, "goals"), orderBy("order")),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Goal[],
+    [],
+    [teamId, slug],
+  );
 }
 
 export function useScenarios(teamId: string, slug: string): Result<Scenario[]> {
-  const [data, setData] = useState<Scenario[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, "teams", teamId, "projects", slug, "scenarios"), orderBy("order"));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Scenario[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug]);
-  return { data, loading, error };
+  return useFirestoreQuery<Scenario[]>(
+    () => query(collection(db, "teams", teamId, "projects", slug, "scenarios"), orderBy("order")),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Scenario[],
+    [],
+    [teamId, slug],
+  );
 }
 
 export function useTasks(teamId: string, slug: string, loopId?: string): Result<Task[]> {
-  const [data, setData] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "tasks"), orderBy("order"));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Task[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Task[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "tasks"), orderBy("order")),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Task[],
+    [],
+    [teamId, slug, loopId],
+  );
 }
 
 export function useScores(teamId: string, slug: string, loopId?: string): Result<Score[]> {
-  const [data, setData] = useState<Score[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "scores"), orderBy(documentId()));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Score[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Score[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "scores"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Score[],
+    [],
+    [teamId, slug, loopId],
+  );
 }
 
 export function useTestRuns(teamId: string, slug: string, loopId?: string): Result<TestRun[]> {
-  const [data, setData] = useState<TestRun[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "testRuns"), orderBy(documentId()));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as TestRun[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<TestRun[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "testRuns"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as TestRun[],
+    [],
+    [teamId, slug, loopId],
+  );
 }
 
 export function useVerifications(teamId: string, slug: string, loopId?: string): Result<Verification[]> {
-  const [data, setData] = useState<Verification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "verifications"), orderBy(documentId()));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Verification[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Verification[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "verifications"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Verification[],
+    [],
+    [teamId, slug, loopId],
+  );
 }
 
 export function useRevisions(teamId: string, slug: string, loopId?: string): Result<Revision[]> {
-  const [data, setData] = useState<Revision[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "revisions"), orderBy(documentId()));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Revision[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Revision[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "revisions"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Revision[],
+    [],
+    [teamId, slug, loopId],
+  );
 }
 
 export function useDocuments(teamId: string, slug: string): Result<DocumentRec[]> {
-  const [data, setData] = useState<DocumentRec[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, "teams", teamId, "projects", slug, "documents"), orderBy(documentId()));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as DocumentRec[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug]);
-  return { data, loading, error };
+  return useFirestoreQuery<DocumentRec[]>(
+    () => query(collection(db, "teams", teamId, "projects", slug, "documents"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as DocumentRec[],
+    [],
+    [teamId, slug],
+  );
 }
 
 export function useTeamNotifications(teamId: string): Result<Notification[]> {
-  const [data, setData] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, "teams", teamId, "notifications"), orderBy(documentId(), "desc"), limit(50));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, teamId, ...(d.data() as object) })) as Notification[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Notification[]>(
+    () => query(collection(db, "teams", teamId, "notifications"), orderBy(documentId(), "desc"), limit(50)),
+    (snap) => snap.docs.map((d) => ({ id: d.id, teamId, ...(d.data() as object) })) as Notification[],
+    [],
+    [teamId],
+  );
 }
 
 export function useTaskCommits(teamId: string, slug: string, taskId: string, loopId?: string): Result<Commit[]> {
-  const [data, setData] = useState<Commit[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "tasks", taskId, "commits"), orderBy("createdAt", "desc"));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ sha: d.id, ...(d.data() as object) })) as Commit[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, taskId, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Commit[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "tasks", taskId, "commits"), orderBy("createdAt", "desc")),
+    (snap) => snap.docs.map((d) => ({ sha: d.id, ...(d.data() as object) })) as Commit[],
+    [],
+    [teamId, slug, taskId, loopId],
+  );
 }
 
 export function useLoops(teamId: string, slug: string): Result<Loop[]> {
-  const [data, setData] = useState<Loop[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!teamId || !slug) { setData([]); setLoading(false); return; }
-    setLoading(true);
-    const q = query(collection(db, "teams", teamId, "projects", slug, "loops"), orderBy("order"));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Loop[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug]);
-  return { data, loading, error };
+  return useFirestoreQuery<Loop[]>(
+    () => (teamId && slug) ? query(collection(db, "teams", teamId, "projects", slug, "loops"), orderBy("order")) : null,
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Loop[],
+    [],
+    [teamId, slug],
+  );
 }
 
 export function useBugs(teamId: string, slug: string, loopId?: string): Result<Bug[]> {
-  const [data, setData] = useState<Bug[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, ...basePath(teamId, slug, loopId), "bugs"), orderBy(documentId()));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Bug[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<Bug[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "bugs"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Bug[],
+    [],
+    [teamId, slug, loopId],
+  );
 }
 
 /** All test runs across the whole project — project-direct + every loop's testRuns, merged. */
@@ -348,61 +301,39 @@ export function useAllBugs(teamId: string, slug: string): Result<Bug[]> {
 }
 
 export function useMessages(teamId: string, slug: string): Result<Message[]> {
-  const [data, setData] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, "teams", teamId, "projects", slug, "messages"), orderBy(documentId()));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Message[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug]);
-  return { data, loading, error };
+  return useFirestoreQuery<Message[]>(
+    () => query(collection(db, "teams", teamId, "projects", slug, "messages"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Message[],
+    [],
+    [teamId, slug],
+  );
 }
 
 export function useIdeas(teamId: string, slug: string): Result<Idea[]> {
-  const [data, setData] = useState<Idea[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, "teams", teamId, "projects", slug, "ideas"), orderBy(documentId()));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Idea[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug]);
-  return { data, loading, error };
+  return useFirestoreQuery<Idea[]>(
+    () => query(collection(db, "teams", teamId, "projects", slug, "ideas"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Idea[],
+    [],
+    [teamId, slug],
+  );
 }
 
 export function useVisionChanges(teamId: string, slug: string): Result<VisionChange[]> {
-  const [data, setData] = useState<VisionChange[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true);
-    const q = query(collection(db, "teams", teamId, "projects", slug, "visionChanges"), orderBy(documentId(), "desc"));
-    return onSnapshot(q,
-      (snap) => { setData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as VisionChange[]); setLoading(false); },
-      (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug]);
-  return { data, loading, error };
+  return useFirestoreQuery<VisionChange[]>(
+    () => query(collection(db, "teams", teamId, "projects", slug, "visionChanges"), orderBy(documentId(), "desc")),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as VisionChange[],
+    [],
+    [teamId, slug],
+  );
 }
 
 export function useSessionLog(teamId: string, slug: string, loopId: string | undefined): Result<SessionDoc[]> {
-  const [data, setData] = useState<SessionDoc[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!loopId) { setData([]); setLoading(false); return; }
-    const q = query(
-      collection(db, "teams", teamId, "projects", slug, "loops", loopId, "sessions"),
-      orderBy("startedAt"),
-    );
-    return onSnapshot(q, (snap) => {
-      setData(snap.docs.map((d) => d.data() as SessionDoc));
-      setLoading(false);
-    }, (e) => { setError(e.message); setLoading(false); });
-  }, [teamId, slug, loopId]);
-  return { data, loading, error };
+  return useFirestoreQuery<SessionDoc[]>(
+    () => loopId
+      ? query(collection(db, "teams", teamId, "projects", slug, "loops", loopId, "sessions"), orderBy("startedAt"))
+      : null,
+    (snap) => snap.docs.map((d) => d.data() as SessionDoc),
+    [],
+    [teamId, slug, loopId],
+  );
 }

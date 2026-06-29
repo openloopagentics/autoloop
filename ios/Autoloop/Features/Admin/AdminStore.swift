@@ -1,51 +1,40 @@
 import Foundation
 
 @MainActor
-final class AdminStore: ObservableObject {
+final class AdminStore: ObservableObject, LoadingStore {
     @Published var users: [AdminUser] = []
     @Published var requests: [AccessRequest] = []
     @Published var loading = true
     @Published var error: String?
 
     func refresh() async {
-        loading = true
-        do {
+        await runLoad {
             async let fetchedUsers = RestClient.listUsers()
             async let fetchedRequests = RestClient.listAccessRequests()
-            users = try await fetchedUsers
-            requests = try await fetchedRequests
-            error = nil
-        } catch let e {
-            error = e.localizedDescription
+            self.users = try await fetchedUsers
+            self.requests = try await fetchedRequests
         }
-        loading = false
     }
 
     func grant(uid: String, email: String) async {
-        do {
+        await run {
             let emailArg: String? = email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : email
             try await RestClient.setAllowed(uid: uid, isAllowed: true, email: emailArg)
-            await refresh()
-        } catch let e {
-            error = e.localizedDescription
+            await self.refresh()
         }
     }
 
     func decide(uid: String, approve: Bool) async {
-        do {
+        await run {
             try await RestClient.decideAccessRequest(uid: uid, decision: approve ? "approve" : "deny")
-            await refresh()
-        } catch let e {
-            error = e.localizedDescription
+            await self.refresh()
         }
     }
 
     func toggle(uid: String, isAllowed: Bool) async {
-        do {
+        await run {
             try await RestClient.setAllowed(uid: uid, isAllowed: isAllowed)
-            await refresh()
-        } catch let e {
-            error = e.localizedDescription
+            await self.refresh()
         }
     }
 }

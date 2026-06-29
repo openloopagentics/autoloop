@@ -1,21 +1,118 @@
 import Foundation
 import FirebaseAuth
 
-struct ApiError: LocalizedError { let message: String; var errorDescription: String? { message } }
+/// API error carrying the HTTP status code and raw response body where available,
+/// so call sites can branch on `statusCode` (e.g. 401/403/404) instead of parsing
+/// a flattened message. `errorDescription` keeps the human-readable text shown today.
+struct ApiError: LocalizedError {
+    let message: String
+    let statusCode: Int?
+    let body: String?
 
-enum RestClient {
-    private static func authHeader() async throws -> String {
-        guard let user = Auth.auth().currentUser else { throw ApiError(message: "Not signed in") }
-        let token = try await user.getIDToken()
-        return "Bearer \(token)"
+    init(message: String, statusCode: Int? = nil, body: String? = nil) {
+        self.message = message
+        self.statusCode = statusCode
+        self.body = body
     }
 
-    private static func check(_ data: Data, _ resp: URLResponse) throws {
-        guard let http = resp as? HTTPURLResponse else { return }
-        guard (200..<300).contains(http.statusCode) else {
-            let msg = (try? JSONSerialization.jsonObject(with: data))
-                .flatMap { ($0 as? [String: Any])?["error"] as? [String: Any] }?["message"] as? String
-            throw ApiError(message: msg ?? "HTTP \(http.statusCode)")
+    var errorDescription: String? { message }
+}
+
+/// Serialises access to a cached Firebase ID token. We keep our own 5-minute TTL on
+/// top of Firebase's internal cache: a hit avoids even the (cheap, but lock-taking)
+/// `getIDToken()` round-trip, and on a 401 we force-refresh exactly once and retry.
+/// `getIDTokenForcingRefresh(false)` already returns Firebase's cached token while it
+/// is valid, so this is purely an extra short-lived layer — never a staleness risk
+/// beyond the TTL.
+actor TokenProvider {
+    static let shared = TokenProvider()
+
+    private var cached: CachedToken?
+    private let ttl: TimeInterval = 5 * 60   // reuse a token for up to 5 minutes
+
+    /// Returns a bearer ID token. Pass `forceRefresh` after a 401 to mint a fresh one.
+    func token(forceRefresh: Bool = false) async throws -> String {
+        let now = Date()
+        if !forceRefresh, let cached, cached.isFresh(ttl: ttl, now: now) {
+            return cached.value
+        }
+        guard let user = Auth.auth().currentUser else {
+            cached = nil
+            throw ApiError(message: "Not signed in")
+        }
+        let token = try await user.getIDTokenResult(forcingRefresh: forceRefresh).token
+        cached = CachedToken(value: token, fetchedAt: now)
+        return token
+    }
+}
+
+enum RestClient {
+    /// Shared session with explicit per-request / per-resource timeouts (the
+    /// `URLSession.shared` defaults are 60s/7d, far too lenient for a UI).
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        return URLSession(configuration: config)
+    }()
+
+    /// Build an `ApiError` from a non-2xx response, preserving the status + raw body.
+    private static func apiError(data: Data, statusCode: Int) -> ApiError {
+        let msg = (try? JSONSerialization.jsonObject(with: data))
+            .flatMap { ($0 as? [String: Any])?["error"] as? [String: Any] }?["message"] as? String
+        return ApiError(message: msg ?? "HTTP \(statusCode)",
+                        statusCode: statusCode,
+                        body: String(data: data, encoding: .utf8))
+    }
+
+    /// Core request path: cached auth token, 401 → force-refresh-once + retry, and
+    /// exponential-backoff retry of transient failures (network errors, 5xx, 429) for
+    /// idempotent methods only. Returns the validated response body on success.
+    private static func execute(method: String, url: URL, jsonBody: [String: Any]?) async throws -> Data {
+        let retryTransient = RetryPolicy.isIdempotent(method: method)
+        var didForceRefresh = false
+        var attempt = 0
+
+        while true {
+            let token = try await TokenProvider.shared.token()
+            var req = URLRequest(url: url)
+            req.httpMethod = method
+            if jsonBody != nil { req.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let body = jsonBody { req.httpBody = try JSONSerialization.data(withJSONObject: body) }
+
+            do {
+                let (data, resp) = try await session.data(for: req)
+                let status = (resp as? HTTPURLResponse)?.statusCode
+
+                // 401: our token may be stale — force one refresh and retry. The
+                // rejected request was never processed, so this is safe even for POSTs.
+                if status == 401, !didForceRefresh {
+                    didForceRefresh = true
+                    _ = try? await TokenProvider.shared.token(forceRefresh: true)
+                    continue
+                }
+
+                // Non-HTTP response or 2xx → success (mirrors the old `check`).
+                guard let status, !(200..<300).contains(status) else { return data }
+
+                let err = apiError(data: data, statusCode: status)
+                if retryTransient, RetryPolicy.isRetryable(statusCode: status),
+                   attempt + 1 < RetryPolicy.maxAttempts {
+                    try await Task.sleep(nanoseconds: RetryPolicy.backoffNanos(attempt: attempt))
+                    attempt += 1
+                    continue
+                }
+                throw err
+            } catch let urlErr as URLError {
+                if retryTransient, RetryPolicy.isRetryable(urlError: urlErr),
+                   attempt + 1 < RetryPolicy.maxAttempts {
+                    try await Task.sleep(nanoseconds: RetryPolicy.backoffNanos(attempt: attempt))
+                    attempt += 1
+                    continue
+                }
+                throw urlErr
+            }
         }
     }
 
@@ -25,38 +122,20 @@ enum RestClient {
 
     /// Mirrors api.ts putProject: defaults status to "running".
     static func putProject(teamId: String, slug: String, title: String, status: String = "running") async throws {
-        var req = URLRequest(url: url(teamId, slug))
-        req.httpMethod = "PUT"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["title": title, "status": status])
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        try check(data, resp)
+        _ = try await execute(method: "PUT", url: url(teamId, slug),
+                              jsonBody: ["title": title, "status": status])
     }
 
     /// Mirrors api.ts postMessage: POST /messages with { text }.
     static func postMessage(teamId: String, slug: String, text: String) async throws {
-        var req = URLRequest(url: url(teamId, slug, "/messages"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["text": text])
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        try check(data, resp)
+        _ = try await execute(method: "POST", url: url(teamId, slug, "/messages"),
+                              jsonBody: ["text": text])
     }
 
     // MARK: - Generic send helper
 
     private static func send(method: String, url: URL, jsonBody: [String: Any]?) async throws {
-        var req = URLRequest(url: url)
-        req.httpMethod = method
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
-        if let body = jsonBody {
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        }
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        try check(data, resp)
+        _ = try await execute(method: method, url: url, jsonBody: jsonBody)
     }
 
     // MARK: - Goal writes
@@ -125,23 +204,13 @@ enum RestClient {
 
     /// GET decoding into T.
     static func get<T: Decodable>(_ path: String) async throws -> T {
-        var req = URLRequest(url: apiURL(path))
-        req.httpMethod = "GET"
-        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        try check(data, resp)
+        let data = try await execute(method: "GET", url: apiURL(path), jsonBody: nil)
         return try JSONDecoder().decode(T.self, from: data)
     }
 
     /// POST with a JSON body, decoding the response into T.
     static func post<T: Decodable>(_ path: String, jsonBody: [String: Any]) async throws -> T {
-        var req = URLRequest(url: apiURL(path))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(try await authHeader(), forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONSerialization.data(withJSONObject: jsonBody)
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        try check(data, resp)
+        let data = try await execute(method: "POST", url: apiURL(path), jsonBody: jsonBody)
         return try JSONDecoder().decode(T.self, from: data)
     }
 

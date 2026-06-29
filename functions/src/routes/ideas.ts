@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { idPattern, ideaBody } from "../schemas.js";
 import { AppError } from "../errors.js";
+import { parseLimitParam } from "../pagination.js";
 import { upsertIdea, listIdeas } from "../services/ideas.js";
 
 export const ideasRouter = Router({ mergeParams: true }); // agent (API key) — project-direct only
@@ -22,7 +23,7 @@ ideasRouter.get("/", async (req, res, next) => {
   try {
     const { teamId, slug } = req.params as Record<string, string>;
     if (!idPattern.test(teamId) || !idPattern.test(slug)) throw new AppError(400, "validation", "invalid teamId/slug");
-    const ideas = await listIdeas(teamId, slug);
+    const ideas = await listIdeas(teamId, slug, parseLimitParam(req.query.limit));
     res.status(200).json({ ok: true, ideas });
   } catch (err) { next(err); }
 });

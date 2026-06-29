@@ -2,6 +2,7 @@ import { beforeEach } from "vitest";
 import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../src/firestore.js";
+import { resetRateLimiter } from "../src/rateLimit.js";
 
 process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
 process.env.GCLOUD_PROJECT ??= "autoloop-test";
@@ -35,5 +36,6 @@ export async function seedMember(teamId: string, uid = TEST_UID, role = "member"
 
 beforeEach(async () => {
   await clearFirestore();
+  resetRateLimiter(); // in-memory per-key counters must not leak across tests
   await seedApiKey(); // the test key always resolves to TEST_UID
 });

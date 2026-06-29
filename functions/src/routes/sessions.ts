@@ -1,6 +1,7 @@
 import { Router, json } from "express";
 import { AppError } from "../errors.js";
 import { idPattern, sessionBody } from "../schemas.js";
+import { parseLimitParam } from "../pagination.js";
 import { appendSession, listSessions } from "../services/sessions.js";
 
 export const sessionsRouter = Router({ mergeParams: true });
@@ -24,7 +25,7 @@ sessionsRouter.get("/", async (req, res, next) => {
     if (!idPattern.test(teamId)) throw new AppError(400, "validation", "invalid teamId");
     if (!idPattern.test(slug))   throw new AppError(400, "validation", "invalid slug");
     if (!idPattern.test(loopId)) throw new AppError(400, "validation", "invalid loopId");
-    const sessions = await listSessions(teamId, slug, loopId);
+    const sessions = await listSessions(teamId, slug, loopId, parseLimitParam(req.query.limit));
     res.status(200).json({ ok: true, sessions });
   } catch (err) { next(err); }
 });

@@ -19,6 +19,8 @@ final class ProjectDetailStore: ObservableObject {
     @Published private(set) var projectResolved = false
     /// User's explicit loop pick; empty means "use default".
     @Published var selectedId: String = ""
+    /// Surfaces a failure from the project-doc snapshot listener; nil while healthy.
+    @Published var error: String?
 
     let loops = CollectionStore<Loop>()
     let goals = CollectionStore<Goal>()
@@ -96,9 +98,15 @@ final class ProjectDetailStore: ObservableObject {
         projectReg?.remove()
         projectReg = db.collection("teams").document(teamId)
             .collection("projects").document(slug)
-            .addSnapshotListener { [weak self] snap, _ in
+            .addSnapshotListener { [weak self] snap, err in
                 Task { @MainActor in
                     guard let self else { return }
+                    if let err {
+                        self.error = err.localizedDescription
+                        self.projectResolved = true
+                        return
+                    }
+                    self.error = nil
                     if let snap, snap.exists, let data = snap.data() {
                         self.project = Project(slug: snap.documentID, data: data)
                     } else {

@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functions:
+    name: functions (API + rules)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      # Java is required by the Firestore emulator the test suites self-launch.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      # The test scripts shell out to `firebase emulators:exec`, so the CLI must be on PATH.
+      - name: Install firebase-tools
+        run: npm i -g firebase-tools
+      - name: Type-check / build
+        run: npm run build
+      - name: API tests (emulator)
+        run: npm test
+      - name: Firestore rules tests (emulator)
+        run: npm run test:rules
+
+  web:
+    name: web (vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    # firebase.ts calls getAuth() at import time, which throws on an empty apiKey.
+    # These are dummy, non-secret build-time values — real access is enforced by
+    # Firestore rules + the allowlist, not by the public web config.
+    env:
+      VITE_FIREBASE_API_KEY: ci-fake-api-key
+      VITE_FIREBASE_AUTH_DOMAIN: ci.firebaseapp.com
+      VITE_FIREBASE_PROJECT_ID: ci
+      VITE_FIREBASE_STORAGE_BUCKET: ci.appspot.com
+      VITE_FIREBASE_MESSAGING_SENDER_ID: "0"
+      VITE_FIREBASE_APP_ID: "1:0:web:0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Type-check + bundle
+        run: npm run build
+
+  ios:
+    name: ios (xcodebuild test)
+    # macos-15 ships Xcode 16, required for the project format xcodegen emits.
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      # Pin Xcode 16+ explicitly: the runner's default may be older, and xcodegen
+      # emits objectVersion 77 which Xcode 15 cannot open.
+      - name: Select Xcode 16
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)/Contents/Developer"
+          xcodebuild -version
+      # The real GoogleService-Info.plist is gitignored. The app skips
+      # FirebaseApp.configure() under unit tests (see AutoloopApp.swift), so a placeholder
+      # is enough to satisfy the resource-copy build phase. The xcconfig supplies API_BASE_URL.
+      - name: Provide build config
+        run: |
+          cp Config/Autoloop.xcconfig.example Config/Autoloop.xcconfig
+          cat > Config/GoogleService-Info.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict></dict></plist>
+          PLIST
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build & test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Autoloop.xcodeproj \
+            -scheme Autoloop \
+            -destination "platform=iOS Simulator,name=iPhone 16" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO

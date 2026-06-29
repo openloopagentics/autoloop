@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "../errors.js";
 import { resolveBase } from "./baseRef.js";
+import { clampLimit } from "../pagination.js";
 import type { IdeaBody } from "../schemas.js";
 
 /** Band ranks for listing: the user's queue first, then the loop's proposals, then the vetoed, then the shipped. */
@@ -55,9 +56,10 @@ export interface IdeaView {
  * no composite index (consistent with the existing YAGNI-on-indexes decision).
  * Server timestamps serialized to ISO strings like the messages GET.
  */
-export async function listIdeas(teamId: string, slug: string): Promise<IdeaView[]> {
+export async function listIdeas(teamId: string, slug: string, limit?: number): Promise<IdeaView[]> {
   const { baseRef } = await resolveBase(teamId, slug);
-  const snap = await baseRef.collection("ideas").get();
+  // Hard-cap the read so an unbounded ideas collection can't blow the response budget.
+  const snap = await baseRef.collection("ideas").limit(clampLimit(limit)).get();
   const iso = (v: unknown): string | null => {
     const ts = v as { toDate?: () => Date } | null | undefined;
     return ts?.toDate ? ts.toDate().toISOString() : null;

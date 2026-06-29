@@ -10,6 +10,8 @@ import FirebaseFirestore
 @MainActor
 final class MapTabStore: ObservableObject {
     @Published private(set) var slices: [MapSlice] = []
+    /// Surfaces a failure from any of the fan-out snapshot listeners; nil while healthy.
+    @Published var error: String?
 
     private struct Raw {
         var tasks: [MapTask]?
@@ -43,8 +45,13 @@ final class MapTabStore: ObservableObject {
                 guard listeners[key] == nil else { continue }
                 let q = collectionRef(segments: basePath(teamId: teamId, slug: slug, loopId: loopArg),
                                       name: coll).order(by: FieldPath.documentID())
-                listeners[key] = q.addSnapshotListener { [weak self] snap, _ in
-                    Task { @MainActor in self?.ingest(id, coll, snap?.documents ?? []) }
+                listeners[key] = q.addSnapshotListener { [weak self] snap, err in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if let err { self.error = err.localizedDescription; return }
+                        self.error = nil
+                        self.ingest(id, coll, snap?.documents ?? [])
+                    }
                 }
             }
         }
