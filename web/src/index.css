@@ -524,6 +524,13 @@ ul { margin: 0; padding: 0; list-style: none; }
 .auth-loading { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .auth-loading-text { font-size: 13px; color: var(--fg-soft); letter-spacing: .01em; }
 
+.error-fallback {
+  max-width: 460px; width: 100%; padding: var(--card-pad);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+}
+.error-fallback-title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; color: var(--fg); margin: 0; }
+.error-fallback-msg { font-size: 13.5px; color: var(--fg-soft); margin: 0; word-break: break-word; }
+
 .auth-rings { position: absolute; inset: 0; pointer-events: none; }
 .auth-rings::before, .auth-rings::after {
   content: ""; position: absolute; top: 50%; left: 50%; border-radius: 50%;

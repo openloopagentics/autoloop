@@ -3,7 +3,9 @@ import { auth } from "../firebase";
 const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 async function headers(): Promise<HeadersInit> {
-  const token = await auth.currentUser!.getIdToken();
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const token = await user.getIdToken();
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 }
 
