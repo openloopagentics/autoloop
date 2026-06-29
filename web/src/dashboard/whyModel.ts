@@ -67,6 +67,9 @@ import type { Revision, VisionChange, Decision, Idea } from "./types";
 
 export type DecisionKind = "goal-pick" | "approach" | "stuck" | "plan-change" | "vision-change";
 
+// `at` (chronological timestamp) and a required loopId are intentionally deferred to SP2:
+// ULID event ids are already time-ordered, and createdAt availability varies across sources
+// (revisions lack it in the web type). SP2 adds them when rendering/sorting needs them.
 export interface WhyDecision {
   id: string;
   kind: DecisionKind;

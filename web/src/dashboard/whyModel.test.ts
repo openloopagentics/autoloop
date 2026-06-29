@@ -107,4 +107,18 @@ describe("buildWhyModel", () => {
     const m = buildWhyModel(base);
     expect(m.evidence.some((e) => e.kind === "score" && e.subjectId === "scenario:s1" && e.relation === "supports")).toBe(true);
   });
+  it("flips a scenario subject to 'bugged' when a high-severity open bug is linked", () => {
+    const m = buildWhyModel({ ...base, bugs: [{ id: "b1", scenarioId: "s1", severity: "high", status: "open" }] });
+    expect(m.subjects.find((x) => x.id === "scenario:s1")!.explanation?.state).toBe("bugged");
+  });
+  it("does NOT flip a scenario to 'bugged' for a fixed or low-severity bug", () => {
+    const fixed = buildWhyModel({ ...base, bugs: [{ id: "b1", scenarioId: "s1", severity: "high", status: "fixed" }] });
+    expect(fixed.subjects.find((x) => x.id === "scenario:s1")!.explanation?.state).not.toBe("bugged");
+    const low = buildWhyModel({ ...base, bugs: [{ id: "b2", scenarioId: "s1", severity: "low", status: "open" }] });
+    expect(low.subjects.find((x) => x.id === "scenario:s1")!.explanation?.state).not.toBe("bugged");
+  });
+  it("produces a 'refutes' evidence row from a refuted verification", () => {
+    const m = buildWhyModel({ ...base, verifications: [{ id: "V1", scenarioId: "s1", verdict: "refuted" }] });
+    expect(m.evidence.some((e) => e.kind === "verification" && e.subjectId === "scenario:s1" && e.relation === "refutes")).toBe(true);
+  });
 });
