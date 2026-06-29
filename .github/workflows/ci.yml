@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functions:
+    name: functions (API + rules)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      # Java is required by the Firestore emulator the test suites self-launch.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      - name: Type-check / build
+        run: npm run build
+      - name: API tests (emulator)
+        run: npm test
+      - name: Firestore rules tests (emulator)
+        run: npm run test:rules
+
+  web:
+    name: web (vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Type-check + bundle
+        run: npm run build
+
+  ios:
+    name: ios (xcodebuild test)
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      # The real GoogleService-Info.plist is gitignored and not needed in CI: the app
+      # skips FirebaseApp.configure() under unit tests (see AutoloopApp.swift). Only the
+      # xcconfig (API_BASE_URL) is required to generate + build the project.
+      - name: Provide build config
+        run: cp Config/Autoloop.xcconfig.example Config/Autoloop.xcconfig
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build & test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Autoloop.xcodeproj \
+            -scheme Autoloop \
+            -destination "platform=iOS Simulator,name=iPhone 16" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
