@@ -81,6 +81,52 @@ const REPORT_MESSAGES = {
   404: () => "team/project/phase not found — run `autoloop project set` first",
 };
 
+// Network resilience defaults. Reporting is best-effort, so these stay short:
+// a hung API must never wedge an agent loop, and a blip shouldn't drop a report.
+export const NETWORK_TIMEOUT_MS = 30_000; // per-attempt abort
+const RETRY_ATTEMPTS = 3;                  // total tries (1 initial + 2 retries)
+const RETRY_BASE_MS = 300;                 // backoff: 300ms, 600ms, …
+const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** GET/PUT/DELETE are idempotent (PUT writes are upserts); POST is not, so we never
+ *  retry a POST except on 429 (rate-limited = server never processed it → safe). */
+function isIdempotent(method) {
+  const m = (method || "GET").toUpperCase();
+  return m === "GET" || m === "PUT" || m === "DELETE";
+}
+
+/**
+ * fetch with a per-attempt timeout (AbortController) and bounded retries for transient
+ * failures — network errors and HTTP 429/5xx. deps (all optional, defaulted): { fetchImpl,
+ * sleep, attempts, baseMs, timeoutMs }. Returns the final Response-like; rethrows the last
+ * error only if every attempt threw. Caller-visible behavior (4xx, success) is unchanged.
+ */
+export async function fetchWithRetry(url, init, deps = {}) {
+  const {
+    fetchImpl = fetch, sleep = realSleep,
+    attempts = RETRY_ATTEMPTS, baseMs = RETRY_BASE_MS, timeoutMs = NETWORK_TIMEOUT_MS,
+  } = deps;
+  const idempotent = isIdempotent(init.method);
+  let lastErr;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetchImpl(url, { ...init, signal: controller.signal });
+      const retryable = res && (res.status === 429 || (res.status >= 500 && idempotent));
+      if (retryable && attempt < attempts - 1) { await sleep(baseMs * 2 ** attempt); continue; }
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (idempotent && attempt < attempts - 1) { await sleep(baseMs * 2 ** attempt); continue; }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr;
+}
+
 /**
  * Send one report request. deps: { env, fetchImpl, err, strict, teamId }.
  * Returns 0 on success; on failure prints a one-line warning and returns 0,
@@ -93,11 +139,11 @@ export async function report(req, deps) {
 
   let res;
   try {
-    res = await fetchImpl(req.url, {
+    res = await fetchWithRetry(req.url, {
       method: req.method,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify(req.body),
-    });
+    }, deps);
   } catch (e) {
     err(`autoloop: report failed (network): ${e.message}`);
     return strict ? 1 : 0;
@@ -142,10 +188,10 @@ export async function fetchJson(req, deps) {
 
   let res;
   try {
-    res = await fetchImpl(req.url, {
+    res = await fetchWithRetry(req.url, {
       method: req.method,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    });
+    }, deps);
   } catch (e) {
     err(`autoloop: ${label} failed (network): ${e.message}`);
     return 0;
@@ -175,7 +221,7 @@ export async function getJson(url, deps) {
   const key = env.AUTOLOOP_API_KEY;
   if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
   try {
-    const res = await fetchImpl(url, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` } });
+    const res = await fetchWithRetry(url, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` } }, deps);
     let body = null;
     try { body = await res.json(); } catch { /* no/invalid body */ }
     return { ok: res.ok, status: res.status, body };
