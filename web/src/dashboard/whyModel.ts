@@ -62,3 +62,74 @@ export function explainScenario(
   reasons.sort((a, b) => Number(a.ok) - Number(b.ok)); // failing reasons first
   return { state, reasons };
 }
+
+import type { Revision, VisionChange, Decision, Idea } from "./types";
+
+export type DecisionKind = "goal-pick" | "approach" | "stuck" | "plan-change" | "vision-change";
+
+export interface WhyDecision {
+  id: string;
+  kind: DecisionKind;
+  loopId?: string;
+  summary: string;
+  rationale: string;
+  alternatives?: string[];
+  refs: { scenarioIds: string[]; taskIds: string[]; commitShas: string[] };
+  source: "decision" | "revision" | "visionChange" | "synthesized";
+}
+
+interface DecisionInputs {
+  loopId?: string;
+  decisions: Decision[];
+  revisions: Revision[];
+  visionChanges: VisionChange[];
+  ideas: Idea[];
+}
+
+const emptyRefs = () => ({ scenarioIds: [] as string[], taskIds: [] as string[], commitShas: [] as string[] });
+
+export function toDecisions(inp: DecisionInputs): WhyDecision[] {
+  const out: WhyDecision[] = [];
+
+  for (const d of inp.decisions) {
+    out.push({
+      id: d.id, kind: (d.kind ?? "approach") as DecisionKind, loopId: inp.loopId,
+      summary: d.summary ?? "", rationale: d.rationale ?? "", alternatives: d.alternatives,
+      refs: { scenarioIds: d.refs?.scenarioIds ?? [], taskIds: d.refs?.taskIds ?? [], commitShas: d.refs?.commitShas ?? [] },
+      source: "decision",
+    });
+  }
+
+  for (const r of inp.revisions) {
+    const refs = emptyRefs();
+    if (r.trigger?.scenarioId) refs.scenarioIds.push(r.trigger.scenarioId);
+    for (const c of r.changes ?? []) if (c.taskId) refs.taskIds.push(c.taskId);
+    out.push({
+      id: r.id, kind: "plan-change", loopId: inp.loopId,
+      summary: (r.changes ?? []).map((c) => `${c.op} ${c.taskId}`).join(", ") || "plan change",
+      rationale: r.trigger?.reason ?? "", refs, source: "revision",
+    });
+  }
+
+  for (const v of inp.visionChanges) {
+    out.push({
+      id: v.id, kind: "vision-change", loopId: v.originLoopId ?? inp.loopId,
+      summary: `${v.op ?? "change"} ${v.targetId ?? ""}`.trim(), rationale: v.reason ?? "",
+      refs: { ...emptyRefs(), scenarioIds: v.targetId ? [v.targetId] : [] }, source: "visionChange",
+    });
+  }
+
+  // Synthesize a goal-pick from the idea that seeded THIS loop, only if the driver
+  // didn't emit one. source:"synthesized" lets a surface render it faintly.
+  const hasGoalPick = out.some((d) => d.kind === "goal-pick");
+  if (!hasGoalPick) {
+    const seed = inp.ideas.find((i) => i.builtInLoopId === inp.loopId && i.status !== "rejected");
+    if (seed) {
+      out.push({
+        id: `synth:${seed.id}`, kind: "goal-pick", loopId: inp.loopId,
+        summary: seed.title ?? "goal", rationale: seed.rationale ?? "", refs: emptyRefs(), source: "synthesized",
+      });
+    }
+  }
+  return out;
+}
