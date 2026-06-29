@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
+import request from "supertest";
 import "./helpers.js";
-import { seedMember } from "./helpers.js";
+import { authHeader, seedMember } from "./helpers.js";
 import { db } from "../src/firestore.js";
 import { decisionBody } from "../src/schemas.js";
 import { appendDecision } from "../src/services/events.js";
+import { makeApp } from "../src/app.js";
 import { upsertLoop } from "../src/services/loops.js";
 
 // ── Task 1: decisionBody schema (pure — no emulator required) ─────────────
@@ -58,19 +60,57 @@ describe("appendDecision service", () => {
     await db().doc("teams/t1").set({ name: "T", createdBy: "u1" });
     await seedMember("t1");
     await db().doc("teams/t1/projects/acme").set({ title: "Acme", status: "running" });
-    await upsertLoop("t1", "acme", "L1", { goal: "build", order: 1, status: "running" });
+    await upsertLoop("t1", "acme", "l1", { goal: "build", order: 1, status: "running" });
 
     const id = await appendDecision(
       "t1", "acme",
       { kind: "goal-pick", summary: "s", rationale: "r", refs: { scenarioIds: ["s1"] } },
-      "L1",
+      "l1",
     );
 
     expect(id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
-    const d = (await db().doc(`teams/t1/projects/acme/loops/L1/decisions/${id}`).get()).data()!;
+    const d = (await db().doc(`teams/t1/projects/acme/loops/l1/decisions/${id}`).get()).data()!;
     expect(d.kind).toBe("goal-pick");
     expect(d.by).toBe("driver");
     expect(d.refs?.scenarioIds).toEqual(["s1"]);
     expect(d.createdAt).toBeTruthy();
+  });
+});
+
+// ── Task 3: decisionsRouter + mounting ──────────────────────────────────────
+
+const app = makeApp();
+
+async function seedProject(teamId = "t1", slug = "acme") {
+  await db().doc(`teams/${teamId}`).set({ name: "Team", createdBy: "u1" });
+  await seedMember(teamId);
+  await db().doc(`teams/${teamId}/projects/${slug}`).set({ title: "Acme", status: "running" });
+}
+
+describe("POST /v1/teams/:teamId/projects/:slug/loops/:loopId/decisions", () => {
+  it("returns 200 { ok: true, id } for a valid decision", async () => {
+    await seedProject();
+    await upsertLoop("t1", "acme", "l1", { goal: "build", order: 1, status: "running" });
+
+    const res = await request(app)
+      .post("/v1/teams/t1/projects/acme/loops/l1/decisions")
+      .set(authHeader())
+      .send({ kind: "goal-pick", summary: "s", rationale: "r" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+  });
+
+  it("returns 400 for an unknown kind", async () => {
+    await seedProject();
+    await upsertLoop("t1", "acme", "l1", { goal: "build", order: 1, status: "running" });
+
+    const res = await request(app)
+      .post("/v1/teams/t1/projects/acme/loops/l1/decisions")
+      .set(authHeader())
+      .send({ kind: "nope", summary: "s", rationale: "r" });
+
+    expect(res.status).toBe(400);
   });
 });
