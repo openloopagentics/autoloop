@@ -39,6 +39,23 @@ const metModel: WhyModel = buildWhyModel({
   ideas: [] as Idea[],
 });
 
+// A model where TWO decisions reference the same task (revision R1 + an approach decision D1)
+// — exercises the collapse label's "(+N more)" count suffix.
+const multiDecisionModel: WhyModel = buildWhyModel({
+  loopId: "L3",
+  goals: [{ id: "g3", title: "Goal" }] as Goal[],
+  scenarios: [{ id: "s3", goalId: "g3", title: "Scn", threshold: 80 }] as Scenario[],
+  tasks: [{ id: "t3", title: "Task", scenarioIds: ["s3"], loopId: "L3" }] as Task[],
+  bugs: [] as Bug[],
+  scores: [{ id: "sc3", scenarioId: "s3", composite: 72 }] as Score[],
+  testRuns: [{ id: "tr3", scenarioId: "s3", failed: 0 }] as TestRun[],
+  verifications: [] as Verification[],
+  revisions: [{ id: "R1", trigger: { scenarioId: "s3", reason: "low" }, changes: [{ op: "add", taskId: "t3" }] }] as Revision[],
+  visionChanges: [] as VisionChange[],
+  decisions: [{ id: "D1", kind: "approach", summary: "exp backoff", rationale: "why", refs: { taskIds: ["t3"] } }] as Decision[],
+  ideas: [] as Idea[],
+});
+
 const d = buildWhyGraph(model, { showReasoning: false });
 const r = buildWhyGraph(model, { showReasoning: true });
 
@@ -56,6 +73,11 @@ describe("buildWhyGraph — default mode", () => {
   it("default: no decision/evidence nodes or affects/evidence edges", () => {
     expect(d.nodes.some((n) => n.kind === "decision" || n.kind === "evidence")).toBe(false);
     expect(d.edges.some((e) => e.kind !== "structure")).toBe(false);
+  });
+  it("default: collapse label shows a (+N more) suffix when multiple decisions target one node", () => {
+    const m = buildWhyGraph(multiDecisionModel, { showReasoning: false });
+    const e = m.edges.find((x) => x.from === "scenario:s3" && x.to === "task:t3");
+    expect(e?.label).toContain("(+1 more)");
   });
 });
 

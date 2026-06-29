@@ -11,11 +11,14 @@ export function buildWhyGraph(model: WhyModel, opts: { showReasoning: boolean })
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
 
-  // Structural subject nodes (always)
+  // Structural subject nodes (always). SubjectKind includes "loop", which is not a graph
+  // node kind (buildWhyModel never emits it today) — skip it so `kind` narrows safely.
   for (const s of model.subjects) {
+    if (s.kind === "loop") continue;
+    const kind: GraphNodeKind = s.kind;
     const topFail = s.explanation?.reasons.find((r) => !r.ok);
     nodes.push({
-      id: s.id, kind: s.kind as GraphNodeKind, label: s.label,
+      id: s.id, kind, label: s.label,
       state: s.explanation?.state ?? "neutral", loopId: s.loopId,
       whyChip: s.kind === "scenario" && s.explanation?.state === "unmet" ? topFail?.text : undefined,
     });
