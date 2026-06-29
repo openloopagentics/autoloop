@@ -11,6 +11,9 @@ final class AuthStore: ObservableObject {
     @Published private(set) var user: AccessUser?
     @Published private(set) var isAdmin = false
     @Published var signInError: String?
+    /// Surfaces a failure from the user-doc snapshot listener (e.g. permission denied);
+    /// nil while the listener is healthy.
+    @Published var error: String?
 
     private var authResolved = false
     private var userDocResolved = false
@@ -50,9 +53,11 @@ final class AuthStore: ObservableObject {
                 self.user = AccessUser(uid: u.uid, email: u.email)
                 self.recompute()
                 self.docListener = Firestore.firestore().collection("users").document(u.uid)
-                    .addSnapshotListener { [weak self] snap, _ in
+                    .addSnapshotListener { [weak self] snap, err in
                         Task { @MainActor in
                             guard let self else { return }
+                            if let err { self.error = err.localizedDescription; return }
+                            self.error = nil
                             let data = snap?.data() ?? [:]
                             self.isAllowed = (data["isAllowed"] as? Bool) == true
                             self.isAdmin = (data["isAdmin"] as? Bool) == true

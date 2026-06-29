@@ -11,6 +11,8 @@ import FirebaseFirestore
 final class TrendStore: ObservableObject {
     /// Windowed run data, ascending by order (main first) — feed straight into buildTrend.
     @Published private(set) var loopData: [TrendLoopData] = []
+    /// Surfaces a failure from any of the fan-out snapshot listeners; nil while healthy.
+    @Published var error: String?
 
     private struct Slice {
         var scores: [ScoreRec]?
@@ -55,8 +57,13 @@ final class TrendStore: ObservableObject {
                 guard listeners[key] == nil else { continue }
                 let q = collectionRef(segments: basePath(teamId: teamId, slug: slug, loopId: loopArg),
                                       name: coll).order(by: FieldPath.documentID())
-                listeners[key] = q.addSnapshotListener { [weak self] snap, _ in
-                    Task { @MainActor in self?.ingest(loopId: id, coll: coll, docs: snap?.documents ?? []) }
+                listeners[key] = q.addSnapshotListener { [weak self] snap, err in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if let err { self.error = err.localizedDescription; return }
+                        self.error = nil
+                        self.ingest(loopId: id, coll: coll, docs: snap?.documents ?? [])
+                    }
                 }
             }
         }

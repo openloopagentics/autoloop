@@ -11,6 +11,8 @@ final class TeamCardStore: ObservableObject {
     let members = CollectionStore<Member>()
     let invites = CollectionStore<Invite>()
     @Published private(set) var team: Team?
+    /// Surfaces a failure from the team-doc snapshot listener; nil while healthy.
+    @Published var error: String?
 
     private let db = Firestore.firestore()
     private var teamReg: ListenerRegistration?
@@ -28,9 +30,11 @@ final class TeamCardStore: ObservableObject {
         invites.start(query: teamInvitesQuery(teamId: teamId), map: mapInvite(teamId: teamId))
         teamReg?.remove()
         teamReg = db.collection("teams").document(teamId)
-            .addSnapshotListener { [weak self] snap, _ in
+            .addSnapshotListener { [weak self] snap, err in
                 Task { @MainActor in
                     guard let self else { return }
+                    if let err { self.error = err.localizedDescription; return }
+                    self.error = nil
                     if let snap, snap.exists, let data = snap.data() {
                         self.team = Team(data: data)
                     } else {

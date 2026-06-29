@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class KeysStore: ObservableObject {
+final class KeysStore: ObservableObject, LoadingStore {
     @Published var keys: [KeyMeta] = []
     @Published var loading = true
     @Published var error: String?
@@ -9,33 +9,22 @@ final class KeysStore: ObservableObject {
     @Published var pending = false
 
     func refresh() async {
-        loading = true
-        do {
-            keys = try await RestClient.listKeys()
-            error = nil
-        } catch let e {
-            error = e.localizedDescription
-        }
-        loading = false
+        await runLoad { self.keys = try await RestClient.listKeys() }
     }
 
     func mint(label: String) async {
         pending = true
-        do {
-            revealedKey = try await RestClient.mintKey(label: label).key
-            await refresh()
-        } catch let e {
-            error = e.localizedDescription
+        await run {
+            self.revealedKey = try await RestClient.mintKey(label: label).key
+            await self.refresh()
         }
         pending = false
     }
 
     func revoke(id: String) async {
-        do {
+        await run {
             try await RestClient.revokeKey(id: id)
-            await refresh()
-        } catch let e {
-            error = e.localizedDescription
+            await self.refresh()
         }
     }
 }
