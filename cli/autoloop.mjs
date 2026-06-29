@@ -1002,6 +1002,22 @@ export async function run(argv, deps = {}) {
         return report({ method: "PUT", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
+      case "decision add": {
+        const kind = flags.kind;
+        if (!["goal-pick","approach","stuck"].includes(kind)) throw new UsageError(`--kind must be goal-pick|approach|stuck, got '${kind}'`);
+        if (!flags.summary) throw new UsageError("decision add requires --summary <s>");
+        if (!flags.reason) throw new UsageError("decision add requires --reason <r>");
+        const body = { kind, summary: oneFlag("summary", flags.summary), rationale: oneFlag("reason", flags.reason) };
+        const alts = asArray(flags.alt); if (alts.length) body.alternatives = alts;
+        const refs = {};
+        const scen = asArray(flags.scenario); if (scen.length) { scen.forEach((s) => validateId("scenario", s)); refs.scenarioIds = scen; }
+        const tsk = asArray(flags.task); if (tsk.length) { tsk.forEach((t) => validateId("task", t)); refs.taskIds = tsk; }
+        const com = asArray(flags.commit); if (com.length) { com.forEach((c) => validateId("commit", c)); refs.commitShas = com; }
+        if (Object.keys(refs).length) body.refs = refs;
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, oneFlag("url", flags.url))}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/decisions`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
       case "idea add": {
         const id = positionals[2]; validateId("ideaId", id);
         if (typeof flags.title !== "string") throw new UsageError("idea add requires --title <t>");

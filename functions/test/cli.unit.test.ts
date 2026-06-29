@@ -1409,3 +1409,33 @@ describe("init --relaunch / --uninstall / status", () => {
     expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "unload")).toBe(true);
   });
 });
+
+describe("decision add", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentLoopId: "l1", loops: {}, phases: {}, tasks: {} });
+    return dir;
+  }
+  it("POSTs a loop-scoped decision with mapped fields", async () => {
+    const dir = initDir(); let cap: any;
+    const code = await run(["decision","add","--kind","goal-pick","--summary","s","--reason","r","--scenario","s1","--scenario","s2","--alt","tried X"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {},
+        fetchImpl: async (url: string, init: any) => { cap = { url, method: init.method, body: JSON.parse(init.body) }; return { ok: true, status: 200, json: async () => ({ ok: true, id: "01ABC" }) }; } });
+    expect(code).toBe(0);
+    expect(cap.method).toBe("POST");
+    expect(cap.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1/decisions");
+    expect(cap.body).toMatchObject({ kind: "goal-pick", summary: "s", rationale: "r", refs: { scenarioIds: ["s1","s2"] }, alternatives: ["tried X"] });
+  });
+  it("rejects a bad --kind before any network call", async () => {
+    const dir = initDir();
+    const code = await run(["decision","add","--kind","bogus","--summary","s","--reason","r"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+  });
+  it("requires --summary and --reason", async () => {
+    const dir = initDir();
+    const code = await run(["decision","add","--kind","stuck"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+  });
+});
