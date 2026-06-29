@@ -69,11 +69,15 @@ export async function appendDecision(teamId: string, slug: string, body: Decisio
   const { baseRef } = await resolveBase(teamId, slug, loopId);
   const id = ulid();
   const data: Record<string, unknown> = {
-    kind: body.kind, summary: body.summary, rationale: body.rationale,
-    by: body.by ?? "driver", createdAt: FieldValue.serverTimestamp(),
+    kind: body.kind,
+    summary: body.summary,
+    rationale: body.rationale,
+    by: body.by ?? "driver",
+    createdAt: FieldValue.serverTimestamp(),
   };
   if (body.alternatives !== undefined) data.alternatives = body.alternatives;
   if (body.refs !== undefined) data.refs = body.refs;
+  // No transaction needed: the id is server-generated (no write-write conflict) and no derived fields are updated.
   await baseRef.collection("decisions").doc(id).set(data);
   return id;
 }
