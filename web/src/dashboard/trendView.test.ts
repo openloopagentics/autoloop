@@ -13,7 +13,7 @@ function runData(over: Partial<LoopRunData> & { loop: Loop }): LoopRunData {
 }
 
 describe("buildTrend", () => {
-  it("counts met via deriveScenarioState over THIS loop's events only (latest by id)", () => {
+  it("counts met via scenarioStatus over THIS loop's events only (latest by id)", () => {
     const d = runData({
       loop: { id: "l1", order: 1 },
       tasks: [{ id: "t1", scenarioIds: ["s1", "s2"] }],

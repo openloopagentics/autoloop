@@ -16,7 +16,7 @@ const FLAT_COLLECTIONS = ["scores", "testRuns", "bugs", "tasks", "verifications"
  * includeMain — pass ProjectDetail's hasProjectDirectData). Flat collections are live
  * listeners; task COMMITS (nested under tasks/{id}/commits, the only place tokens are
  * persisted) are one-shot getDocs reads re-fetched when a loop's tasks snapshot changes
- * — trends don't need realtime token movement. Loading until every loop's 4 flat
+ * — trends don't need realtime token movement. Loading until every loop's 5 flat
  * slices have arrived. Exported as the trend data layer (reused by the product map).
  */
 export function useLoopTrend(teamId: string, slug: string, includeMain: boolean):
