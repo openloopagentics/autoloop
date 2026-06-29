@@ -222,6 +222,16 @@ done
   lock and exits deliberately — the wake job becomes the listener).
 - If any message changes scope or direction: adjust the remaining task plan accordingly.
 
+### Recording decisions (the "why")
+Emit a decision at these moments so the dashboard can explain the loop's reasoning.
+Best-effort — never block the loop. One decision per moment; this is signal, not a log.
+- **Loop start** — after resume/setup, state the loop's thesis:
+  `autoloop decision add --kind goal-pick --summary "<one line>" --reason "<why this goal now>"`
+- **Non-obvious task approach** — when the chosen path isn't the obvious one (skip routine tasks):
+  `autoloop decision add --kind approach --summary "<choice>" --reason "<why>" --task <taskId> [--alt "<rejected option>"]`
+- **Stuck** — when a scenario won't converge after a revision, or the loop blocks/pauses:
+  `autoloop decision add --kind stuck --summary "<what's blocking>" --reason "<what was tried, what's next>" --scenario <id>`
+
 **Now go back to 2a for the next task.**
 
 ## Step 3 — Verify EVERY scenario, then close the loop
