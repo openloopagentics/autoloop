@@ -1,6 +1,6 @@
 import type { Loop, Phase, Project } from "./types";
 import { isTerminalStatus } from "./status";
-import { tsMillis } from "./mapTimeline";
+import { tsMillis } from "./whyModelAtTime";
 
 export const MAIN_ID = "main";
 
