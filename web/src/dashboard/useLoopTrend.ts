@@ -4,12 +4,12 @@ import { db } from "../firebase";
 import { basePath, MAIN_ID } from "./loopView";
 import { useLoops } from "./hooks";
 import { trendWindow, type LoopRunData } from "./trendView";
-import type { Bug, Commit, Score, Task, TestRun } from "./types";
+import type { Bug, Commit, Score, Task, TestRun, Verification } from "./types";
 
-interface Slice { scores?: Score[]; testRuns?: TestRun[]; bugs?: Bug[]; tasks?: Task[]; taskCommits?: Commit[]; }
+interface Slice { scores?: Score[]; testRuns?: TestRun[]; bugs?: Bug[]; tasks?: Task[]; taskCommits?: Commit[]; verifications?: Verification[]; }
 
-/** The 4 flat run-data collections listened to per loop (4 × ≤20 listeners). */
-const FLAT_COLLECTIONS = ["scores", "testRuns", "bugs", "tasks"] as const;
+/** The 5 flat run-data collections listened to per loop (5 × ≤20 listeners). */
+const FLAT_COLLECTIONS = ["scores", "testRuns", "bugs", "tasks", "verifications"] as const;
 
 /**
  * Run data for the most recent TREND_LOOPS_MAX loops (incl. the implicit `main` when
@@ -78,6 +78,7 @@ export function useLoopTrend(teamId: string, slug: string, includeMain: boolean)
     bugs: byScope[l.id]?.bugs ?? [],
     tasks: byScope[l.id]?.tasks ?? [],
     taskCommits: byScope[l.id]?.taskCommits ?? [],
+    verifications: byScope[l.id]?.verifications ?? [],
   }));
   return { data, loading, error: loopsError || error };
 }

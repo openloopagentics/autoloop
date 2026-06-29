@@ -1,5 +1,5 @@
-import type { Bug, Commit, Loop, Scenario, Score, Task, TestRun } from "./types";
-import { deriveScenarioState, latestById } from "./scenarioState";
+import type { Bug, Commit, Loop, Scenario, Score, Task, TestRun, Verification } from "./types";
+import { scenarioStatus, latestById } from "./scenarioState";
 import { MAIN_ID } from "./loopView";
 
 /** The implicit `main` loop predates loop-level adoption and has no `order` —
@@ -17,6 +17,7 @@ export interface LoopRunData {
   bugs: Bug[];
   taskCommits: Commit[];
   tasks: Task[];
+  verifications: Verification[];
 }
 
 export interface TrendPoint {
@@ -48,7 +49,7 @@ export function buildTrend(loops: LoopRunData[], scenarios: Scenario[]): TrendPo
     let metCount = 0;
     const composites: number[] = [];
     for (const s of taggedScenarios) {
-      if (deriveScenarioState(s, d.scores, d.testRuns).state === "met") metCount++;
+      if (scenarioStatus(s, d.scores, d.testRuns, d.verifications).state === "met") metCount++;
       const latest = latestById(d.scores.filter((sc) => sc.scenarioId === s.id));
       if (latest?.composite !== undefined) composites.push(latest.composite);
     }
