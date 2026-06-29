@@ -1,5 +1,6 @@
 import { db } from "../firestore.js";
 import { AppError } from "../errors.js";
+import { clampLimit } from "../pagination.js";
 import type { SessionBody } from "../schemas.js";
 
 async function requireProject(teamId: string, slug: string) {
@@ -32,8 +33,10 @@ export async function appendSession(teamId: string, slug: string, loopId: string
   });
 }
 
-export async function listSessions(teamId: string, slug: string, loopId: string) {
+export async function listSessions(teamId: string, slug: string, loopId: string, limit?: number) {
   const projectRef = await requireProject(teamId, slug);
-  const snap = await projectRef.collection("loops").doc(loopId).collection("sessions").orderBy("startedAt").get();
+  // Hard-cap the read so an unbounded sessions collection can't blow the response budget.
+  const snap = await projectRef.collection("loops").doc(loopId).collection("sessions")
+    .orderBy("startedAt").limit(clampLimit(limit)).get();
   return snap.docs.map((d) => d.data());
 }

@@ -3,6 +3,7 @@ import { ensureApp } from "./firestore.js";
 import { makeRequireUser } from "./requireUser.js";
 import { makeRequireAdmin } from "./requireAdmin.js";
 import { requireApiKeyMember } from "./requireApiKeyMember.js";
+import { rateLimit } from "./rateLimit.js";
 import { requireMember } from "./requireMember.js";
 import { AppError, errorHandler } from "./errors.js";
 import { keysRouter } from "./routes/keys.js";
@@ -72,7 +73,8 @@ export function makeApp() {
   teamRouter.use("/:slug/loops/:loopId/state", stateRouter);
   teamRouter.use("/:slug/loops", loopsRouter); // loop entity
   teamRouter.use("/", projectsRouter); // projectsRouter defines put("/:slug")
-  app.use("/v1/teams/:teamId/projects", requireApiKeyMember, teamRouter);
+  // Best-effort per-key throttle runs before auth so floods are cheap to reject.
+  app.use("/v1/teams/:teamId/projects", rateLimit, requireApiKeyMember, teamRouter);
 
   // User vision writes (Firebase ID token -> team membership). Web-owned projects only.
   app.use("/v1/u/teams/:teamId/projects", makeRequireUser(), requireMember, userProjectsRouter);
