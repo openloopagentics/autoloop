@@ -13,7 +13,7 @@ export function VisionTab({ teamId, slug, editable, goals, scenarios, scores, te
   goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; documents: DocumentRec[]; verifications: Verification[];
 }) {
   const hasScenarios = scenarios.length > 0;
-  const { met, total } = summarize(scenarios, scores, testRuns);
+  const { met, total } = summarize(scenarios, scores, testRuns, verifications);
   const changes = useVisionChanges(teamId, slug);
   return (
     <>

@@ -65,9 +65,7 @@ export function explainScenario(
 
 export type DecisionKind = "goal-pick" | "approach" | "stuck" | "plan-change" | "vision-change";
 
-// `at` (chronological timestamp) and a required loopId are intentionally deferred to SP2:
-// ULID event ids are already time-ordered, and createdAt availability varies across sources
-// (revisions lack it in the web type). SP2 adds them when rendering/sorting needs them.
+// at/loopId-required intentionally NOT added — the why-panel orders decisions by their (time-ordered ULID) id, so no separate timestamp is needed.
 export interface WhyDecision {
   id: string;
   kind: DecisionKind;

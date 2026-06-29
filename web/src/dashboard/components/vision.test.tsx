@@ -26,8 +26,8 @@ describe("ScenarioCard", () => {
   it("renders title, met state, composite, and test counts when met", () => {
     render(<ScenarioCard scenario={scn} scores={scores} testRuns={runs} />);
     expect(screen.getByText("Login works")).toBeInTheDocument();
-    expect(screen.getByText(/met/i)).toBeInTheDocument();
-    expect(screen.getByText(/92/)).toBeInTheDocument();
+    expect(screen.getAllByText(/met/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("92")).toBeInTheDocument(); // scorebar-val
     expect(screen.getByText(/6/)).toBeInTheDocument(); // passed
   });
   it("shows unmet when below threshold", () => {
@@ -49,11 +49,11 @@ describe("scenario verification badges", () => {
     render(<ScenarioCard scenario={scn} scores={scores} testRuns={runs} verifications={[]} />);
     expect(screen.getByText("⚠ Unverified")).toBeInTheDocument();
   });
-  it("ScenarioCard shows ✗ when the latest run is refuted; met-state text is unchanged", () => {
+  it("ScenarioCard shows ✗ when the latest run is refuted; state is now unmet (verification-aware)", () => {
     render(<ScenarioCard scenario={scn} scores={scores} testRuns={runs}
       verifications={[{ id: "01V", scenarioId: "login", testRunId: "01A", verdict: "refuted" }]} />);
     expect(screen.getByTitle("Independent replay refuted this result")).toHaveTextContent("✗");
-    expect(screen.getByText("met")).toBeInTheDocument(); // verification is evidence, not a gate
+    expect(screen.getByText("unmet")).toBeInTheDocument(); // refuted verification now gates state
   });
   it("ScenarioCard treats a verification of an OLDER run as unverified", () => {
     const twoRuns: TestRun[] = [...runs, { id: "01B", scenarioId: "login", passed: 6, failed: 0 }];
@@ -63,6 +63,11 @@ describe("scenario verification badges", () => {
   it("ScenarioTable renders the compact badge in the status cell", () => {
     render(<ScenarioTable scenarios={[scn]} scores={scores} testRuns={runs} verifications={confirmed} />);
     expect(screen.getByTitle("Independently verified")).toHaveTextContent("✓");
+  });
+  it("ScenarioTable shows unmet for a refuted scenario despite high score", () => {
+    render(<ScenarioTable scenarios={[scn]} scores={scores} testRuns={runs}
+      verifications={[{ id: "01V", scenarioId: "login", testRunId: "01A", verdict: "refuted" }]} />);
+    expect(screen.getByText("unmet")).toBeInTheDocument();
   });
 });
 

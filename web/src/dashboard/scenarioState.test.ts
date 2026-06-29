@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { deriveScenarioState, latestById, summarize } from "./scenarioState";
-import type { Scenario, Score, TestRun } from "./types";
+import { latestById, summarize, scenarioStatus } from "./scenarioState";
+import type { Scenario, Score, TestRun, Verification } from "./types";
 
 const scenario = (over: Partial<Scenario> = {}): Scenario => ({ id: "s1", goalId: "g1", title: "S", rubric: { criteria: [] }, ...over });
 const score = (id: string, composite: number, scenarioId = "s1"): Score => ({ id, scenarioId, composite });
@@ -13,41 +13,36 @@ describe("latestById", () => {
   });
 });
 
-describe("deriveScenarioState", () => {
-  it("met: latest composite >= threshold AND latest testRun.failed === 0", () => {
-    const r = deriveScenarioState(scenario({ threshold: 80 }), [score("01A", 60), score("01B", 85)], [run("01A", 0)]);
-    expect(r.state).toBe("met");
-    expect(r.latestComposite).toBe(85);
-  });
-  it("unmet when latest composite < threshold", () => {
-    expect(deriveScenarioState(scenario({ threshold: 80 }), [score("01A", 79)], [run("01A", 0)]).state).toBe("unmet");
-  });
-  it("unmet when latest testRun has failures", () => {
-    expect(deriveScenarioState(scenario({ threshold: 80 }), [score("01A", 95)], [run("01A", 2)]).state).toBe("unmet");
-  });
-  it("met exactly at the threshold", () => {
-    expect(deriveScenarioState(scenario({ threshold: 80 }), [score("01A", 80)], [run("01A", 0)]).state).toBe("met");
-  });
-  it("defaults threshold to 80 when unset", () => {
-    expect(deriveScenarioState(scenario({ threshold: undefined }), [score("01A", 80)], [run("01A", 0)]).state).toBe("met");
-    expect(deriveScenarioState(scenario({ threshold: undefined }), [score("01A", 79)], [run("01A", 0)]).state).toBe("unmet");
-  });
-  it("unmet when there is no score or no test run", () => {
-    expect(deriveScenarioState(scenario(), [], [run("01A", 0)]).state).toBe("unmet");
-    expect(deriveScenarioState(scenario(), [score("01A", 90)], []).state).toBe("unmet");
-  });
-  it("ignores other scenarios' scores/runs", () => {
-    const r = deriveScenarioState(scenario(), [score("01A", 90), score("01Z", 10, "other")], [run("01A", 0)]);
-    expect(r.latestComposite).toBe(90);
-    expect(r.state).toBe("met");
-  });
-});
-
 describe("summarize", () => {
   it("counts met / total", () => {
     const scns = [scenario({ id: "s1" }), scenario({ id: "s2" })];
     const scores = [score("01A", 90, "s1"), score("01A", 10, "s2")];
     const runs = [run("01A", 0, "s1"), run("01A", 0, "s2")];
-    expect(summarize(scns, scores, runs)).toEqual({ met: 1, total: 2 });
+    expect(summarize(scns, scores, runs, [])).toEqual({ met: 1, total: 2 });
+  });
+});
+
+const scn: Scenario = { id: "s1", threshold: 80 };
+const scoreV = (id: string, c: number): Score => ({ id, scenarioId: "s1", composite: c });
+const runV = (id: string, f: number): TestRun => ({ id, scenarioId: "s1", failed: f });
+const ver = (id: string, v: "confirmed" | "refuted"): Verification => ({ id, scenarioId: "s1", verdict: v });
+
+describe("scenarioStatus", () => {
+  it("met when score>=threshold, no fails, not refuted", () => {
+    const r = scenarioStatus(scn, [scoreV("A", 90)], [runV("A", 0)], []);
+    expect(r.state).toBe("met");
+    expect(r.latestComposite).toBe(90);
+    expect(r.reasons.every((x) => x.ok)).toBe(true);
+  });
+  it("unmet + refutation reason when refuted despite high score", () => {
+    const r = scenarioStatus(scn, [scoreV("A", 95)], [runV("A", 0)], [ver("A", "refuted")]);
+    expect(r.state).toBe("unmet");
+    expect(r.reasons.find((x) => x.kind === "verification")?.ok).toBe(false);
+  });
+});
+describe("summarize (verification-aware)", () => {
+  it("counts a refuted-but-high scenario as unmet", () => {
+    const r = summarize([scn], [scoreV("A", 95)], [runV("A", 0)], [ver("A", "refuted")]);
+    expect(r).toEqual({ met: 0, total: 1 });
   });
 });

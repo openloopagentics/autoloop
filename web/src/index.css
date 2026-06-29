@@ -1404,28 +1404,57 @@ a.docrow-title:hover { color: var(--accent); }
   border: 1px solid color-mix(in oklab, var(--st-failed) 30%, transparent);
 }
 
-/* ---- Product map (Map tab) ---- */
+/* ---- Explanation graph (Map tab) ---- */
 .mapwrap { height: 540px; border: 1px solid var(--border, #2a2a2a); border-radius: 8px; overflow: hidden; }
 .mapnode { width: 168px; box-sizing: border-box; padding: 8px 10px; border-radius: 6px;
-  border: 1px solid #5a5a5a; background: #1c1f24; font-size: 12px; line-height: 1.3; }
+  border: 1px solid var(--border-strong); background: var(--surface-raised); color: var(--fg-body);
+  font-size: 12px; line-height: 1.3; }
 .mapnode-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mapnode-why { display: block; margin-top: 3px; font-size: 10.5px; color: var(--fg-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mapnode--goal { font-weight: 600; }
-.mapnode--component { border-style: dashed; }            /* Phase 3: distinct shape */
-.mapnode.map-met { border-color: #2e9e44; background: rgba(46, 158, 68, .14); }
-.mapnode.map-unmet, .mapnode.map-neutral { border-color: #6a6a6a; }
-.mapnode.map-bugged { border-color: #d24545; background: rgba(210, 69, 69, .14); }
-.mapnode.map-active { border-color: #e8a13a; background: rgba(232, 161, 58, .14);
+/* State colors via theme tokens (color-mix), so they track the active palette. */
+.mapnode.map-met { border-color: color-mix(in oklab, var(--st-completed) 55%, transparent);
+  background: color-mix(in oklab, var(--st-completed) 14%, transparent); }
+.mapnode.map-unmet, .mapnode.map-neutral { border-color: color-mix(in oklab, var(--fg-meta) 55%, transparent); }
+.mapnode.map-bugged { border-color: color-mix(in oklab, var(--st-failed) 60%, transparent);
+  background: color-mix(in oklab, var(--st-failed) 14%, transparent); }
+.mapnode.map-active { border-color: color-mix(in oklab, var(--st-running) 60%, transparent);
+  background: color-mix(in oklab, var(--st-running) 14%, transparent);
   animation: mapnode-pulse 1.6s ease-in-out infinite; }
-.mapnode--done { opacity: .45; }
+/* Decision: blue left-bar. Evidence: small, muted, dashed. */
+.mapnode--decision { border-left: 4px solid var(--accent);
+  background: color-mix(in oklab, var(--accent) 9%, transparent); }
+.mapnode--evidence { width: 124px; padding: 5px 8px; font-size: 11px; border-style: dashed;
+  color: var(--fg-soft); opacity: .85; }
 @keyframes mapnode-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(232, 161, 58, .55); }
-  50%      { box-shadow: 0 0 0 7px rgba(232, 161, 58, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--st-running) 55%, transparent); }
+  50%      { box-shadow: 0 0 0 7px color-mix(in oklab, var(--st-running) 0%, transparent); }
 }
 [data-motion="off"] .mapnode.map-active { animation: none; }
 @media (prefers-reduced-motion: reduce) { .mapnode.map-active { animation: none; } }
+/* Edges: structure solid (muted), affects fainter, evidence dashed. Subtle, token-based. */
+.mapwrap .react-flow__edge-path { stroke: color-mix(in oklab, var(--fg-meta) 60%, transparent); }
+.mapwrap .mapedge--affects .react-flow__edge-path { stroke: color-mix(in oklab, var(--fg-meta) 45%, transparent); }
+.mapwrap .mapedge--evidence .react-flow__edge-path { stroke: color-mix(in oklab, var(--fg-meta) 40%, transparent); stroke-dasharray: 4 3; }
+/* "because" edge labels */
+.mapwrap .react-flow__edge-text { font-size: 10px; fill: var(--fg-soft); }
+.mapwrap .react-flow__edge-textbg { fill: var(--surface); opacity: .85; }
+.maptab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.maptab-toggle.is-on { border-color: color-mix(in oklab, var(--st-running) 55%, transparent); color: var(--fg); }
 .map-panel { position: relative; margin-top: 12px; }
 .map-panel-close { position: absolute; top: 8px; right: 10px; background: none; border: none; cursor: pointer; }
-.map-warning { border-color: #e8a13a; font-size: 13px; }
+.map-warning { border-color: var(--st-running); font-size: 13px; }
+/* Why-panel */
+.whypanel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.whypanel-head h3 { margin: 0; font-size: 15px; }
+.whypanel-sec { margin-top: 12px; }
+.whypanel-sec h4 { margin: 0 0 4px; font-size: 12px; color: var(--fg-soft); text-transform: uppercase; letter-spacing: .04em; }
+.whypanel-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.whypanel-rationale { margin: 6px 0 0; font-size: 13px; color: var(--fg-body); }
+.whydec-kind { font-size: 11px; color: var(--fg-soft); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+.whyev--refutes { color: var(--st-failed); }
+.whyev--supports { color: var(--st-completed); }
 
 .mapscrub { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .mapscrub input[type="range"] { flex: 1; }

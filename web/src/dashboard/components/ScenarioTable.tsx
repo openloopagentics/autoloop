@@ -1,10 +1,10 @@
-import { deriveScenarioState, DEFAULT_THRESHOLD } from "../scenarioState";
+import { scenarioStatus, DEFAULT_THRESHOLD } from "../scenarioState";
 import { scenarioVerification } from "../verificationView";
 import { VerificationBadge } from "./VerificationBadge";
 import type { Scenario, Score, TestRun, Verification } from "../types";
 
 function ScenarioRow({ scenario, scores, testRuns, verifications = [] }: { scenario: Scenario; scores: Score[]; testRuns: TestRun[]; verifications?: Verification[] }) {
-  const { state, latestComposite, latestTest } = deriveScenarioState(scenario, scores, testRuns);
+  const { state, latestComposite, latestTest } = scenarioStatus(scenario, scores, testRuns, verifications);
   const verdict = scenarioVerification(scenario.id, latestTest?.id ?? null, verifications);
   const threshold = scenario.threshold ?? DEFAULT_THRESHOLD;
   const pct = Math.max(0, Math.min(100, latestComposite ?? 0));

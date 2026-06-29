@@ -6,7 +6,7 @@ import { useState } from "react";
 // toggle behavior is testable without the SDK.
 vi.mock("../hooks", () => {
   const empty = { data: [], loading: false, error: null };
-  return { usePhases: () => empty, useScores: () => empty, useTestRuns: () => empty };
+  return { usePhases: () => empty, useScores: () => empty, useTestRuns: () => empty, useVerifications: () => empty };
 });
 
 import { LoopsTab } from "../tabs/LoopsTab";
