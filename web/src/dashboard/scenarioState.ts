@@ -10,20 +10,6 @@ export function latestById<T extends { id: string }>(items: T[]): T | null {
   return best;
 }
 
-export interface ScenarioState { state: "met" | "unmet"; latestComposite: number | null; latestTest: TestRun | null; }
-
-/** Derive a scenario's met/unmet state from its scores + test runs (contract rule). */
-export function deriveScenarioState(scenario: Scenario, scores: Score[], testRuns: TestRun[]): ScenarioState {
-  const myScores = scores.filter((s) => s.scenarioId === scenario.id);
-  const myRuns = testRuns.filter((r) => r.scenarioId === scenario.id);
-  const latestScore = latestById(myScores);
-  const latestTest = latestById(myRuns);
-  const threshold = scenario.threshold ?? DEFAULT_THRESHOLD;
-  const composite = latestScore?.composite ?? null;
-  const met = composite !== null && composite >= threshold && latestTest !== null && (latestTest.failed ?? 0) === 0;
-  return { state: met ? "met" : "unmet", latestComposite: composite, latestTest };
-}
-
 export interface ScenarioStatus {
   state: "met" | "unmet";
   latestComposite: number | null;
