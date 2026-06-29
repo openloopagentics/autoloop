@@ -1423,8 +1423,8 @@ a.docrow-title:hover { color: var(--accent); }
   background: color-mix(in oklab, var(--st-running) 14%, transparent);
   animation: mapnode-pulse 1.6s ease-in-out infinite; }
 /* Decision: blue left-bar. Evidence: small, muted, dashed. */
-.mapnode--decision { border-left: 4px solid color-mix(in oklab, #5b8def 85%, var(--border));
-  background: color-mix(in oklab, #5b8def 9%, transparent); }
+.mapnode--decision { border-left: 4px solid var(--accent);
+  background: color-mix(in oklab, var(--accent) 9%, transparent); }
 .mapnode--evidence { width: 124px; padding: 5px 8px; font-size: 11px; border-style: dashed;
   color: var(--fg-soft); opacity: .85; }
 @keyframes mapnode-pulse {
@@ -1433,6 +1433,10 @@ a.docrow-title:hover { color: var(--accent); }
 }
 [data-motion="off"] .mapnode.map-active { animation: none; }
 @media (prefers-reduced-motion: reduce) { .mapnode.map-active { animation: none; } }
+/* Edges: structure solid (muted), affects fainter, evidence dashed. Subtle, token-based. */
+.mapwrap .react-flow__edge-path { stroke: color-mix(in oklab, var(--fg-meta) 60%, transparent); }
+.mapwrap .mapedge--affects .react-flow__edge-path { stroke: color-mix(in oklab, var(--fg-meta) 45%, transparent); }
+.mapwrap .mapedge--evidence .react-flow__edge-path { stroke: color-mix(in oklab, var(--fg-meta) 40%, transparent); stroke-dasharray: 4 3; }
 /* "because" edge labels */
 .mapwrap .react-flow__edge-text { font-size: 10px; fill: var(--fg-soft); }
 .mapwrap .react-flow__edge-textbg { fill: var(--surface); opacity: .85; }

@@ -62,7 +62,7 @@ export function MapTab(props: MapTabProps) {
   }, [playing, minT, maxT]);
 
   const liveModel = useMemo(() => buildWhyModel(input), [input]);
-  const model = scrubT === null ? liveModel : whyModelAtTime(input, scrubT);
+  const model = useMemo(() => (scrubT === null ? liveModel : whyModelAtTime(input, scrubT)), [liveModel, input, scrubT]);
   const liveGraph = useMemo(() => buildWhyGraph(liveModel, { showReasoning }), [liveModel, showReasoning]); // drives layout
   const graph = useMemo(() => buildWhyGraph(model, { showReasoning }), [model, showReasoning]);             // drives render
 

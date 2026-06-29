@@ -1,8 +1,8 @@
 import type { WhyModel, WhyDecision, WhyEvidence, SubjectState, DecisionKind } from "./whyModel";
 
 /** A short, human label per evidence kind — NOT a raw stringify of the detail
- *  (a test-run would otherwise render the literal "test-run"). */
-function evidenceLabel(ev: WhyEvidence): string {
+ *  (a test-run would otherwise render the literal "test-run"). Shared with WhyPanel. */
+export function evidenceLabel(ev: WhyEvidence): string {
   const d = ev.detail;
   switch (ev.kind) {
     case "score": return d.composite != null ? `score ${String(d.composite)}` : "score";

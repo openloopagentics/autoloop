@@ -1,3 +1,4 @@
+import { evidenceLabel } from "../whyGraph";
 import type { WhyModel, WhySubject, WhyDecision, WhyEvidence } from "../whyModel";
 
 /** The bare record id behind a graph node id (e.g. "scenario:s1" → "s1"). */
@@ -6,16 +7,13 @@ function bareId(nodeId: string): string {
   return i === -1 ? nodeId : nodeId.slice(i + 1);
 }
 
-/** One-line summary of a piece of evidence, per kind. */
+/** One-line summary: the shared per-kind base label, plus the panel's note/summary enrichment. */
 function evidenceText(ev: WhyEvidence): string {
+  const base = evidenceLabel(ev);
   const d = ev.detail;
-  switch (ev.kind) {
-    case "score": return d.composite != null ? `score ${String(d.composite)}${d.note ? ` · ${String(d.note)}` : ""}` : "score recorded";
-    case "test-run": { const f = Number(d.failed ?? 0); return f > 0 ? `${f} test(s) failing` : "all tests passing"; }
-    case "verification": return d.verdict === "refuted" ? `refuted${d.summary ? `: ${String(d.summary)}` : ""}` : "verification confirmed";
-    case "commit": return typeof d.sha === "string" ? `commit ${d.sha.slice(0, 7)}` : "commit";
-    default: return ev.kind;
-  }
+  if (ev.kind === "score" && d.note) return `${base} · ${String(d.note)}`;
+  if (ev.kind === "verification" && d.verdict === "refuted" && d.summary) return `${base}: ${String(d.summary)}`;
+  return base;
 }
 
 function SubjectBody({ model, subject }: { model: WhyModel; subject: WhySubject }) {
@@ -90,7 +88,7 @@ function EvidenceBody({ evidence }: { evidence: WhyEvidence }) {
       </div>
       <ul className="whypanel-list">
         {Object.entries(evidence.detail).filter(([, v]) => v != null && v !== "").map(([k, v]) => (
-          <li key={k}><strong>{k}:</strong> {String(v)}</li>
+          <li key={k}><strong>{k}:</strong> {typeof v === "object" ? JSON.stringify(v) : String(v)}</li>
         ))}
       </ul>
     </div>
