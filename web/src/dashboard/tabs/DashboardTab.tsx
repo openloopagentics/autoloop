@@ -3,18 +3,18 @@ import { LoopSnapshot } from "../components/LoopSnapshot";
 import { TrendsStrip } from "../components/TrendsStrip";
 import type { SelectableLoop } from "../loopView";
 import type { TrendPoint } from "../trendView";
-import type { Phase, Task, Scenario, Score, TestRun } from "../types";
+import type { Phase, Task, Scenario, Score, TestRun, Verification } from "../types";
 
-export function DashboardTab({ loops, selected, status, phases, tasks, scenarios, scores, testRuns, trendPoints }: {
+export function DashboardTab({ loops, selected, status, phases, tasks, scenarios, scores, testRuns, verifications, trendPoints }: {
   loops: SelectableLoop[]; selected: SelectableLoop | undefined; status?: string;
-  phases: Phase[]; tasks: Task[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[];
+  phases: Phase[]; tasks: Task[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; verifications: Verification[];
   trendPoints: TrendPoint[];
 }) {
   return (
     <>
       <RollupStrip loops={loops} status={status} />
       <TrendsStrip points={trendPoints} />
-      {selected && <LoopSnapshot loop={selected} phases={phases} tasks={tasks} scenarios={scenarios} scores={scores} testRuns={testRuns} />}
+      {selected && <LoopSnapshot loop={selected} phases={phases} tasks={tasks} scenarios={scenarios} scores={scores} testRuns={testRuns} verifications={verifications} />}
     </>
   );
 }

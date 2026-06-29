@@ -41,7 +41,7 @@ export function trendWindow(loops: Loop[], includeMain: boolean): Loop[] {
 
 /** Per-loop trend series, ascending by order (main first). A loop is judged on what it
  *  attempted: only scenarios tagged in ITS tasks count, and met-state is derived from
- *  ITS loop-scoped events via the existing deriveScenarioState predicate (no refactor). */
+ *  ITS loop-scoped events via the verification-aware scenarioStatus predicate. */
 export function buildTrend(loops: LoopRunData[], scenarios: Scenario[]): TrendPoint[] {
   const points = loops.map((d) => {
     const tagged = new Set(d.tasks.flatMap((t) => t.scenarioIds ?? []));

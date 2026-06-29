@@ -128,7 +128,7 @@ export function ProjectDetail() {
                 {tab === "dashboard" && (
                   <DashboardTab loops={loopList} selected={selected} status={projStatus}
                     phases={phases.data} tasks={tasks.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data}
-                    trendPoints={trendPoints} />
+                    verifications={verifications.data} trendPoints={trendPoints} />
                 )}
                 {tab === "vision" && (
                   <VisionTab teamId={teamId} slug={slug} editable={editable}
