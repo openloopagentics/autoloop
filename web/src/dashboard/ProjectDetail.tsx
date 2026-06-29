@@ -1,13 +1,12 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas, useVisionChanges,
 } from "./hooks";
 import { postMessage, putUserIdea } from "./api";
-import { buildLoopList, defaultSelectedLoop, loopArgFor, loopIsRunning, effectiveProjectStatus, MAIN_ID } from "./loopView";
+import { buildLoopList, defaultSelectedLoop, loopArgFor, loopIsRunning, effectiveProjectStatus } from "./loopView";
 import { useLoopTrend } from "./useLoopTrend";
-import type { LoopSlice } from "./mapTimeline";
 import { buildTrend } from "./trendView";
 import { ProjectHeader } from "./components/ProjectHeader";
 import { Tabs, isTabKey, type TabKey } from "./components/Tabs";
@@ -73,21 +72,12 @@ export function ProjectDetail() {
   const allTestRuns = useAllTestRuns(teamId, slug); // all test runs across every loop
   const messages = useMessages(teamId, slug);
   const ideas = useIdeas(teamId, slug);
+  const visionChanges = useVisionChanges(teamId, slug);
 
   const trend = useLoopTrend(teamId, slug, hasProjectDirectData);
   // Empty until every slice arrives — TrendsStrip hides itself below 2 points,
   // so partial fan-out data never renders a misleading half-trend.
   const trendPoints = trend.loading ? [] : buildTrend(trend.data, scenarios.data);
-
-  // Map tab replay data: undefined until the trend fan-out has fully arrived
-  // (MapTab hides the scrubber when slices === undefined).
-  const mapSlices: LoopSlice[] | undefined = useMemo(
-    () => trend.loading ? undefined
-        : trend.data.map((d) => ({
-            loopId: d.loop.id === MAIN_ID ? undefined : d.loop.id,
-            tasks: d.tasks, bugs: d.bugs, scores: d.scores, testRuns: d.testRuns,
-          })),
-    [trend.loading, trend.data]);
 
   // loopIsRunning applies the zombie rule — a loop stuck "running" but untouched for 3+ hours
   // does not claim an agent is listening.
@@ -144,11 +134,11 @@ export function ProjectDetail() {
                 {tab === "tests" && <TestsTab scenarios={scenarios.data} testRuns={allTestRuns.data} />}
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
                 {tab === "map" && (
-                  <MapTab loops={loopList} selectedId={selectedId} onSelect={setPicked}
+                  <MapTab teamId={teamId} slug={slug} loops={loopList} selectedId={selectedId} onSelect={setPicked}
                     goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data}
                     tasks={tasks.data} bugs={loopBugs.data} currentTaskId={selected?.currentTaskId}
-                    verifications={verifications.data} slices={mapSlices} projectCreatedAt={project.data?.createdAt}
-                    productMap={documents.data.find((d) => d.id === "product-map")?.content} />
+                    verifications={verifications.data} revisions={revisions.data} visionChanges={visionChanges.data}
+                    ideas={ideas.data} projectCreatedAt={project.data?.createdAt} />
                 )}
                 {tab === "ideas" && <IdeasTab ideas={ideas.data} onPut={(id, body) => putUserIdea(teamId, slug, id, body)} />}
                 {tab === "messages" && <MessagesTab teamId={teamId} slug={slug} messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}

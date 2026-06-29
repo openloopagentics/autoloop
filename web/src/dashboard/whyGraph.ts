@@ -1,4 +1,17 @@
-import type { WhyModel, WhyDecision, SubjectState, DecisionKind } from "./whyModel";
+import type { WhyModel, WhyDecision, WhyEvidence, SubjectState, DecisionKind } from "./whyModel";
+
+/** A short, human label per evidence kind — NOT a raw stringify of the detail
+ *  (a test-run would otherwise render the literal "test-run"). */
+function evidenceLabel(ev: WhyEvidence): string {
+  const d = ev.detail;
+  switch (ev.kind) {
+    case "score": return d.composite != null ? `score ${String(d.composite)}` : "score";
+    case "test-run": { const f = Number(d.failed ?? 0); return f > 0 ? `${f} failed` : "passed"; }
+    case "verification": return d.verdict === "refuted" ? "refuted" : d.verdict === "confirmed" ? "confirmed" : "verification";
+    case "commit": return typeof d.sha === "string" ? `commit ${d.sha.slice(0, 7)}` : "commit";
+    default: return ev.kind;
+  }
+}
 
 export type GraphNodeKind = "goal" | "scenario" | "task" | "bug" | "decision" | "evidence";
 export interface GraphNode {
@@ -52,7 +65,7 @@ export function buildWhyGraph(model: WhyModel, opts: { showReasoning: boolean })
 
   // Reasoning mode: add decision + evidence nodes and their edges.
   for (const d of model.decisions) nodes.push({ id: d.id, kind: "decision", label: d.summary, state: "neutral", loopId: d.loopId, decisionKind: d.kind });
-  for (const ev of model.evidence) nodes.push({ id: ev.id, kind: "evidence", label: String((ev.detail.composite ?? ev.detail.verdict ?? ev.kind)), state: "neutral" });
+  for (const ev of model.evidence) nodes.push({ id: ev.id, kind: "evidence", label: evidenceLabel(ev), state: "neutral" });
   const allIds = new Set(nodes.map((n) => n.id));
   for (const e of model.edges) {
     if (e.type === "affects" && allIds.has(e.from) && allIds.has(e.to)) edges.push({ id: `a:${e.from}->${e.to}`, from: e.from, to: e.to, kind: "affects" });

@@ -1,66 +1,51 @@
 import { useEffect, useMemo, useState } from "react";
-import { buildMap, type MapNode } from "../mapView";
-import { mapAtTime, tsMillis, type LoopSlice } from "../mapTimeline";
-import { deriveScenarioState, type ScenarioState } from "../scenarioState";
+import { buildWhyModel, type BuildWhyModelInput } from "../whyModel";
+import { whyModelAtTime, tsMillis } from "../whyModelAtTime";
+import { buildWhyGraph } from "../whyGraph";
+import { useDecisions } from "../hooks";
 import { MapCanvas } from "../components/MapCanvas";
 import { MapScrubber } from "../components/MapScrubber";
 import { LoopSelector } from "../components/LoopSelector";
-import { ScenarioCard } from "../components/ScenarioCard";
-import { TaskItem } from "../components/TaskItem";
-import { BugItem } from "../components/BugItem";
+import { WhyPanel } from "../components/WhyPanel";
 import { EmptyState } from "../components/EmptyState";
 import type { SelectableLoop } from "../loopView";
-import type { Bug, Goal, Scenario, Score, Task, TestRun, Verification } from "../types";
+import type { Bug, Goal, Idea, Revision, Scenario, Score, Task, TestRun, Verification, VisionChange } from "../types";
 
 export interface MapTabProps {
+  teamId: string; slug: string;
   loops: SelectableLoop[]; selectedId: string; onSelect: (id: string) => void;
   goals: Goal[]; scenarios: Scenario[];
   scores: Score[]; testRuns: TestRun[];     // project-wide (all loops) — scenarios are project-level vision
   tasks: Task[]; bugs: Bug[];               // selected-loop scoped (same convention as the Loops tab)
   currentTaskId?: string | null;
-  verifications?: Verification[];           // selected-loop scoped — feeds the ScenarioCard verification badge
-  slices?: LoopSlice[];        // Phase 2: all-loops run data (useLoopTrend fetch layer)
-  projectCreatedAt?: unknown;  // Phase 2: scrubber range start
-  productMap?: string;         // Phase 3: raw product-map document content (JSON string)
-}
-
-interface PanelData { goals: Goal[]; scenarios: Scenario[]; scores: Score[]; testRuns: TestRun[]; tasks: Task[]; bugs: Bug[]; verifications: Verification[]; nodes: MapNode[]; }
-
-function MapPanelBody({ id, data }: { id: string; data: PanelData }) {
-  const sep = id.indexOf(":");
-  const ns = id.slice(0, sep);
-  const key = id.slice(sep + 1);
-  if (ns === "s") { const s = data.scenarios.find((x) => x.id === key); return s ? <ScenarioCard scenario={s} scores={data.scores} testRuns={data.testRuns} verifications={data.verifications} /> : null; }
-  if (ns === "t") { const t = data.tasks.find((x) => x.id === key); return t ? <TaskItem task={t} commits={[]} /> : null; }
-  if (ns === "b") { const b = data.bugs.find((x) => x.id === key); return b ? <BugItem bug={b} /> : null; }
-  if (ns === "g") {
-    const g = data.goals.find((x) => x.id === key);
-    return g ? (<div className="map-goal"><h3>{g.title ?? g.id}</h3>{g.description && <p className="dim">{g.description}</p>}</div>) : null;
-  }
-  if (ns === "c") {
-    const n = data.nodes.find((x) => x.id === id);
-    return n ? <div className="map-goal"><h3>{n.label}</h3><p className="dim">component</p></div> : null;
-  }
-  return null;
+  verifications?: Verification[];           // selected-loop scoped
+  revisions?: Revision[];                   // selected-loop scoped — feed plan-change decisions
+  visionChanges?: VisionChange[];           // project-wide — feed vision-change decisions
+  ideas?: Idea[];                           // project-wide — seed a synthesized goal-pick
+  projectCreatedAt?: unknown;               // replay range start
 }
 
 export function MapTab(props: MapTabProps) {
-  const { loops, selectedId, onSelect, goals, scenarios, scores, testRuns, tasks, bugs, currentTaskId, verifications = [], slices, projectCreatedAt, productMap } = props;
-  const [pickedNode, setPickedNode] = useState<string | null>(null);
+  const {
+    teamId, slug, loops, selectedId, onSelect,
+    goals, scenarios, scores, testRuns, tasks, bugs, currentTaskId,
+    verifications = [], revisions = [], visionChanges = [], ideas = [], projectCreatedAt,
+  } = props;
 
-  const openBugs = useMemo(() => bugs.filter((b) => (b.status ?? "open") === "open"), [bugs]);
-  const scenarioStates = useMemo(() => {
-    const m: Record<string, ScenarioState> = {};
-    for (const s of scenarios) m[s.id] = deriveScenarioState(s, scores, testRuns);
-    return m;
-  }, [scenarios, scores, testRuns]);
-  const graph = useMemo(
-    () => buildMap({ goals, scenarios, scenarioStates, tasks, currentTaskId, openBugs, productMap }),
-    [goals, scenarios, scenarioStates, tasks, currentTaskId, openBugs, productMap]);
+  const decisions = useDecisions(teamId, slug, selectedId);
 
+  const input = useMemo<BuildWhyModelInput>(() => ({
+    loopId: selectedId,
+    goals, scenarios, tasks, bugs, scores, testRuns, verifications,
+    revisions, visionChanges, decisions: decisions.data, ideas, currentTaskId,
+  }), [selectedId, goals, scenarios, tasks, bugs, scores, testRuns, verifications, revisions, visionChanges, decisions.data, ideas, currentTaskId]);
+
+  const [showReasoning, setShowReasoning] = useState(false);
   const [scrubT, setScrubT] = useState<number | null>(null); // null = live
   const [playing, setPlaying] = useState(false);
-  const maxT = useMemo(() => Date.now(), []);                // replay range end, fixed at mount
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const maxT = useMemo(() => Date.now(), []);          // replay range end, fixed at mount
   const minT = tsMillis(projectCreatedAt) ?? maxT - 1;
 
   // Play: ~10s sweep (100 ticks × 100ms); reaching max ⇒ back to live.
@@ -76,27 +61,35 @@ export function MapTab(props: MapTabProps) {
     return () => clearInterval(id);
   }, [playing, minT, maxT]);
 
-  const replay = slices !== undefined && scrubT !== null;
-  const shown = replay ? mapAtTime({ goals, scenarios, slices, cutoff: scrubT }) : graph;
+  const liveModel = useMemo(() => buildWhyModel(input), [input]);
+  const model = scrubT === null ? liveModel : whyModelAtTime(input, scrubT);
+  const liveGraph = useMemo(() => buildWhyGraph(liveModel, { showReasoning }), [liveModel, showReasoning]); // drives layout
+  const graph = useMemo(() => buildWhyGraph(model, { showReasoning }), [model, showReasoning]);             // drives render
+
+  // Clear a selection that no longer exists at the current cutoff (scrubbed before it appeared).
+  useEffect(() => {
+    if (selectedNodeId && !graph.nodes.some((n) => n.id === selectedNodeId)) setSelectedNodeId(null);
+  }, [graph, selectedNodeId]);
 
   if (goals.length === 0) return <EmptyState message="No goals yet — the map appears once the vision has goals." />;
 
   return (
     <section className="maptab">
-      <LoopSelector loops={loops} selectedId={selectedId} onChange={onSelect} />
-      {graph.warning && <div className="card map-warning" role="note">{graph.warning}</div>}
-      <MapCanvas nodes={shown.nodes} edges={shown.edges} onNodeClick={replay ? undefined : setPickedNode} />
-      {slices !== undefined && (
-        <MapScrubber min={minT} max={maxT} value={scrubT} playing={playing}
-          onChange={(v) => { setScrubT(v); if (v === null) setPlaying(false); }}
-          onPlayPause={() => { setPlaying((p) => !p); if (!playing && scrubT === null) setScrubT(minT); }} />
-      )}
-      {pickedNode && (
-        <aside className="map-panel card" aria-label="map detail">
-          <button type="button" className="map-panel-close" aria-label="close" onClick={() => setPickedNode(null)}>×</button>
-          <MapPanelBody id={pickedNode} data={{ goals, scenarios, scores, testRuns, tasks, bugs: openBugs, verifications, nodes: graph.nodes }} />
-        </aside>
-      )}
+      <div className="maptab-head">
+        <LoopSelector loops={loops} selectedId={selectedId} onChange={onSelect} />
+        <button type="button" className={`btn btn-ghost btn-sm maptab-toggle${showReasoning ? " is-on" : ""}`}
+          aria-pressed={showReasoning} onClick={() => setShowReasoning((v) => !v)}>
+          {showReasoning ? "Hide reasoning" : "Show reasoning"}
+        </button>
+      </div>
+      <MapCanvas
+        layoutNodes={liveGraph.nodes} layoutEdges={liveGraph.edges}
+        nodes={graph.nodes} edges={graph.edges}
+        onNodeClick={setSelectedNodeId} />
+      <MapScrubber min={minT} max={maxT} value={scrubT} playing={playing}
+        onChange={(v) => { setScrubT(v); if (v === null) setPlaying(false); }}
+        onPlayPause={() => { setPlaying((p) => !p); if (!playing && scrubT === null) setScrubT(minT); }} />
+      {selectedNodeId && <WhyPanel model={model} nodeId={selectedNodeId} onClose={() => setSelectedNodeId(null)} />}
     </section>
   );
 }
