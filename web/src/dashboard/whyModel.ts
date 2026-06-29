@@ -133,3 +133,84 @@ export function toDecisions(inp: DecisionInputs): WhyDecision[] {
   }
   return out;
 }
+
+import type { Goal, Task, Bug } from "./types";
+
+export type SubjectKind = "loop" | "goal" | "scenario" | "task" | "bug";
+
+export interface WhySubject {
+  id: string;
+  kind: SubjectKind;
+  label: string;
+  loopId?: string;
+  explanation?: Explanation;
+}
+export interface WhyEvidence {
+  id: string;
+  kind: "score" | "test-run" | "verification" | "commit";
+  subjectId: string;
+  relation: "supports" | "refutes";
+  detail: Record<string, unknown>;
+}
+export type WhyEdge =
+  | { type: "structure"; from: string; to: string }
+  | { type: "affects"; from: string; to: string; decisionId: string }
+  | { type: "evidence"; from: string; to: string; evidenceId: string };
+
+export interface WhyModel {
+  subjects: WhySubject[];
+  decisions: WhyDecision[];
+  evidence: WhyEvidence[];
+  edges: WhyEdge[];
+}
+
+export interface BuildWhyModelInput extends DecisionInputs {
+  goals: Goal[];
+  scenarios: Scenario[];
+  tasks: Task[];
+  bugs: Bug[];
+  scores: Score[];
+  testRuns: TestRun[];
+  verifications: Verification[];
+  currentTaskId?: string | null;
+}
+
+const SCEN = (id: string) => `scenario:${id}`;
+const TASK = (id: string) => `task:${id}`;
+
+export function buildWhyModel(inp: BuildWhyModelInput): WhyModel {
+  const subjects: WhySubject[] = [];
+  const buggedScenarios = new Set(inp.bugs.filter((b) => b.status !== "fixed" && b.severity === "high" && b.scenarioId).map((b) => b.scenarioId as string));
+
+  for (const g of inp.goals) subjects.push({ id: `goal:${g.id}`, kind: "goal", label: g.title ?? g.id });
+  for (const s of inp.scenarios) {
+    const ex = explainScenario(s, inp.scores, inp.testRuns, inp.verifications);
+    subjects.push({ id: SCEN(s.id), kind: "scenario", label: s.title ?? s.id, explanation: buggedScenarios.has(s.id) ? { ...ex, state: "bugged" } : ex });
+  }
+  for (const t of inp.tasks) subjects.push({ id: TASK(t.id), kind: "task", label: t.title ?? t.id, loopId: t.loopId, explanation: { state: t.id === inp.currentTaskId ? "active" : "neutral", reasons: [] } });
+  for (const b of inp.bugs) subjects.push({ id: `bug:${b.id}`, kind: "bug", label: b.title ?? b.id, loopId: b.loopId, explanation: { state: "bugged", reasons: [] } });
+
+  const ids = new Set(subjects.map((s) => s.id));
+  const edges: WhyEdge[] = [];
+  const structure = (from: string, to: string) => { if (ids.has(from) && ids.has(to)) edges.push({ type: "structure", from, to }); };
+  for (const s of inp.scenarios) if (s.goalId) structure(`goal:${s.goalId}`, SCEN(s.id));
+  for (const t of inp.tasks) for (const sid of t.scenarioIds ?? []) structure(SCEN(sid), TASK(t.id));
+
+  const decisions = toDecisions(inp);
+  for (const d of decisions) {
+    for (const sid of d.refs.scenarioIds) if (ids.has(SCEN(sid))) edges.push({ type: "affects", from: d.id, to: SCEN(sid), decisionId: d.id });
+    for (const tid of d.refs.taskIds) if (ids.has(TASK(tid))) edges.push({ type: "affects", from: d.id, to: TASK(tid), decisionId: d.id });
+  }
+
+  const evidence: WhyEvidence[] = [];
+  const addEv = (id: string, kind: WhyEvidence["kind"], scenarioId: string | undefined, relation: WhyEvidence["relation"], detail: Record<string, unknown>) => {
+    if (!scenarioId || !ids.has(SCEN(scenarioId))) return;
+    evidence.push({ id, kind, subjectId: SCEN(scenarioId), relation, detail });
+    edges.push({ type: "evidence", from: id, to: SCEN(scenarioId), evidenceId: id });
+  };
+  for (const s of inp.scores) addEv(s.id, "score", s.scenarioId, "supports", { composite: s.composite, criteria: s.criteria, note: s.note });
+  for (const r of inp.testRuns) addEv(r.id, "test-run", r.scenarioId, "supports", { failed: r.failed, issues: r.issues });
+  for (const v of inp.verifications) addEv(v.id, "verification", v.scenarioId, v.verdict === "refuted" ? "refutes" : "supports", { verdict: v.verdict, summary: v.summary });
+
+  return { subjects, decisions, evidence, edges };
+}

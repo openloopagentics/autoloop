@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { explainScenario, toDecisions } from "./whyModel";
-import type { Scenario, Score, TestRun, Verification, Revision, VisionChange, Decision, Idea } from "./types";
+import { explainScenario, toDecisions, buildWhyModel } from "./whyModel";
+import type { Scenario, Score, TestRun, Verification, Revision, VisionChange, Decision, Idea, Goal, Task, Bug } from "./types";
 
 const scn: Scenario = { id: "s1", threshold: 80 };
 const score = (id: string, composite: number): Score => ({ id, scenarioId: "s1", composite });
@@ -66,5 +66,45 @@ describe("toDecisions", () => {
     expect(synth.find((x) => x.source === "synthesized")).toMatchObject({ kind: "goal-pick" });
     const withReal = toDecisions({ loopId, decisions: [{ id: "D1", kind: "goal-pick", summary: "s", rationale: "r" }], revisions: [], visionChanges: [], ideas: [idea] });
     expect(withReal.some((x) => x.source === "synthesized")).toBe(false);
+  });
+});
+
+describe("buildWhyModel", () => {
+  const base = {
+    loopId: "L1",
+    goals: [{ id: "g1", title: "Resilient checkout" }] as Goal[],
+    scenarios: [{ id: "s1", goalId: "g1", title: "Retry", threshold: 80 }] as Scenario[],
+    tasks: [{ id: "t1", title: "Backoff", scenarioIds: ["s1"], loopId: "L1" }] as Task[],
+    bugs: [] as Bug[],
+    scores: [{ id: "A", scenarioId: "s1", composite: 72 }] as Score[],
+    testRuns: [{ id: "A", scenarioId: "s1", failed: 0 }] as TestRun[],
+    verifications: [] as Verification[],
+    revisions: [{ id: "R1", trigger: { scenarioId: "s1", reason: "low" }, changes: [{ op: "add", taskId: "t1" }] }] as Revision[],
+    visionChanges: [] as VisionChange[],
+    decisions: [] as Decision[],
+    ideas: [] as Idea[],
+  };
+  it("builds subjects with namespaced ids and a scenario explanation", () => {
+    const m = buildWhyModel(base);
+    const s = m.subjects.find((x) => x.id === "scenario:s1")!;
+    expect(s.kind).toBe("scenario");
+    expect(s.explanation?.state).toBe("unmet");      // 72 < 80
+  });
+  it("emits structure edges goal→scenario→task", () => {
+    const m = buildWhyModel(base);
+    expect(m.edges).toContainEqual({ type: "structure", from: "goal:g1", to: "scenario:s1" });
+    expect(m.edges).toContainEqual({ type: "structure", from: "scenario:s1", to: "task:t1" });
+  });
+  it("emits an affects edge from a decision to its referenced subjects", () => {
+    const m = buildWhyModel(base);
+    expect(m.edges.some((e) => e.type === "affects" && e.to === "scenario:s1")).toBe(true);
+  });
+  it("drops dangling refs (no edge to a non-existent subject)", () => {
+    const m = buildWhyModel({ ...base, decisions: [{ id: "D1", kind: "approach", summary: "x", rationale: "y", refs: { taskIds: ["ghost"] } }] });
+    expect(m.edges.some((e) => e.to === "task:ghost")).toBe(false);
+  });
+  it("turns scores/testRuns into evidence rows linked to the scenario", () => {
+    const m = buildWhyModel(base);
+    expect(m.evidence.some((e) => e.kind === "score" && e.subjectId === "scenario:s1" && e.relation === "supports")).toBe(true);
   });
 });
