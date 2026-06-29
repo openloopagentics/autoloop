@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { AppError } from "../errors.js";
 import { ulid } from "../ulid.js";
-import type { ScoreBody, TestRunBody, RevisionBody, VerificationBody } from "../schemas.js";
+import type { ScoreBody, TestRunBody, RevisionBody, VerificationBody, DecisionBody } from "../schemas.js";
 import { resolveBase } from "./baseRef.js";
 
 /** Append a score event. Server stamps the id (sortable ULID) + createdAt. Returns the id. */
@@ -62,6 +62,19 @@ export async function appendRevision(teamId: string, slug: string, body: Revisio
     changes: body.changes,
     createdAt: FieldValue.serverTimestamp(),
   });
+  return id;
+}
+
+export async function appendDecision(teamId: string, slug: string, body: DecisionBody, loopId?: string): Promise<string> {
+  const { baseRef } = await resolveBase(teamId, slug, loopId);
+  const id = ulid();
+  const data: Record<string, unknown> = {
+    kind: body.kind, summary: body.summary, rationale: body.rationale,
+    by: body.by ?? "driver", createdAt: FieldValue.serverTimestamp(),
+  };
+  if (body.alternatives !== undefined) data.alternatives = body.alternatives;
+  if (body.refs !== undefined) data.refs = body.refs;
+  await baseRef.collection("decisions").doc(id).set(data);
   return id;
 }
 
