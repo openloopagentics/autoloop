@@ -35,6 +35,16 @@ export interface VisionChange {
   reason?: string; originLoopId?: string; status?: "applied" | "rejected";
   createdAt?: unknown; decidedAt?: unknown;
 }
+export interface Decision {
+  id: string;
+  kind?: "goal-pick" | "approach" | "stuck";
+  summary?: string;
+  rationale?: string;
+  alternatives?: string[];
+  refs?: { scenarioIds?: string[]; taskIds?: string[]; commitShas?: string[] };
+  by?: string;
+  createdAt?: unknown;
+}
 export interface Bug {
   id: string; title?: string; description?: string; scenarioId?: string; taskId?: string;
   severity?: "low" | "medium" | "high"; status?: "open" | "fixed";

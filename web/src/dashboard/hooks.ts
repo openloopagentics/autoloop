@@ -6,7 +6,7 @@ import {
 import { auth, db } from "../firebase";
 import type { Notification } from "../notifications/types";
 import { basePath } from "./loopView";
-import type { Bug, Commit, DocumentRec, Goal, Idea, Loop, Message, Phase, Project, Revision, Scenario, Score, SessionDoc, Task, Team, TeamRef, TestRun, Verification, VisionChange } from "./types";
+import type { Bug, Commit, Decision, DocumentRec, Goal, Idea, Loop, Message, Phase, Project, Revision, Scenario, Score, SessionDoc, Task, Team, TeamRef, TestRun, Verification, VisionChange } from "./types";
 
 interface Result<T> { data: T; loading: boolean; error: string | null; }
 
@@ -166,6 +166,15 @@ export function useRevisions(teamId: string, slug: string, loopId?: string): Res
   return useFirestoreQuery<Revision[]>(
     () => query(collection(db, ...basePath(teamId, slug, loopId), "revisions"), orderBy(documentId())),
     (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Revision[],
+    [],
+    [teamId, slug, loopId],
+  );
+}
+
+export function useDecisions(teamId: string, slug: string, loopId?: string): Result<Decision[]> {
+  return useFirestoreQuery<Decision[]>(
+    () => query(collection(db, ...basePath(teamId, slug, loopId), "decisions"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Decision[],
     [],
     [teamId, slug, loopId],
   );
