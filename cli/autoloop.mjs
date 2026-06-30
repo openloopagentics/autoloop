@@ -475,11 +475,13 @@ export const STOP_IDLE_MAX = 3; // consecutive no-progress turn-ends before the 
 
 /** Pure decision for the Stop hook: keep the loop alive (block the turn from ending) unless the
  *  loop is terminal/paused, the user is stopping it, or it's wedged (no progress for idleMax turns). */
-export function decideStop({ loopStatus, hasPendingStop, progressed, idleCount, idleMax = STOP_IDLE_MAX }) {
+export function decideStop({ loopStatus, hasPendingStop: pendingStop, progressed, idleCount, idleMax = STOP_IDLE_MAX }) {
+  // `hasPendingStop` (the boolean arg) is aliased to `pendingStop` so it doesn't shadow the
+  // exported hasPendingStop() helper inside this function body.
   if (!loopStatus || TERMINAL_STATUSES.includes(loopStatus))
     return { block: false, reason: `loop status is ${loopStatus ?? "none"}` };
   if (loopStatus === "paused") return { block: false, reason: "loop is paused" };
-  if (hasPendingStop) return { block: false, reason: "user stop/pause message pending" };
+  if (pendingStop) return { block: false, reason: "user stop/pause message pending" };
   if (!progressed && idleCount + 1 >= idleMax)
     return { block: false, wedged: true, reason: `wedged: no progress for ${idleMax} turns` };
   return { block: true, reason: progressed ? "loop progressing — continue" : "no progress yet — continue" };

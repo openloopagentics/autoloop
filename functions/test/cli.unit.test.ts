@@ -1150,6 +1150,10 @@ describe("relaunch decisions (pure)", () => {
     expect(decideStop({ ...live, progressed: false, idleCount: 0 }).block).toBe(true);  // 1st idle → block
     expect(decideStop({ ...live, progressed: false, idleCount: 2 }).block).toBe(false); // idleCount+1>=3 → allow
     expect(decideStop({ ...live, progressed: false, idleCount: 2 }).wedged).toBe(true); // …flagged wedged
+    // non-wedged allow paths must NOT be flagged wedged
+    expect(decideStop({ ...live, loopStatus: "paused" }).wedged).toBeFalsy();
+    expect(decideStop({ ...live, hasPendingStop: true }).wedged).toBeFalsy();
+    expect(decideStop({ ...live, loopStatus: "completed" }).wedged).toBeFalsy();
   });
 
   it("stopFingerprint changes when the loop advances, stable otherwise", () => {
@@ -1166,6 +1170,12 @@ describe("relaunch decisions (pure)", () => {
     expect(stopFingerprint(advanced)).not.toBe(fp);                          // task completed → changed
     const scored = structuredClone(base); scored.scenarios[0].latestComposite = 85;
     expect(stopFingerprint(scored)).not.toBe(fp);                            // new score → changed
+    const ptr = structuredClone(base); ptr.loop.currentTaskId = "t2";
+    expect(stopFingerprint(ptr)).not.toBe(fp);                               // current-task pointer moved → changed
+    const bugged = structuredClone(base); bugged.openBugs.push({ id: "b2" });
+    expect(stopFingerprint(bugged)).not.toBe(fp);                            // open bug added → changed
+    const tested = structuredClone(base); tested.scenarios[0].latestTestRun.failed = 0;
+    expect(stopFingerprint(tested)).not.toBe(fp);                            // test result changed → changed
   });
 
   it("hasPendingStop: exact-match stop/pause, ignores other text", () => {
