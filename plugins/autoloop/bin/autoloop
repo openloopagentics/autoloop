@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, realpathSync, readdirSync, rmSync, openSync, chmodSync } from "node:fs";
-import { join, basename, dirname } from "node:path";
+import { join, basename, dirname, resolve, relative, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync, spawn } from "node:child_process";
 
@@ -35,6 +35,23 @@ export function parseArgs(argv) {
 export function asArray(v) { return v === undefined ? [] : Array.isArray(v) ? v : [v]; }
 function oneFlag(name, v) { if (Array.isArray(v)) throw new UsageError(`--${name} may only be given once`); return v; }
 function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "doc"; }
+
+/**
+ * Resolve a caller-supplied file path against `cwd` and confirm it stays inside it.
+ * Defense-in-depth (ported from loop-engineering's mcp-server `assertSafeSegment`):
+ * rejects null bytes, absolute paths, and `..` traversal that escapes the working dir.
+ * Returns the absolute path on success; throws UsageError otherwise.
+ */
+export function assertSafePath(cwd, p, flagName = "file") {
+  if (typeof p !== "string" || p.length === 0) throw new UsageError(`--${flagName} must be a non-empty path`);
+  if (p.includes("\0")) throw new UsageError(`invalid --${flagName} '${p}' (null byte)`);
+  if (isAbsolute(p)) throw new UsageError(`--${flagName} must be a relative path inside the project, got absolute '${p}'`);
+  const abs = resolve(cwd, p);
+  const rel = relative(cwd, abs);
+  // `relative` yields a `..`-prefixed path iff `abs` lands outside `cwd`.
+  if (rel === ".." || rel.startsWith(".." + "/") || rel.startsWith(".." + "\\")) throw new UsageError(`--${flagName} '${p}' escapes the project directory`);
+  return abs;
+}
 
 export function validateStatus(s) {
   if (!STATUSES.includes(s)) throw new UsageError(`invalid status '${s}' (expected one of: ${STATUSES.join(", ")})`);
@@ -948,8 +965,8 @@ export async function run(argv, deps = {}) {
         const cfg = loadConfig(cwd);
         let format, content;
         if (flags.file) {
-          try { content = readFileSync(join(cwd, flags.file), "utf8"); }
-          catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
+          try { content = readFileSync(assertSafePath(cwd, flags.file, "file"), "utf8"); }
+          catch (e) { if (e instanceof UsageError) throw e; throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
           format = "markdown";
         } else { format = "url"; content = flags.url; }
         if (flags.format) {
@@ -1011,8 +1028,8 @@ export async function run(argv, deps = {}) {
         if (!Number.isInteger(order)) throw new UsageError(`--order must be an integer, got '${flags.order}'`);
         const body = { title: flags.title, status, order };
         if (typeof flags["rationale-file"] === "string") {
-          try { body.rationale = readFileSync(join(cwd, flags["rationale-file"]), "utf8"); }
-          catch (e) { throw new UsageError(`could not read --rationale-file '${flags["rationale-file"]}': ${e.message}`); }
+          try { body.rationale = readFileSync(assertSafePath(cwd, flags["rationale-file"], "rationale-file"), "utf8"); }
+          catch (e) { if (e instanceof UsageError) throw e; throw new UsageError(`could not read --rationale-file '${flags["rationale-file"]}': ${e.message}`); }
         } else if (typeof flags.rationale === "string") {
           body.rationale = flags.rationale;
         }
@@ -1115,8 +1132,8 @@ export async function run(argv, deps = {}) {
         validateId("task", flags.task);
         const body = { scenarioId, taskId: flags.task, passed: Number(flags.passed), failed: Number(flags.failed), issues: asArray(flags.issue).map(String) };
         if (flags["summary-file"]) {
-          try { body.summary = readFileSync(join(cwd, flags["summary-file"]), "utf8"); }
-          catch (e) { throw new UsageError(`could not read --summary-file '${flags["summary-file"]}': ${e.message}`); }
+          try { body.summary = readFileSync(assertSafePath(cwd, flags["summary-file"], "summary-file"), "utf8"); }
+          catch (e) { if (e instanceof UsageError) throw e; throw new UsageError(`could not read --summary-file '${flags["summary-file"]}': ${e.message}`); }
         } else if (flags.summary) {
           body.summary = flags.summary;
         }
@@ -1133,8 +1150,8 @@ export async function run(argv, deps = {}) {
         const body = { scenarioId, testRunId: String(flags["test-run"]), verdict: flags.verdict };
         if (flags.task) { validateId("task", flags.task); body.taskId = flags.task; }
         if (flags["summary-file"]) {
-          try { body.summary = readFileSync(join(cwd, flags["summary-file"]), "utf8"); }
-          catch (e) { throw new UsageError(`could not read --summary-file '${flags["summary-file"]}': ${e.message}`); }
+          try { body.summary = readFileSync(assertSafePath(cwd, flags["summary-file"], "summary-file"), "utf8"); }
+          catch (e) { if (e instanceof UsageError) throw e; throw new UsageError(`could not read --summary-file '${flags["summary-file"]}': ${e.message}`); }
         } else if (flags.summary) {
           body.summary = flags.summary;
         }
@@ -1162,8 +1179,8 @@ export async function run(argv, deps = {}) {
         if (!flags.file) throw new UsageError("vision import requires --file <vision.json>");
         const cfg = loadConfig(cwd);
         let vision;
-        try { vision = JSON.parse(readFileSync(join(cwd, flags.file), "utf8")); }
-        catch (e) { throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
+        try { vision = JSON.parse(readFileSync(assertSafePath(cwd, flags.file, "file"), "utf8")); }
+        catch (e) { if (e instanceof UsageError) throw e; throw new UsageError(`could not read --file '${flags.file}': ${e.message}`); }
         const apiBase = resolveApiUrl(cfg, env, flags.url);
         const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
         const reportDeps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
@@ -1176,9 +1193,10 @@ export async function run(argv, deps = {}) {
         }
         for (const s of vision.scenarios ?? []) {
           validateId("scenarioId", s.id);
-          // `test` is a loop-local hint (how /autoloop-loop tests the scenario), not part
-          // of the contract — strip it client-side so the import body never carries it.
-          const { id, test, ...body } = s;
+          // `test` and `governance` are loop-local (how /autoloop tests + governs the
+          // scenario), not part of the server contract — strip them client-side so the
+          // import body never carries them.
+          const { id, test, governance, ...body } = s;
           worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
         }
         for (const d of vision.documents ?? []) {
@@ -1365,6 +1383,32 @@ export async function run(argv, deps = {}) {
           try { writeFileSync(cursorPath, JSON.stringify(cursors)); } catch { /* best-effort */ }
         }
         return 0; // always exit 0 from the hook — never surface a transient push failure to the user
+      }
+      case "run-log append": {
+        // LOCAL-ONLY (no network): append one JSONL entry per loop iteration to
+        // .autoloop-runlog.jsonl — the on-disk spine for budget/convergence checks.
+        // Mirrors loop-engineering's loop-budget run-log. outcome is a closed enum.
+        const OUTCOMES = ["no-op", "reported", "met", "rejected", "escalated"];
+        if (!OUTCOMES.includes(flags.outcome)) throw new UsageError(`run-log append requires --outcome one of: ${OUTCOMES.join("|")}`);
+        const entry = { run_id: new Date(now()).toISOString(), outcome: flags.outcome };
+        if (flags.scenario) { validateId("scenario", flags.scenario); entry.scenario = flags.scenario; }
+        if (flags.task) { validateId("task", flags.task); entry.task = flags.task; }
+        const numFlag = (name, key) => {
+          if (flags[name] === undefined) return;
+          const n = Number(flags[name]);
+          if (!Number.isFinite(n)) throw new UsageError(`--${name} must be a number, got '${flags[name]}'`);
+          entry[key] = n;
+        };
+        numFlag("tokens", "tokens_estimate");
+        numFlag("duration", "duration_s");
+        numFlag("actions", "actions_taken");
+        numFlag("escalations", "escalations");
+        if (typeof flags.note === "string") entry.note = flags.note;
+        const path = join(cwd, ".autoloop-runlog.jsonl");
+        try { writeFileSync(path, JSON.stringify(entry) + "\n", { flag: "a" }); }
+        catch (e) { throw new UsageError(`could not append to ${path}: ${e.message}`); }
+        log(`run-log: ${entry.outcome}${entry.scenario ? ` ${entry.scenario}` : ""}${entry.tokens_estimate !== undefined ? ` (~${entry.tokens_estimate} tok)` : ""}`);
+        return 0;
       }
       // commands added in later tasks
       default:

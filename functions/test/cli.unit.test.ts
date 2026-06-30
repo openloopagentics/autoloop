@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, assertSafePath } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1407,5 +1407,66 @@ describe("init --relaunch / --uninstall / status", () => {
     expect(existsSync(s.envFile)).toBe(false);                // holds the API key — removed
     expect(loadConfig(s.dir).relaunch).toBeUndefined();
     expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "unload")).toBe(true);
+  });
+});
+
+describe("assertSafePath", () => {
+  it("returns an absolute path for an in-project relative file", () => {
+    const dir = tmp();
+    expect(assertSafePath(dir, "vision.json")).toBe(join(dir, "vision.json"));
+    expect(assertSafePath(dir, "sub/notes.md")).toBe(join(dir, "sub", "notes.md"));
+  });
+  it("rejects traversal, absolute paths, and null bytes", () => {
+    const dir = tmp();
+    expect(() => assertSafePath(dir, "../../etc/passwd")).toThrow(/escapes the project/);
+    expect(() => assertSafePath(dir, "/etc/passwd")).toThrow(/absolute/);
+    expect(() => assertSafePath(dir, "a\0b")).toThrow(/null byte/);
+    expect(() => assertSafePath(dir, "")).toThrow(/non-empty/);
+  });
+});
+
+describe("doc add path-guard (Task 6)", () => {
+  it("rejects a --file that escapes the project dir before any network call", async () => {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://x", teamId: "t", projectSlug: "p" });
+    const errs: string[] = [];
+    let fetched = false;
+    const code = await run(["doc", "add", "--kind", "vision", "--title", "V", "--file", "../../etc/passwd"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { fetched = true; return new Response("{}", { status: 200 }); } });
+    expect(code).toBe(1);
+    expect(fetched).toBe(false);
+    expect(errs.join(" ")).toMatch(/escapes the project/);
+  });
+});
+
+describe("run-log append (Task 5, local-only)", () => {
+  const fixedNow = () => Date.parse("2026-06-30T12:00:00.000Z");
+  it("appends a JSONL entry with the required fields and no network", async () => {
+    const dir = tmp();
+    let fetched = false;
+    const code = await run(["run-log", "append", "--outcome", "met", "--scenario", "login-works", "--task", "t1", "--tokens", "12345", "--note", "ok"],
+      { cwd: dir, env: {}, log: () => {}, err: () => {}, now: fixedNow, fetchImpl: async () => { fetched = true; return new Response("{}"); } });
+    expect(code).toBe(0);
+    expect(fetched).toBe(false);
+    const lines = readFileSync(join(dir, ".autoloop-runlog.jsonl"), "utf8").trim().split("\n");
+    expect(lines.length).toBe(1);
+    const entry = JSON.parse(lines[0]);
+    expect(entry).toMatchObject({ run_id: "2026-06-30T12:00:00.000Z", outcome: "met", scenario: "login-works", task: "t1", tokens_estimate: 12345, note: "ok" });
+  });
+  it("appends (does not overwrite) across calls", async () => {
+    const dir = tmp();
+    const deps = { cwd: dir, env: {}, log: () => {}, err: () => {}, now: fixedNow };
+    await run(["run-log", "append", "--outcome", "no-op"], deps);
+    await run(["run-log", "append", "--outcome", "escalated", "--scenario", "s2"], deps);
+    const lines = readFileSync(join(dir, ".autoloop-runlog.jsonl"), "utf8").trim().split("\n");
+    expect(lines.length).toBe(2);
+    expect(JSON.parse(lines[1]).outcome).toBe("escalated");
+  });
+  it("rejects an unknown outcome", async () => {
+    const errs: string[] = [];
+    const code = await run(["run-log", "append", "--outcome", "bogus"],
+      { cwd: tmp(), env: {}, log: () => {}, err: (m: string) => errs.push(m) });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/--outcome one of/);
   });
 });
