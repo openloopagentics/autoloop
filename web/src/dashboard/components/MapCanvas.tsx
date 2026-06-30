@@ -1,25 +1,145 @@
 import { useMemo } from "react";
 import { ReactFlow, Background, MiniMap, Handle, Position, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import dagre from "dagre";
 import type { GraphNode, GraphEdge } from "../whyGraph";
 
-const NODE_W = 190;
-const NODE_H = 56; // taller: labels wrap to 2 lines + optional why-chip
+export const NODE_W = 190;
+export const NODE_H = 56; // taller: labels wrap to 2 lines + optional why-chip
 
-/** dagre LR layout (goals left → bugs/evidence right) → positions keyed by node id. */
-function layoutPositions(nodes: GraphNode[], edges: GraphEdge[]): Map<string, { x: number; y: number }> {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", nodesep: 24, ranksep: 64 });
-  g.setDefaultEdgeLabel(() => ({}));
-  for (const n of nodes) g.setNode(n.id, { width: NODE_W, height: NODE_H });
-  for (const e of edges) g.setEdge(e.from, e.to);
-  dagre.layout(g);
+// Layout constants — tune here if visual density changes.
+const SCEN_COLS = 3;   // max scenario columns per goal row
+const GAP_X = 64;      // horizontal gap between tier columns
+const CELL_GAP_Y = 16; // vertical gap between rows within a grid
+const BAND_GAP = 48;   // vertical gap between goal bands
+
+// Derived sizes
+const CELL_W = NODE_W + GAP_X;   // horizontal stride per grid column
+const CELL_H = NODE_H + CELL_GAP_Y; // vertical stride per grid row
+
+// Fixed x positions (top-left of node)
+const GOAL_X = 0;
+const SCEN_X_BASE = NODE_W + GAP_X;  // left edge of first scenario column
+const sceneColX = (col: number) => SCEN_X_BASE + col * CELL_W;
+const TASK_X = SCEN_X_BASE + SCEN_COLS * CELL_W;
+const EXTRA_X = TASK_X + NODE_W + GAP_X;
+
+/**
+ * Per-goal grid layout: goals in a left column; each goal's scenarios wrap into
+ * up to SCEN_COLS columns; tasks, bugs, decisions, and evidence go in further-right
+ * tiers within each goal's band. Pure, deterministic, no external deps.
+ */
+export function layoutPositions(nodes: GraphNode[], edges: GraphEdge[]): Map<string, { x: number; y: number }> {
   const pos = new Map<string, { x: number; y: number }>();
-  for (const n of nodes) {
-    const p = g.node(n.id);
-    if (p) pos.set(n.id, { x: p.x - NODE_W / 2, y: p.y - NODE_H / 2 });
+  const placed = new Set<string>();
+
+  // Index nodes by id for O(1) kind lookup.
+  const nodeById = new Map<string, GraphNode>(nodes.map((n) => [n.id, n]));
+
+  // Build structure relations (goal→scenario, scenario→task) from "structure" edges.
+  const scenariosOfGoal = new Map<string, string[]>();
+  const tasksOfScenario = new Map<string, string[]>();
+  for (const e of edges) {
+    if (e.kind !== "structure") continue;
+    const fromKind = nodeById.get(e.from)?.kind;
+    const toKind = nodeById.get(e.to)?.kind;
+    if (fromKind === "goal" && toKind === "scenario") {
+      if (!scenariosOfGoal.has(e.from)) scenariosOfGoal.set(e.from, []);
+      scenariosOfGoal.get(e.from)!.push(e.to);
+    } else if (fromKind === "scenario" && toKind === "task") {
+      if (!tasksOfScenario.has(e.from)) tasksOfScenario.set(e.from, []);
+      tasksOfScenario.get(e.from)!.push(e.to);
+    }
   }
+
+  // Process goals in node-array order.
+  const goalNodes = nodes.filter((n) => n.kind === "goal");
+  let bandTopY = 0;
+
+  for (const goal of goalNodes) {
+    // Scenarios for this goal, preserving node-array order.
+    const rawScenIds = scenariosOfGoal.get(goal.id) ?? [];
+    const orderedScenIds = nodes.filter((n) => rawScenIds.includes(n.id)).map((n) => n.id);
+
+    // Collect tasks for this band (across all scenarios, in scenario order).
+    const bandTaskIds: string[] = [];
+    for (const scenId of orderedScenIds) {
+      const rawTaskIds = tasksOfScenario.get(scenId) ?? [];
+      for (const t of nodes.filter((n) => rawTaskIds.includes(n.id)).map((n) => n.id)) {
+        if (!bandTaskIds.includes(t)) bandTaskIds.push(t);
+      }
+    }
+
+    // Band node set used to find "extra" nodes (bugs, decisions, evidence) that connect here.
+    const bandNodeIds = new Set([goal.id, ...orderedScenIds, ...bandTaskIds]);
+
+    const extraIds: string[] = [];
+    for (const n of nodes) {
+      if (placed.has(n.id) || bandNodeIds.has(n.id)) continue;
+      if (n.kind === "bug" || n.kind === "decision" || n.kind === "evidence") {
+        const connects = edges.some(
+          (e) => (e.from === n.id && bandNodeIds.has(e.to)) || (e.to === n.id && bandNodeIds.has(e.from)),
+        );
+        if (connects) extraIds.push(n.id);
+      }
+    }
+
+    // Scenario grid dimensions.
+    const scenRows = Math.ceil(Math.max(orderedScenIds.length, 1) / SCEN_COLS);
+    const scenBandH = scenRows * CELL_H - CELL_GAP_Y;
+    const taskBandH = bandTaskIds.length > 0 ? bandTaskIds.length * CELL_H - CELL_GAP_Y : 0;
+    const extraBandH = extraIds.length > 0 ? extraIds.length * CELL_H - CELL_GAP_Y : 0;
+    const bandHeight = Math.max(scenBandH, taskBandH, extraBandH, NODE_H);
+
+    // Goal: vertically centered on the scenario grid.
+    pos.set(goal.id, { x: GOAL_X, y: bandTopY + (scenBandH - NODE_H) / 2 });
+    placed.add(goal.id);
+
+    // Scenarios: grid layout.
+    for (let i = 0; i < orderedScenIds.length; i++) {
+      const col = i % SCEN_COLS;
+      const row = Math.floor(i / SCEN_COLS);
+      pos.set(orderedScenIds[i], { x: sceneColX(col), y: bandTopY + row * CELL_H });
+      placed.add(orderedScenIds[i]);
+    }
+
+    // Tasks: single column stacked from band top.
+    for (let i = 0; i < bandTaskIds.length; i++) {
+      pos.set(bandTaskIds[i], { x: TASK_X, y: bandTopY + i * CELL_H });
+      placed.add(bandTaskIds[i]);
+    }
+
+    // Extra (bugs, decisions, evidence): single column stacked from band top.
+    for (let i = 0; i < extraIds.length; i++) {
+      pos.set(extraIds[i], { x: EXTRA_X, y: bandTopY + i * CELL_H });
+      placed.add(extraIds[i]);
+    }
+
+    bandTopY += bandHeight + BAND_GAP;
+  }
+
+  // Orphan scenarios (not connected to any goal): own grid band at bottom.
+  const orphanScens = nodes.filter((n) => n.kind === "scenario" && !placed.has(n.id));
+  if (orphanScens.length > 0) {
+    for (let i = 0; i < orphanScens.length; i++) {
+      const col = i % SCEN_COLS;
+      const row = Math.floor(i / SCEN_COLS);
+      pos.set(orphanScens[i].id, { x: sceneColX(col), y: bandTopY + row * CELL_H });
+      placed.add(orphanScens[i].id);
+    }
+    const rows = Math.ceil(orphanScens.length / SCEN_COLS);
+    bandTopY += (rows * CELL_H - CELL_GAP_Y) + BAND_GAP;
+  }
+
+  // Any remaining unplaced nodes: stack at the far-right column.
+  let remainingY = bandTopY;
+  for (const n of nodes) {
+    if (!placed.has(n.id)) {
+      pos.set(n.id, { x: EXTRA_X, y: remainingY });
+      placed.add(n.id);
+      remainingY += CELL_H;
+    }
+  }
+
   return pos;
 }
 
