@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, stopFingerprint } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1138,6 +1138,22 @@ describe("relaunch decisions (pure)", () => {
     expect(decideWake({ lockState: "none", loopStatus: undefined, hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
     expect(decideWake({ lockState: "dead", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
+  });
+
+  it("stopFingerprint changes when the loop advances, stable otherwise", () => {
+    const base = {
+      loop: { status: "running", currentPhaseId: "p1", currentTaskId: "t1" },
+      phases: [{ id: "p1", status: "running" }],
+      tasks: [{ id: "t1", status: "running" }, { id: "t2", status: "queued" }],
+      openBugs: [{ id: "b1" }],
+      scenarios: [{ id: "s1", latestComposite: 70, latestTestRun: { passed: 1, failed: 1 } }],
+    };
+    const fp = stopFingerprint(base);
+    expect(stopFingerprint(structuredClone(base))).toBe(fp);                 // identical → same
+    const advanced = structuredClone(base); advanced.tasks[0].status = "completed";
+    expect(stopFingerprint(advanced)).not.toBe(fp);                          // task completed → changed
+    const scored = structuredClone(base); scored.scenarios[0].latestComposite = 85;
+    expect(stopFingerprint(scored)).not.toBe(fp);                            // new score → changed
   });
 });
 

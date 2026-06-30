@@ -267,6 +267,23 @@ export function resumeHeader(state) {
   return lines.join("\n");
 }
 
+/** A stable string summarizing loop progress, from the /state bundle (loopState.ts LoopState).
+ *  Changes whenever the loop advances (task/phase status, pointer, open bugs, or a scenario's
+ *  latest score/test). Pure. Used by the Stop hook's idle guard. */
+export function stopFingerprint(state) {
+  const loop = state?.loop ?? {};
+  const tasks = (state?.tasks ?? []).map((t) => `${t.id}:${t.status ?? ""}`).sort();
+  const phases = (state?.phases ?? []).map((p) => `${p.id}:${p.status ?? ""}`).sort();
+  const bugs = (state?.openBugs ?? []).map((b) => b.id).sort();
+  const scns = (state?.scenarios ?? [])
+    .map((s) => `${s.id}:${s.latestComposite ?? ""}:${s.latestTestRun?.passed ?? ""}/${s.latestTestRun?.failed ?? ""}`)
+    .sort();
+  return JSON.stringify({
+    status: loop.status ?? null, phase: loop.currentPhaseId ?? null, task: loop.currentTaskId ?? null,
+    tasks, phases, bugs, scns,
+  });
+}
+
 /** --check semantics: a non-terminal, NON-paused loop exists. (Paused loops are woken by
  *  the wake job on a message, not relaunched by SessionEnd.) */
 export function isResumable(state) {
