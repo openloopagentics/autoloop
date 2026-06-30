@@ -291,6 +291,25 @@ export function isResumable(state) {
   return !!s && !TERMINAL_STATUSES.includes(s) && s !== "paused";
 }
 
+/** True iff any pending message is an exact stop/pause command (trimmed, case-insensitive). */
+export function hasPendingStop(pendingMessages) {
+  return (pendingMessages ?? []).some((m) => {
+    const t = String(m?.text ?? "").trim().toLowerCase();
+    return t === "stop" || t === "pause";
+  });
+}
+
+/** The additionalContext to re-inject after compaction/resume, or null when there's no
+ *  resumable loop (so non-loop and paused/terminal sessions are never nagged). */
+export function sessionStartContext(state) {
+  if (!isResumable(state)) return null;
+  const next = firstNonTerminalTask(state);
+  const loopId = state?.loop?.id ?? "the current loop";
+  return `An Autoloop loop is mid-flight (loop ${loopId}${next ? `, next task: ${next.title ?? next.id}` : ""}). `
+    + `Your context may have just been compacted or resumed — run \`autoloop loop resume\` now and continue from Step 0. `
+    + `Compaction/summarization is NOT a stop.`;
+}
+
 /** Locate a subagent's transcript by agentId and sum its token usage.
  *  Subagent transcripts live either directly at ~/.claude/projects/<enc>/agent-<id>.jsonl
  *  or under ~/.claude/projects/<enc>/<sessionId>/subagents/agent-<id>.jsonl.

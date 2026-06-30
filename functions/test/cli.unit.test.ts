@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, stopFingerprint, decideStop, STOP_IDLE_MAX } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, stopFingerprint, decideStop, STOP_IDLE_MAX, hasPendingStop, sessionStartContext } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1166,6 +1166,21 @@ describe("relaunch decisions (pure)", () => {
     expect(stopFingerprint(advanced)).not.toBe(fp);                          // task completed → changed
     const scored = structuredClone(base); scored.scenarios[0].latestComposite = 85;
     expect(stopFingerprint(scored)).not.toBe(fp);                            // new score → changed
+  });
+
+  it("hasPendingStop: exact-match stop/pause, ignores other text", () => {
+    expect(hasPendingStop([{ text: "Stop" }])).toBe(true);
+    expect(hasPendingStop([{ text: "  pause " }])).toBe(true);
+    expect(hasPendingStop([{ text: "don't stop" }])).toBe(false);   // not an exact command
+    expect(hasPendingStop([{ text: "add dark mode" }])).toBe(false);
+    expect(hasPendingStop([])).toBe(false);
+  });
+  it("sessionStartContext: resume note when resumable, null otherwise", () => {
+    const running = { loop: { id: "loop-1", status: "running", currentTaskId: "t2" }, tasks: [{ id: "t2", status: "running" }], pendingMessages: [] };
+    expect(sessionStartContext(running)).toMatch(/loop resume/);
+    expect(sessionStartContext({ loop: { status: "completed" } })).toBeNull();
+    expect(sessionStartContext({ loop: { status: "paused" } })).toBeNull();
+    expect(sessionStartContext(null)).toBeNull();
   });
 });
 
