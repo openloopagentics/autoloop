@@ -556,6 +556,8 @@ export function loadAutoloopEnv(env) {
 }
 
 const RELAUNCH_HOOK_MARKER = "hook session-end";
+const SESSION_START_HOOK_MARKER = "hook session-start";
+const STOP_HOOK_MARKER = "hook stop";
 export const BASE_ALLOW = ["Bash(autoloop:*)", "Bash(git:*)"];
 
 /** Marker files in the project root → permission allowlist for the headless run. Pure.
@@ -617,6 +619,10 @@ function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall
   settings.permissions.allow = settings.permissions.allow ?? [];
   settings.hooks.SessionEnd = (settings.hooks.SessionEnd ?? [])
     .filter((h) => !h.hooks?.some((hh) => hh.command?.includes(RELAUNCH_HOOK_MARKER)));
+  settings.hooks.SessionStart = (settings.hooks.SessionStart ?? [])
+    .filter((h) => !h.hooks?.some((hh) => hh.command?.includes(SESSION_START_HOOK_MARKER)));
+  settings.hooks.Stop = (settings.hooks.Stop ?? [])
+    .filter((h) => !h.hooks?.some((hh) => hh.command?.includes(STOP_HOOK_MARKER)));
 
   if (uninstall) {
     const added = cfg.relaunch?.allowAdded ?? [];
@@ -658,9 +664,11 @@ function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall
   writeFileSync(envFile, envLines.join("\n") + "\n", { mode: 0o600 });
   chmodSync(envFile, 0o600); // writeFileSync mode applies only on create — enforce on refresh too
 
-  // 2. SessionEnd hook (NOT Stop — Stop fires once per turn while the session is alive and
-  //    would spawn a competing driver; SessionEnd fires only on actual termination).
+  // 2. SessionEnd hook (fires only on actual termination) + SessionStart (re-injects resume
+  //    intent after compaction) + Stop (blocks turn-end while a loop is live).
   settings.hooks.SessionEnd.push({ hooks: [{ type: "command", command: `node "${stableCli}" hook session-end` }] });
+  settings.hooks.SessionStart.push({ hooks: [{ type: "command", command: `node "${stableCli}" hook session-start` }] });
+  settings.hooks.Stop.push({ hooks: [{ type: "command", command: `node "${stableCli}" hook stop` }] });
 
   // 3. permissions.allow for the headless `claude -p "/autoloop" --permission-mode acceptEdits`
   let files; try { files = readdirSync(projDir); } catch { files = []; }

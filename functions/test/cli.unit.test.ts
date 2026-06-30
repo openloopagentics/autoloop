@@ -1461,4 +1461,16 @@ describe("init --relaunch / --uninstall / status", () => {
     expect(loadConfig(s.dir).relaunch).toBeUndefined();
     expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "unload")).toBe(true);
   });
+
+  it("installRelaunch registers SessionEnd + SessionStart + Stop, idempotently", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api" });
+    const env = { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" };
+    const opts = { cwd: dir, env, log: () => {}, err: () => {}, execImpl: () => "", platform: "linux" };
+    await run(["init", "--relaunch"], opts); await run(["init", "--relaunch"], opts); // twice → must not duplicate
+    const s = JSON.parse(readFileSync(join(dir, ".claude/settings.json"), "utf8"));
+    const cmds = (ev: string) => (s.hooks[ev] ?? []).flatMap((h: any) => h.hooks.map((x: any) => x.command));
+    expect(cmds("SessionEnd").filter((c: string) => c.includes("hook session-end"))).toHaveLength(1);
+    expect(cmds("SessionStart").filter((c: string) => c.includes("hook session-start"))).toHaveLength(1);
+    expect(cmds("Stop").filter((c: string) => c.includes("hook stop"))).toHaveLength(1);
+  });
 });
