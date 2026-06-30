@@ -267,11 +267,47 @@ export function resumeHeader(state) {
   return lines.join("\n");
 }
 
+/** A stable string summarizing loop progress, from the /state bundle (loopState.ts LoopState).
+ *  Changes whenever the loop advances (task/phase status, pointer, open bugs, or a scenario's
+ *  latest score/test). Pure. Used by the Stop hook's idle guard. */
+export function stopFingerprint(state) {
+  const loop = state?.loop ?? {};
+  const tasks = (state?.tasks ?? []).map((t) => `${t.id}:${t.status ?? ""}`).sort();
+  const phases = (state?.phases ?? []).map((p) => `${p.id}:${p.status ?? ""}`).sort();
+  const bugs = (state?.openBugs ?? []).map((b) => b.id).sort();
+  const scns = (state?.scenarios ?? [])
+    .map((s) => `${s.id}:${s.latestComposite ?? ""}:${s.latestTestRun?.passed ?? ""}/${s.latestTestRun?.failed ?? ""}`)
+    .sort();
+  return JSON.stringify({
+    status: loop.status ?? null, phase: loop.currentPhaseId ?? null, task: loop.currentTaskId ?? null,
+    tasks, phases, bugs, scns,
+  });
+}
+
 /** --check semantics: a non-terminal, NON-paused loop exists. (Paused loops are woken by
  *  the wake job on a message, not relaunched by SessionEnd.) */
 export function isResumable(state) {
   const s = state?.loop?.status;
   return !!s && !TERMINAL_STATUSES.includes(s) && s !== "paused";
+}
+
+/** True iff any pending message is an exact stop/pause command (trimmed, case-insensitive). */
+export function hasPendingStop(pendingMessages) {
+  return (pendingMessages ?? []).some((m) => {
+    const t = String(m?.text ?? "").trim().toLowerCase();
+    return t === "stop" || t === "pause";
+  });
+}
+
+/** The additionalContext to re-inject after compaction/resume, or null when there's no
+ *  resumable loop (so non-loop and paused/terminal sessions are never nagged). */
+export function sessionStartContext(state) {
+  if (!isResumable(state)) return null;
+  const next = firstNonTerminalTask(state);
+  const loopId = state?.loop?.id ?? "the current loop";
+  return `An Autoloop loop is mid-flight (loop ${loopId}${next ? `, next task: ${next.title ?? next.id}` : ""}). `
+    + `Your context may have just been compacted or resumed — run \`autoloop loop resume\` now and continue from Step 0. `
+    + `Compaction/summarization is NOT a stop.`;
 }
 
 /** Locate a subagent's transcript by agentId and sum its token usage.
@@ -416,6 +452,7 @@ export const RELAUNCH_MAX = 3;                       // > 3 relaunches in 30 min
 export const RELAUNCH_WINDOW_MS = 30 * 60 * 1000;
 
 export function stampsPath(env, key) { return join(autoloopHome(env), "run", `${key}.stamps.json`); }
+export function stopPath(env, key) { return join(autoloopHome(env), "run", `${key}.stop.json`); }
 export function readStamps(path) {
   if (!existsSync(path)) return [];
   try { const v = JSON.parse(readFileSync(path, "utf8")); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -433,6 +470,22 @@ export function decideSessionEndRelaunch({ lockState, resumable, backoff }) {
   if (!resumable) return { relaunch: false, reason: "no non-terminal, non-paused loop (loop resume --check failed)" };
   if (backoff) return { relaunch: false, reason: `backoff: more than ${RELAUNCH_MAX} relaunches in 30 minutes` };
   return { relaunch: true, reason: "resumable loop, no live lock, under backoff" };
+}
+
+export const STOP_IDLE_MAX = 3; // consecutive no-progress turn-ends before the idle guard lets the loop stop
+
+/** Pure decision for the Stop hook: keep the loop alive (block the turn from ending) unless the
+ *  loop is terminal/paused, the user is stopping it, or it's wedged (no progress for idleMax turns). */
+export function decideStop({ loopStatus, hasPendingStop: pendingStop, progressed, idleCount, idleMax = STOP_IDLE_MAX }) {
+  // `hasPendingStop` (the boolean arg) is aliased to `pendingStop` so it doesn't shadow the
+  // exported hasPendingStop() helper inside this function body.
+  if (!loopStatus || TERMINAL_STATUSES.includes(loopStatus))
+    return { block: false, reason: `loop status is ${loopStatus ?? "none"}` };
+  if (loopStatus === "paused") return { block: false, reason: "loop is paused" };
+  if (pendingStop) return { block: false, reason: "user stop/pause message pending" };
+  if (!progressed && idleCount + 1 >= idleMax)
+    return { block: false, wedged: true, reason: `wedged: no progress for ${idleMax} turns` };
+  return { block: true, reason: progressed ? "loop progressing — continue" : "no progress yet — continue" };
 }
 
 /** Pure decision for the wake job: paused loop + pending message + no live lock. */
@@ -504,6 +557,8 @@ export function loadAutoloopEnv(env) {
 }
 
 const RELAUNCH_HOOK_MARKER = "hook session-end";
+const SESSION_START_HOOK_MARKER = "hook session-start";
+const STOP_HOOK_MARKER = "hook stop";
 export const BASE_ALLOW = ["Bash(autoloop:*)", "Bash(git:*)"];
 
 /** Marker files in the project root → permission allowlist for the headless run. Pure.
@@ -565,6 +620,10 @@ function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall
   settings.permissions.allow = settings.permissions.allow ?? [];
   settings.hooks.SessionEnd = (settings.hooks.SessionEnd ?? [])
     .filter((h) => !h.hooks?.some((hh) => hh.command?.includes(RELAUNCH_HOOK_MARKER)));
+  settings.hooks.SessionStart = (settings.hooks.SessionStart ?? [])
+    .filter((h) => !h.hooks?.some((hh) => hh.command?.includes(SESSION_START_HOOK_MARKER)));
+  settings.hooks.Stop = (settings.hooks.Stop ?? [])
+    .filter((h) => !h.hooks?.some((hh) => hh.command?.includes(STOP_HOOK_MARKER)));
 
   if (uninstall) {
     const added = cfg.relaunch?.allowAdded ?? [];
@@ -606,9 +665,11 @@ function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall
   writeFileSync(envFile, envLines.join("\n") + "\n", { mode: 0o600 });
   chmodSync(envFile, 0o600); // writeFileSync mode applies only on create — enforce on refresh too
 
-  // 2. SessionEnd hook (NOT Stop — Stop fires once per turn while the session is alive and
-  //    would spawn a competing driver; SessionEnd fires only on actual termination).
+  // 2. SessionEnd hook (fires only on actual termination) + SessionStart (re-injects resume
+  //    intent after compaction) + Stop (blocks turn-end while a loop is live).
   settings.hooks.SessionEnd.push({ hooks: [{ type: "command", command: `node "${stableCli}" hook session-end` }] });
+  settings.hooks.SessionStart.push({ hooks: [{ type: "command", command: `node "${stableCli}" hook session-start` }] });
+  settings.hooks.Stop.push({ hooks: [{ type: "command", command: `node "${stableCli}" hook stop` }] });
 
   // 3. permissions.allow for the headless `claude -p "/autoloop" --permission-mode acceptEdits`
   let files; try { files = readdirSync(projDir); } catch { files = []; }
@@ -886,6 +947,59 @@ export async function run(argv, deps = {}) {
         if (!d.wake) return 0;
         if (lockState === "dead") rmSync(lockFile);    // steal the stale lock; the new session re-acquires
         launchHeadless({ cwd, slug: cfg.projectSlug, env: henv, spawnImpl, log });
+        return 0;
+      }
+      case "hook session-start": {
+        // SessionStart shim — fires when Claude Code starts a new session (including after
+        // compaction). Re-injects the resume intent so the driver knows to continue.
+        // Best-effort: ALWAYS return 0; stdout carries only the control JSON (via log).
+        const henv = loadAutoloopEnv(env);
+        const hook = readHookStdin();                 // { source, cwd, ... } (may be null)
+        const projDir = hook?.cwd || cwd;
+        let cfg; try { cfg = loadConfig(projDir); } catch { return 0; }
+        const fetched = await fetchResumeState(cfg, henv, fetchImpl);
+        const ctx = fetched ? sessionStartContext(fetched.state) : null;
+        hookLog(henv, "session-start", `source=${hook?.source ?? "?"} inject=${!!ctx}`, now());
+        if (ctx) log(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: ctx } }));
+        return 0;
+      }
+      case "hook stop": {
+        // Stop shim — fires at the end of every turn while the session is alive.
+        // Blocks the turn from ending (emits {"decision":"block"}) while a loop is live and
+        // making progress. An idle guard (STOP_IDLE_MAX consecutive no-progress turns) lets a
+        // wedged loop stop so it doesn't hang forever. Best-effort: ALWAYS return 0.
+        const henv = loadAutoloopEnv(env);
+        const hook = readHookStdin();
+        const projDir = hook?.cwd || cwd;
+        let cfg; try { cfg = loadConfig(projDir); } catch { return 0; }
+        const fetched = await fetchResumeState(cfg, henv, fetchImpl);
+        const state = fetched?.state;
+        const key = `${cfg.teamId}-${cfg.projectSlug}`;
+        const sp = stopPath(henv, key);
+        const prev = readLock(sp) ?? { fingerprint: null, idleCount: 0 };
+        const fingerprint = state ? stopFingerprint(state) : null;
+        const progressed = fingerprint !== prev.fingerprint;
+        const idleCount = progressed ? 0 : prev.idleCount;
+        const d = decideStop({
+          loopStatus: state?.loop?.status,
+          hasPendingStop: hasPendingStop(state?.pendingMessages),
+          progressed, idleCount,
+        });
+        // persist idle state: reset on progress or allow; else increment
+        const nextIdle = d.block ? idleCount + (progressed ? 0 : 1) : 0;
+        try {
+          mkdirSync(join(autoloopHome(henv), "run"), { recursive: true });
+          writeFileSync(sp, JSON.stringify({ fingerprint, idleCount: nextIdle }));
+        } catch { /* best-effort */ }
+        hookLog(henv, "stop", `loop=${state?.loop?.status ?? "none"} progressed=${progressed} idle=${idleCount} → ${d.block ? "BLOCK" : "ALLOW"} (${d.reason})`, now());
+        if (d.wedged) {
+          // Post a visible message so the user knows why the loop stopped
+          const api = resolveApiUrl(cfg, henv, undefined);
+          await report({ method: "POST", url: `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`,
+            body: { text: `⚠ Autoloop loop stopped: no progress for ${STOP_IDLE_MAX} turns (wedged). Restart when ready.` } },
+            { env: henv, fetchImpl, err, teamId: cfg.teamId }).catch(() => { /* best-effort */ });
+        }
+        if (d.block) log(JSON.stringify({ decision: "block", reason: d.reason + " — run `autoloop loop resume` and continue (Step 2a). Do not stop until the loop is terminal or the user stops it." }));
         return 0;
       }
       case "goal set": {
