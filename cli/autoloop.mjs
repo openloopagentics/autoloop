@@ -948,6 +948,20 @@ export async function run(argv, deps = {}) {
         launchHeadless({ cwd, slug: cfg.projectSlug, env: henv, spawnImpl, log });
         return 0;
       }
+      case "hook session-start": {
+        // SessionStart shim — fires when Claude Code starts a new session (including after
+        // compaction). Re-injects the resume intent so the driver knows to continue.
+        // Best-effort: ALWAYS return 0; stdout carries only the control JSON (via log).
+        const henv = loadAutoloopEnv(env);
+        const hook = readHookStdin();                 // { source, cwd, ... } (may be null)
+        const projDir = hook?.cwd || cwd;
+        let cfg; try { cfg = loadConfig(projDir); } catch { return 0; }
+        const fetched = await fetchResumeState(cfg, henv, fetchImpl);
+        const ctx = fetched ? sessionStartContext(fetched.state) : null;
+        hookLog(henv, "session-start", `source=${hook?.source ?? "?"} inject=${!!ctx}`, now());
+        if (ctx) log(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: ctx } }));
+        return 0;
+      }
       case "goal set": {
         const id = positionals[2]; validateId("goalId", id);
         const cfg = loadConfig(cwd);

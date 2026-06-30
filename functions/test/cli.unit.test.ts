@@ -1474,3 +1474,42 @@ describe("init --relaunch / --uninstall / status", () => {
     expect(cmds("Stop").filter((c: string) => c.includes("hook stop"))).toHaveLength(1);
   });
 });
+
+describe("hook session-start", () => {
+  const RESUMABLE_STATE = { loop: { id: "loop-1", status: "running", currentTaskId: "t2" }, phases: [], tasks: [{ id: "t2", status: "running" }], pendingMessages: [] };
+  const TERMINAL_STATE = { loop: { id: "loop-1", status: "completed" }, phases: [], tasks: [], pendingMessages: [] };
+
+  it("emits hookSpecificOutput.additionalContext when a loop is resumable", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "loop-1" });
+    const out: string[] = [];
+    await run(["hook", "session-start"], {
+      cwd: dir, env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: RESUMABLE_STATE }) }),
+    });
+    const emitted = JSON.parse(out.join("\n"));
+    expect(emitted.hookSpecificOutput.additionalContext).toMatch(/loop resume/);
+    expect(emitted.hookSpecificOutput.hookEventName).toBe("SessionStart");
+  });
+
+  it("emits nothing when the loop is terminal or paused", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "loop-1" });
+    const out: string[] = [];
+    await run(["hook", "session-start"], {
+      cwd: dir, env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: TERMINAL_STATE }) }),
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it("exits 0 quietly when the project is not initialized", async () => {
+    const out: string[] = [];
+    expect(await run(["hook", "session-start"], {
+      cwd: tmp(), env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    })).toBe(0);
+    expect(out).toHaveLength(0);
+  });
+});
