@@ -64,6 +64,8 @@ completed/failed/cancelled):
 If there is no non-terminal loop (the CLI prints `no active loop`), proceed to
 Step 1 as normal.
 
+**Surviving compaction.** If your context is compacted/summarized mid-loop — you'll notice lost detail, or a `SessionStart` hook will inject a short "loop mid-flight — resume" note — do NOT treat it as done or as a stop. Immediately re-run `autoloop loop resume`, rebuild the next task from `state`, and continue the Step 2 loop. A `Stop` hook keeps the loop alive across turn-ends, so if you end a turn with work remaining you'll be prompted to continue; the only real stops are a user `stop`/`pause` message, a hit iteration count, or a terminal loop.
+
 ## Step 1 — Setup (once per run)
 
 ```bash
@@ -350,7 +352,6 @@ next round as an option. Just run it.
    exits (4a); without it, it stays alive polling (4b). (This is a pause, not a
    permanent exit.)
 2. The user gave an explicit iteration count and you've reached it (e.g. "run 3 rounds").
-3. Genuine context or token exhaustion — you physically cannot continue.
 
 **Only end the session** on an explicit **shutdown/exit/quit/"we're done"** message —
 or via Step 4a's deliberate pause-handoff exit when `relaunchInstalled: true`.
@@ -451,7 +452,7 @@ done
 - **No scenario left behind.** Before closing a loop, run the Step 3a sweep: every scenario tagged to this loop's tasks must end either met (passing test + score) or with a revision explaining why not. Never close a loop with implemented-but-untested scenarios silently unmet.
 - **Verification is independent.** The verifier subagent never implements code and the implementer never verifies; refuted = unmet.
 - **Traceability is mandatory.** Every test-run names the exact test (file + test name) and command in its `--summary`; every bug links `--scenario` + `--task` and records the catching test, commit sha, and expected-vs-actual in `--description`; fixed bugs cite the fixing commit. Vague "tests pass" summaries or bugs with no scenario/test/commit reference must be redone.
-- **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
+- **Loop is the default.** Do not stop between loops unless the user explicitly said to or gave a round count you've hit. "The app looks good" is not a stopping condition.
 - **Pause parks the loop, never orphans it.** With relaunch machinery installed
   (`autoloop status` → `relaunchInstalled: true`), a paused session drains briefly,
   releases the lock and EXITS — the 5-min wake job relaunches on the next dashboard
