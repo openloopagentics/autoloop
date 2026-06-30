@@ -452,6 +452,20 @@ export function decideSessionEndRelaunch({ lockState, resumable, backoff }) {
   return { relaunch: true, reason: "resumable loop, no live lock, under backoff" };
 }
 
+export const STOP_IDLE_MAX = 3; // consecutive no-progress turn-ends before the idle guard lets the loop stop
+
+/** Pure decision for the Stop hook: keep the loop alive (block the turn from ending) unless the
+ *  loop is terminal/paused, the user is stopping it, or it's wedged (no progress for idleMax turns). */
+export function decideStop({ loopStatus, hasPendingStop, progressed, idleCount, idleMax = STOP_IDLE_MAX }) {
+  if (!loopStatus || TERMINAL_STATUSES.includes(loopStatus))
+    return { block: false, reason: `loop status is ${loopStatus ?? "none"}` };
+  if (loopStatus === "paused") return { block: false, reason: "loop is paused" };
+  if (hasPendingStop) return { block: false, reason: "user stop/pause message pending" };
+  if (!progressed && idleCount + 1 >= idleMax)
+    return { block: false, wedged: true, reason: `wedged: no progress for ${idleMax} turns` };
+  return { block: true, reason: progressed ? "loop progressing — continue" : "no progress yet — continue" };
+}
+
 /** Pure decision for the wake job: paused loop + pending message + no live lock. */
 export function decideWake({ lockState, loopStatus, hasPendingMessages }) {
   if (lockState === "live-other" || lockState === "ours") return { wake: false, reason: "a live session holds the lock" };

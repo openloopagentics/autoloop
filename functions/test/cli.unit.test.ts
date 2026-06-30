@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, stopFingerprint } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, stopFingerprint, decideStop, STOP_IDLE_MAX } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1138,6 +1138,18 @@ describe("relaunch decisions (pure)", () => {
     expect(decideWake({ lockState: "none", loopStatus: undefined, hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
     expect(decideWake({ lockState: "dead", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
+  });
+
+  it("decideStop: block while live & progressing/under-cap; allow on terminal/paused/pending-stop/idle-cap", () => {
+    const live = { loopStatus: "running", hasPendingStop: false, progressed: true, idleCount: 0, idleMax: 3 };
+    expect(decideStop(live).block).toBe(true);                                   // progressing → keep going
+    expect(decideStop({ ...live, loopStatus: "completed" }).block).toBe(false);  // terminal → allow
+    expect(decideStop({ ...live, loopStatus: undefined }).block).toBe(false);    // no loop → allow
+    expect(decideStop({ ...live, loopStatus: "paused" }).block).toBe(false);     // paused → allow
+    expect(decideStop({ ...live, hasPendingStop: true }).block).toBe(false);     // user stopping → allow
+    expect(decideStop({ ...live, progressed: false, idleCount: 0 }).block).toBe(true);  // 1st idle → block
+    expect(decideStop({ ...live, progressed: false, idleCount: 2 }).block).toBe(false); // idleCount+1>=3 → allow
+    expect(decideStop({ ...live, progressed: false, idleCount: 2 }).wedged).toBe(true); // …flagged wedged
   });
 
   it("stopFingerprint changes when the loop advances, stable otherwise", () => {
