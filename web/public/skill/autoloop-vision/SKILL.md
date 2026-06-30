@@ -20,9 +20,16 @@ Write `vision.json` in the loop's working directory. Shape (validated before wri
     "id": "login-works", "goalId": "g1", "title": "...", "description": "...",
     "order": 1, "threshold": 80,
     "rubric": { "criteria": [{ "id": "correctness", "name": "Correctness", "weight": 3, "max": 5 }] },
-    "test": { "command": "npm test -- login" }   // optional; omit → the loop AI-judges it
+    "test": { "command": "npm test -- login" },  // optional; omit → unverified (loop AI-judges, can't auto-meet at L2+)
+    "governance": { "autonomy": "L2" }            // optional per-scenario override of the top-level block
   }],
-  "documents": [{ "id": "vision", "kind": "vision", "title": "Vision", "format": "markdown", "content": "..." }]
+  "documents": [{ "id": "vision", "kind": "vision", "title": "Vision", "format": "markdown", "content": "..." }],
+  "governance": {                                  // optional, loop-local — governs how far the loop runs on its own
+    "autonomy": "L2",                              // L1 report-only | L2 assisted (default) | L3 unattended
+    "dailyTokenCap": 500000,                       // integer ≥ 10000; loop self-throttles at 80%, stops at 100%
+    "earlyExit": true,                             // exit cheaply when there's no actionable work
+    "humanGates": ["payments", "auth"]             // areas that always require user sign-off
+  }
 }
 ```
 
@@ -32,6 +39,10 @@ Field rules:
 - rubric `criteria` non-empty; each `{ id, name, weight>0, max≥1 (integer) }`.
 - `order` (where present) is an integer; `threshold` optional, `0..100` (global
   default 80). `document.format` ∈ `markdown|url`; `document.content` ≤ 100KB.
+- `governance` (top-level and/or per-scenario, both optional): `autonomy` ∈
+  `L1|L2|L3`; `dailyTokenCap` integer ≥ 10000; `earlyExit` boolean; `humanGates`
+  array of non-empty strings. **Loop-local** — stripped on import, never sent to the
+  server (like `test`). Default autonomy when omitted is **L1 (report-only)**.
 
 ## Process
 
@@ -46,6 +57,13 @@ Field rules:
      ask for a shell command that verifies it (e.g. `npm test -- login`) or "let the
      loop AI-judge it" (then omit `test`).
    - Prefer the user's own words for titles/descriptions. Assign stable kebab-case ids.
+   - **Governance (optional, ask last).** Offer a one-question check on how far the
+     loop may run on its own: autonomy level (**L1** report-only / **L2** assisted /
+     **L3** unattended), an optional daily token cap, and any **human-gate** areas that
+     must always get sign-off (e.g. payments, auth). If the user doesn't care, omit the
+     block — it defaults to L1 (report-only, safest). Suggested caps by scope mirror
+     loop-engineering: a light triage-style loop ~80–100k/day, a heavier build loop
+     ~500k–2M/day.
 3. **Validate before writing.** Write your candidate to `vision.json`, then run the
    bundled validator: run `node <vision-schema.mjs> vision.json`, where the validator is
    at `${CLAUDE_PLUGIN_ROOT}/bin/vision-schema.mjs` when installed as a plugin, or
@@ -59,7 +77,7 @@ Field rules:
    Requires `AUTOLOOP_API_KEY` in the env and an initialised `.autoloop.json`. If the dir
    isn't initialised, point the user to `autoloop init --team <t> --project <slug>`
    (and the Autoloop app's API-keys page to mint a key). The loop-local `scenario.test`
-   field is dropped on import (it stays in your local `vision.json`).
+   and `governance` fields are dropped on import (they stay in your local `vision.json`).
 6. **Persist the test approach (optional).** When a scenario has a non-trivial test
    approach — a command or a described verification procedure — optionally persist it as
    a Document of `kind: "test-spec"`, e.g. `autoloop doc add --kind test-spec --title
