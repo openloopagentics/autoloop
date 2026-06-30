@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, stopFingerprint, decideStop, STOP_IDLE_MAX, hasPendingStop, sessionStartContext } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, stopFingerprint, decideStop, STOP_IDLE_MAX, hasPendingStop, sessionStartContext, stopPath } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1506,6 +1506,66 @@ describe("hook session-start", () => {
   it("exits 0 quietly when the project is not initialized", async () => {
     const out: string[] = [];
     expect(await run(["hook", "session-start"], {
+      cwd: tmp(), env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    })).toBe(0);
+    expect(out).toHaveLength(0);
+  });
+});
+
+describe("hook stop", () => {
+  const stuck = { loop: { id: "L", status: "running", currentTaskId: "t1" }, phases: [], tasks: [{ id: "t1", status: "running" }], openBugs: [], scenarios: [], pendingMessages: [] };
+
+  it("blocks a live, progressing loop and allows after STOP_IDLE_MAX idle turns", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
+    const HOME = tmp();
+    const call = async () => {
+      const out: string[] = [];
+      await run(["hook", "stop"], {
+        cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
+        log: (m: string) => out.push(m), err: () => {},
+        fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: stuck }) }),
+      });
+      return out.join("");
+    };
+    // Call 1 establishes the fingerprint (prev was null ⇒ progressed=true, idle NOT incremented).
+    // Calls 2–3 are the real no-progress turns (idle 0→1, 1→2); call 4 trips the cap (2+1≥3 ⇒ allow).
+    expect(JSON.parse(await call()).decision).toBe("block");  // 1: establish fingerprint
+    expect(JSON.parse(await call()).decision).toBe("block");  // 2: idle 0→1
+    expect(JSON.parse(await call()).decision).toBe("block");  // 3: idle 1→2
+    expect(await call()).toBe("");                            // 4: idle 2→3 ≥ max → allow (no block)
+  });
+
+  it("allows immediately when a stop/pause message is pending", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
+    const HOME = tmp();
+    const out: string[] = [];
+    const stateWithStop = { ...stuck, pendingMessages: [{ text: "stop" }] };
+    await run(["hook", "stop"], {
+      cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: stateWithStop }) }),
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it("allows immediately when the loop is paused", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
+    const HOME = tmp();
+    const out: string[] = [];
+    const paused = { ...stuck, loop: { ...stuck.loop, status: "paused" } };
+    await run(["hook", "stop"], {
+      cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: paused }) }),
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it("exits 0 quietly when the project is not initialized", async () => {
+    const out: string[] = [];
+    expect(await run(["hook", "stop"], {
       cwd: tmp(), env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
       log: (m: string) => out.push(m), err: () => {},
       fetchImpl: async () => { throw new Error("should not be called"); },

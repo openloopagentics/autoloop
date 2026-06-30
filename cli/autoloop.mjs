@@ -452,6 +452,7 @@ export const RELAUNCH_MAX = 3;                       // > 3 relaunches in 30 min
 export const RELAUNCH_WINDOW_MS = 30 * 60 * 1000;
 
 export function stampsPath(env, key) { return join(autoloopHome(env), "run", `${key}.stamps.json`); }
+export function stopPath(env, key) { return join(autoloopHome(env), "run", `${key}.stop.json`); }
 export function readStamps(path) {
   if (!existsSync(path)) return [];
   try { const v = JSON.parse(readFileSync(path, "utf8")); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -960,6 +961,45 @@ export async function run(argv, deps = {}) {
         const ctx = fetched ? sessionStartContext(fetched.state) : null;
         hookLog(henv, "session-start", `source=${hook?.source ?? "?"} inject=${!!ctx}`, now());
         if (ctx) log(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: ctx } }));
+        return 0;
+      }
+      case "hook stop": {
+        // Stop shim — fires at the end of every turn while the session is alive.
+        // Blocks the turn from ending (emits {"decision":"block"}) while a loop is live and
+        // making progress. An idle guard (STOP_IDLE_MAX consecutive no-progress turns) lets a
+        // wedged loop stop so it doesn't hang forever. Best-effort: ALWAYS return 0.
+        const henv = loadAutoloopEnv(env);
+        const hook = readHookStdin();
+        const projDir = hook?.cwd || cwd;
+        let cfg; try { cfg = loadConfig(projDir); } catch { return 0; }
+        const fetched = await fetchResumeState(cfg, henv, fetchImpl);
+        const state = fetched?.state;
+        const key = `${cfg.teamId}-${cfg.projectSlug}`;
+        const sp = stopPath(henv, key);
+        const prev = readLock(sp) ?? { fingerprint: null, idleCount: 0 };
+        const fingerprint = state ? stopFingerprint(state) : null;
+        const progressed = fingerprint !== prev.fingerprint;
+        const idleCount = progressed ? 0 : prev.idleCount;
+        const d = decideStop({
+          loopStatus: state?.loop?.status,
+          hasPendingStop: hasPendingStop(state?.pendingMessages),
+          progressed, idleCount,
+        });
+        // persist idle state: reset on progress or allow; else increment
+        const nextIdle = d.block ? idleCount + (progressed ? 0 : 1) : 0;
+        try {
+          mkdirSync(join(autoloopHome(henv), "run"), { recursive: true });
+          writeFileSync(sp, JSON.stringify({ fingerprint, idleCount: nextIdle }));
+        } catch { /* best-effort */ }
+        hookLog(henv, "stop", `loop=${state?.loop?.status ?? "none"} progressed=${progressed} idle=${idleCount} → ${d.block ? "BLOCK" : "ALLOW"} (${d.reason})`, now());
+        if (d.wedged) {
+          // Post a visible message so the user knows why the loop stopped
+          const api = resolveApiUrl(cfg, henv, undefined);
+          await report({ method: "POST", url: `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`,
+            body: { text: `⚠ Autoloop loop stopped: no progress for ${STOP_IDLE_MAX} turns (wedged). Restart when ready.` } },
+            { env: henv, fetchImpl, err, teamId: cfg.teamId }).catch(() => { /* best-effort */ });
+        }
+        if (d.block) log(JSON.stringify({ decision: "block", reason: d.reason + " — run `autoloop loop resume` and continue (Step 2a). Do not stop until the loop is terminal or the user stops it." }));
         return 0;
       }
       case "goal set": {
