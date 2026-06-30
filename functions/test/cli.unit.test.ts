@@ -1520,12 +1520,16 @@ describe("hook stop", () => {
   it("blocks a live, progressing loop and allows after STOP_IDLE_MAX idle turns", async () => {
     const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
     const HOME = tmp();
+    const calls: Array<{ url: string; method: string }> = [];
     const call = async () => {
       const out: string[] = [];
       await run(["hook", "stop"], {
         cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
         log: (m: string) => out.push(m), err: () => {},
-        fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: stuck }) }),
+        fetchImpl: async (url: string, init: { method?: string }) => {
+          calls.push({ url, method: init?.method ?? "GET" });
+          return { ok: true, status: 200, json: async () => ({ state: stuck }) };
+        },
       });
       return out.join("");
     };
@@ -1535,6 +1539,8 @@ describe("hook stop", () => {
     expect(JSON.parse(await call()).decision).toBe("block");  // 2: idle 0→1
     expect(JSON.parse(await call()).decision).toBe("block");  // 3: idle 1→2
     expect(await call()).toBe("");                            // 4: idle 2→3 ≥ max → allow (no block)
+    // at the cap, the handler posts a visible "wedged" message (best-effort)
+    expect(calls.some((c) => c.method === "POST" && c.url.includes("/messages"))).toBe(true);
   });
 
   it("allows immediately when a stop/pause message is pending", async () => {

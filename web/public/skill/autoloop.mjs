@@ -640,7 +640,7 @@ function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall
     if (existsSync(envFile)) rmSync(envFile);
     delete cfg.relaunch;
     saveConfig(projDir, cfg);
-    log("autoloop: relaunch machinery uninstalled (SessionEnd hook, added allowlist entries, wake job, lock, env file)");
+    log("autoloop: relaunch machinery uninstalled (SessionEnd/SessionStart/Stop hooks, added allowlist entries, wake job, lock, env file)");
     return 0;
   }
 
@@ -956,7 +956,7 @@ export async function run(argv, deps = {}) {
         const henv = loadAutoloopEnv(env);
         const hook = readHookStdin();                 // { source, cwd, ... } (may be null)
         const projDir = hook?.cwd || cwd;
-        let cfg; try { cfg = loadConfig(projDir); } catch { return 0; }
+        let cfg; try { cfg = loadConfig(projDir); } catch (e) { hookLog(henv, "session-start", `skip: ${e.message}`, now()); return 0; }
         const fetched = await fetchResumeState(cfg, henv, fetchImpl);
         const ctx = fetched ? sessionStartContext(fetched.state) : null;
         hookLog(henv, "session-start", `source=${hook?.source ?? "?"} inject=${!!ctx}`, now());
@@ -971,7 +971,7 @@ export async function run(argv, deps = {}) {
         const henv = loadAutoloopEnv(env);
         const hook = readHookStdin();
         const projDir = hook?.cwd || cwd;
-        let cfg; try { cfg = loadConfig(projDir); } catch { return 0; }
+        let cfg; try { cfg = loadConfig(projDir); } catch (e) { hookLog(henv, "stop", `skip: ${e.message}`, now()); return 0; }
         const fetched = await fetchResumeState(cfg, henv, fetchImpl);
         const state = fetched?.state;
         const key = `${cfg.teamId}-${cfg.projectSlug}`;
@@ -985,7 +985,8 @@ export async function run(argv, deps = {}) {
           hasPendingStop: hasPendingStop(state?.pendingMessages),
           progressed, idleCount,
         });
-        // persist idle state: reset on progress or allow; else increment
+        // persist idle state: reset on progress or allow; else increment.
+        // (idleCount above = the count fed into decideStop this turn; nextIdle = what we persist.)
         const nextIdle = d.block ? idleCount + (progressed ? 0 : 1) : 0;
         try {
           mkdirSync(join(autoloopHome(henv), "run"), { recursive: true });
