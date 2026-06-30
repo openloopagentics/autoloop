@@ -1578,4 +1578,19 @@ describe("hook stop", () => {
     })).toBe(0);
     expect(out).toHaveLength(0);
   });
+
+  it("does NOT block when another live session holds the lock (live-other)", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
+    const HOME = tmp();
+    mkdirSync(join(HOME, ".autoloop", "run"), { recursive: true });
+    writeFileSync(join(HOME, ".autoloop", "run", "t-p.lock"), JSON.stringify({ pid: 99999 })); // another pid
+    const out: string[] = [];
+    expect(await run(["hook", "stop"], {
+      cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      isAlive: () => true, psLookup: () => null,                 // lock pid alive, not our ancestor → live-other
+      fetchImpl: async () => { throw new Error("should not be called"); }, // guard returns before any fetch
+    })).toBe(0);
+    expect(out).toHaveLength(0);                                  // no decision:block emitted
+  });
 });

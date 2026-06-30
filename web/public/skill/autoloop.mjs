@@ -972,6 +972,13 @@ export async function run(argv, deps = {}) {
         const hook = readHookStdin();
         const projDir = hook?.cwd || cwd;
         let cfg; try { cfg = loadConfig(projDir); } catch (e) { hookLog(henv, "stop", `skip: ${e.message}`, now()); return 0; }
+        // Only the lock-HOLDER keeps itself alive. If another live session is driving this
+        // project, let this (non-driver) turn end — otherwise the shared progress fingerprint
+        // (advanced by the real driver) would keep this session blocked forever. Mirrors how
+        // decideSessionEndRelaunch/decideWake gate on "live-other".
+        const self = findClaudeSessionPid(process.pid, psLookup);
+        const lockState = evaluateLock(readLock(lockPath(henv, cfg.teamId, cfg.projectSlug)), isAlive, self.pid ?? null);
+        if (lockState === "live-other") { hookLog(henv, "stop", "skip: another live session holds the lock", now()); return 0; }
         const fetched = await fetchResumeState(cfg, henv, fetchImpl);
         const state = fetched?.state;
         const key = `${cfg.teamId}-${cfg.projectSlug}`;
