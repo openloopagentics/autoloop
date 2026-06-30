@@ -4,8 +4,8 @@ import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
 import type { GraphNode, GraphEdge } from "../whyGraph";
 
-const NODE_W = 168;
-const NODE_H = 44;
+const NODE_W = 190;
+const NODE_H = 56; // taller: labels wrap to 2 lines + optional why-chip
 
 /** dagre LR layout (goals left → bugs/evidence right) → positions keyed by node id. */
 function layoutPositions(nodes: GraphNode[], edges: GraphEdge[]): Map<string, { x: number; y: number }> {
@@ -26,9 +26,12 @@ function layoutPositions(nodes: GraphNode[], edges: GraphEdge[]): Map<string, { 
 function MapNodeView({ data }: NodeProps) {
   const n = data as unknown as GraphNode;
   return (
-    <div className={`mapnode mapnode--${n.kind} map-${n.state}`}>
+    <div className={`mapnode mapnode--${n.kind} map-${n.state}`} title={n.whyChip ? `${n.label}\n${n.whyChip}` : n.label}>
       <Handle type="target" position={Position.Left} />
-      <span className="mapnode-label">{n.label}</span>
+      <span className="mapnode-head">
+        <span className="mapnode-dot" aria-hidden="true" />
+        <span className="mapnode-label">{n.label}</span>
+      </span>
       {n.kind === "scenario" && n.whyChip && <span className="mapnode-why">{n.whyChip}</span>}
       <Handle type="source" position={Position.Right} />
     </div>
@@ -61,12 +64,13 @@ export function MapCanvas({ layoutNodes, layoutEdges, nodes, edges, onNodeClick 
   }, [nodes, edges, cached]);
 
   const rfEdges = useMemo<Edge[]>(
-    () => edges.map((e) => ({ id: e.id, source: e.from, target: e.to, label: e.label, className: `mapedge mapedge--${e.kind}` })),
+    () => edges.map((e) => ({ id: e.id, source: e.from, target: e.to, type: "smoothstep", label: e.label, className: `mapedge mapedge--${e.kind}` })),
     [edges]);
 
   return (
     <div className="mapwrap">
       <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={nodeTypes} fitView
+        fitViewOptions={{ maxZoom: 1 }} minZoom={0.2}
         nodesDraggable={false} nodesConnectable={false}
         onNodeClick={(_, n) => onNodeClick?.(n.id)}>
         <Background />

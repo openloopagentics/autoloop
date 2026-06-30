@@ -84,6 +84,12 @@ export function MapTab(props: MapTabProps) {
           aria-pressed={showReasoning} onClick={() => setShowReasoning((v) => !v)}>
           {showReasoning ? "Hide reasoning" : "Show reasoning"}
         </button>
+        <ul className="map-legend" aria-label="node states">
+          <li><span className="map-legend-dot map-met" />met</li>
+          <li><span className="map-legend-dot map-unmet" />unmet</li>
+          <li><span className="map-legend-dot map-bugged" />bug</li>
+          <li><span className="map-legend-dot map-active" />active</li>
+        </ul>
       </div>
       <MapCanvas
         layoutNodes={liveGraph.nodes} layoutEdges={liveGraph.edges}
