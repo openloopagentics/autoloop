@@ -27,7 +27,7 @@ session, not inside a subagent.** Subagents implement code; you report status.
 
 - A **`vision.json`** in the cwd. If absent, run `/autoloop-vision` first.
 - An initialised **`.autoloop.json`** (`autoloop init --team <t> --project <slug>`)
-  and `AUTOLOOP_API_KEY` in the env.
+  and an API key (a `.autoloop.key` file in the cwd, or `AUTOLOOP_API_KEY` in the env).
 
 ## Step 0 — Resume check (before ANY setup)
 

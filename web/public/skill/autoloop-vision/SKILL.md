@@ -56,8 +56,9 @@ Field rules:
    invalid vision.json**.
 4. **Confirm** the written `vision.json` with the user.
 5. **Offer to push it:** `autoloop vision import --file vision.json` (best-effort).
-   Requires `AUTOLOOP_API_KEY` in the env and an initialised `.autoloop.json`. If the dir
-   isn't initialised, point the user to `autoloop init --team <t> --project <slug>`
+   Requires an API key (a `.autoloop.key` file in the cwd, or `AUTOLOOP_API_KEY` in the
+   env) and an initialised `.autoloop.json`. If the dir isn't initialised, point the user
+   to `autoloop init --team <t> --project <slug> [--key <apiKey>]`
    (and the Autoloop app's API-keys page to mint a key). The loop-local `scenario.test`
    field is dropped on import (it stays in your local `vision.json`).
 6. **Persist the test approach (optional).** When a scenario has a non-trivial test

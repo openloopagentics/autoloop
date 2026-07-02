@@ -11,10 +11,13 @@ default (pass `--strict` only if you want them fatal).
 
 ## Setup (once)
 
-- Ensure `AUTOLOOP_API_KEY` is in the environment (a per-user key minted in the
-  Autoloop app under **API keys**; you must be a member of the team).
-- `autoloop init --team <teamId> --project <slug>` — writes `.autoloop.json` in the
-  working directory. (Pass `--url <apiUrl>` only to target a non-default deployment.)
+- Ensure an API key is available: preferred is a `.autoloop.key` file in the loop's
+  working directory (gitignore it); `AUTOLOOP_API_KEY` in the environment overrides
+  it. Keys are per-user, minted in the Autoloop app under **API keys** (you must be
+  a member of the team).
+- `autoloop init --team <teamId> --project <slug> [--key <apiKey>]` — writes
+  `.autoloop.json` (and `.autoloop.key` with `--key`) in the working directory.
+  (Pass `--url <apiUrl>` only to target a non-default deployment.)
 
 ## During the loop
 

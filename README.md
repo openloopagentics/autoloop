@@ -130,9 +130,10 @@ member of the team being written to (see **Authentication**).
 ## Reporting from an agent loop
 
 AI agents (Claude Code, Codex) running a dev loop report status with the
-dependency-free CLI at `cli/autoloop.mjs` (Node 22+, no install). Set
-`AUTOLOOP_API_KEY` in the environment (a per-user key minted via `POST /v1/keys`),
-then:
+dependency-free CLI at `cli/autoloop.mjs` (Node 22+, no install). Provide a
+per-user key (minted via `POST /v1/keys`) as a `.autoloop.key` file in the loop's
+working directory — written by `init --key`, gitignore it — or as `AUTOLOOP_API_KEY`
+in the environment (the env var overrides the file), then:
 
 ```bash
 node cli/autoloop.mjs init --team <teamId> --project <slug> [--url <apiUrl>]
