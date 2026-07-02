@@ -64,6 +64,29 @@ completed/failed/cancelled):
 If there is no non-terminal loop (the CLI prints `no active loop`), proceed to
 Step 1 as normal.
 
+### 0b. Preflight — governance & test harness (read the vision before driving)
+
+Before Step 1, read `vision.json` and note two things that shape the whole run:
+
+- **Governance (optional `governance` block, top-level and/or per-scenario).** Fields:
+  `autonomy` (`L1`|`L2`|`L3`, default **L1**), `dailyTokenCap` (int), `earlyExit`
+  (bool), `humanGates` (string[]). A per-scenario block overrides the top-level one.
+  These are **loop-local** (never imported to the server). They govern how far the loop
+  may go on its own:
+  - **L1 = report-only:** build and test, but **never auto-advance a scenario to met** —
+    record results and escalate the decision to the user.
+  - **L2 = assisted (default working mode):** advance a scenario on passing test +
+    confirmed verification (the normal met-rule below).
+  - **L3 = unattended:** as L2, and may continue across phase boundaries without check-in.
+  - Any change touching a **`humanGates`** area (e.g. `payments`, `auth`), a change
+    **> 10 files**, or the **3rd failed attempt** on one scenario → **escalate to the
+    user**, do not self-approve. (These mirror loop-engineering's mandatory gates.)
+- **Test harness.** Run `node <vision-schema.mjs> vision.json` — it now prints
+  non-fatal **warnings** for any scenario with no `test.command`. Such a scenario is
+  **unverified**: at L2+ it cannot be marked met (escalate instead); confirm a real test
+  harness exists (`package.json` test script, `pytest`, `go test`, etc.). "Done" without
+  a runnable test is subjective.
+
 ## Step 1 — Setup (once per run)
 
 ```bash
@@ -92,6 +115,16 @@ autoloop task set <taskId> --status running
 ```
 The dashboard flips to running the moment this executes. Do this BEFORE writing
 any code.
+
+**Budget gate (if `governance.dailyTokenCap` is set).** Before dispatching the
+subagent, sum today's `tokens_estimate` from `.autoloop-runlog.jsonl` (the local
+run-log you append to in 2e):
+- **≥ 80% of the cap → report-only:** finish accounting for in-flight work but do not
+  start new implementation subagents this period; note it and head toward Step 3.
+- **≥ 100% of the cap → stop:** append a `no-op`/`escalated` run-log entry, tell the
+  user the cap is hit, and pause (Step 4).
+- If `governance.earlyExit` is set and there is **no actionable task left**, exit cheaply
+  rather than spawning a subagent.
 
 ### 2b. Implement — dispatch ONE subagent for this task only
 
@@ -222,6 +255,31 @@ done
   lock and exits deliberately — the wake job becomes the listener).
 - If any message changes scope or direction: adjust the remaining task plan accordingly.
 
+**Append a run-log entry (local, on-disk spine for the budget gate & convergence check):**
+```bash
+autoloop run-log append --outcome <no-op|reported|met|rejected|escalated> \
+  --scenario <scenarioId> --task <taskId> --tokens <subagent token estimate> \
+  --actions <n> --escalations <n> --note "<one line>"
+```
+Pick the `--outcome` that matches what happened this task (met = a scenario reached
+met; rejected = verification refuted / test failed; escalated = handed to the user;
+reported = work done but not advanced, e.g. at L1; no-op = nothing actionable).
+
+**Convergence / drift check (when a scenario is being reworked across attempts).**
+A revision loop should be *settling down*, not *circling* or *drifting*. Each time you
+revise the same scenario, judge — from the diff and the test results — whether this
+attempt is:
+- **closer** (smaller, more-targeted change converging on a fix) → continue;
+- **circling** (attempt N undoes/re-breaks what N−1 fixed — flip-flopping) → **escalate**
+  to the user; don't keep spending attempts;
+- **drifting** (the change is wandering away from the scenario's goal / touching
+  unrelated areas) → **escalate**; this is scope drift.
+
+**Hard attempt cap:** on the **3rd failed attempt** at one scenario (test still failing
+or verification refuted), stop reworking it — append a `--outcome escalated` run-log
+entry, record a revision with the reason, and surface it to the user. Do not loop a 4th
+time. (Counting is the floor; the convergence check escalates *earlier* when it can.)
+
 **Now go back to 2a for the next task.**
 
 ## Step 3 — Verify EVERY scenario, then close the loop
@@ -251,10 +309,13 @@ unmet. Either they have a passing test (met) or a revision explaining why not.
    `autoloop test-run` prints `autoloop: id <ULID>`; record it when you submit —
    plus the exact command and test file/names from that run's `--summary`
    (already mandatory per Traceability).
-2. Dispatch **one verifier subagent** with a clean context. Its prompt contains
-   ONLY the list of `{scenarioId, testRunId, command, expected pass/fail}` plus
-   repo access. It replays each command and reports the actual pass/fail counts
-   per scenario. It does not see the implementation conversation and calls no
+2. Dispatch **one verifier subagent** with a clean context, briefed with the
+   **Verifier brief** below (REJECT-by-default). Its prompt contains ONLY the list of
+   `{scenarioId, testRunId, command, expected pass/fail}` plus repo access. It **assumes
+   the code is broken**, replays each command, **observes the artifact's actual runtime
+   behavior** for the scenario's acceptance criterion (runs it / inspects output or the
+   rendered UI — not just that the test count is green), and reports the actual pass/fail
+   counts per scenario. It does not see the implementation conversation and calls no
    `autoloop` commands.
 3. For each scenario, submit the verdict yourself:
 
@@ -362,13 +423,36 @@ A scenario is **met** in this summary if AND ONLY IF, for that scenario, you
 submitted ALL of:
 1. a score with `composite >= threshold` (default 80), AND
 2. a test-run with `failed = 0`, AND
-3. its latest test-run was NOT `refuted` by verification.
+3. its latest test-run was NOT `refuted` by verification, AND
+4. its governance **autonomy is not L1** — at **L1 (report-only)** a scenario is never
+   auto-advanced to met; report the passing result and let the user make the call. A
+   scenario whose vision flagged it **unverified** (no `test.command`) is likewise not
+   met at L2+ — escalate it.
 
 If any of these is missing, the scenario is **unmet** — even if the composite is
 high. Conditions 1–2 match the UI's met/unmet state; a refuted verdict
 additionally shows as ✗ Refuted there — report such a scenario as unmet even
 though its met-state may still read met. Do not report a scenario as "met"
 based on the score alone.
+
+## Verifier brief (the checker's stance — paste into the verifier subagent)
+
+The verifier is the **checker** in a maker/checker split; the implementer is the maker.
+They are never the same subagent. Brief the verifier with these rules:
+
+- **Default stance: REJECT until proven otherwise. Assume the code is broken.**
+- **Do not trust the implementer's claim that tests passed — run them yourself**, and
+  **observe the artifact's actual runtime behavior** for the scenario's acceptance
+  criterion (execute it / inspect the output or rendered UI), not just a green count or
+  the diff.
+- Checklist — ALL must pass to confirm: (1) **scope** — only relevant files changed, no
+  unrelated edits, nothing in a `humanGates` area; (2) **intent** — the change addresses
+  the stated scenario, not a different problem; (3) **tests** — you ran them and report
+  the command + real pass/fail; (4) **no cheating** — no disabled tests, skipped
+  assertions, or commented-out checks; (5) **behavior** — you saw it actually work.
+- Verdict per scenario: counts match the recorded run AND `failed = 0` AND you observed
+  the behavior → **confirmed**; anything else → **refuted**. If you cannot run/observe
+  (env issue) → say so and treat as **refuted** (escalate), never a default pass.
 
 ## Step 4 — Paused
 
@@ -449,7 +533,10 @@ done
 - **test-run is required.** A score alone does not make a scenario met. Always submit `autoloop test-run` before `autoloop score` for every scenario a task advances. Skipping test-run means the scenario will show as "unmet" in the UI regardless of the composite.
 - **Real tests, real numbers.** Every scenario in the loop needs an executable automated test that actually verifies it. The `--passed`/`--failed` counts must come from running that test — never fabricated. Implementing a feature without a test for its scenario leaves the scenario unmet, which is the defect we're avoiding.
 - **No scenario left behind.** Before closing a loop, run the Step 3a sweep: every scenario tagged to this loop's tasks must end either met (passing test + score) or with a revision explaining why not. Never close a loop with implemented-but-untested scenarios silently unmet.
-- **Verification is independent.** The verifier subagent never implements code and the implementer never verifies; refuted = unmet.
+- **Verification is independent and adversarial.** The verifier subagent never implements code and the implementer never verifies; it defaults to REJECT, assumes the code is broken, runs the tests itself, and observes real runtime behavior. Refuted = unmet.
+- **Respect governance.** Honor the vision's `governance` block: L1 = report-only (never auto-advance to met), L2 = the normal met-rule, L3 = may run unattended across phases. Always escalate (never self-approve) a change in a `humanGates` area, a change touching >10 files, or the 3rd failed attempt on one scenario.
+- **Converge or escalate.** When reworking a scenario, escalate as soon as the attempts are circling (flip-flopping) or drifting (wandering off the goal) — and hard-stop at the 3rd failed attempt. Don't burn unbounded attempts.
+- **Keep a run-log.** Append one `autoloop run-log append` entry per task to `.autoloop-runlog.jsonl`; it backs the budget gate and is the loop's on-disk history.
 - **Traceability is mandatory.** Every test-run names the exact test (file + test name) and command in its `--summary`; every bug links `--scenario` + `--task` and records the catching test, commit sha, and expected-vs-actual in `--description`; fixed bugs cite the fixing commit. Vague "tests pass" summaries or bugs with no scenario/test/commit reference must be redone.
 - **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
 - **Pause parks the loop, never orphans it.** With relaunch machinery installed
