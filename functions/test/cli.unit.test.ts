@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-ignore - untyped .mjs imported for runtime test
-import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv } from "../../cli/autoloop.mjs";
+import { parseArgs, validateStatus, validateId, loadConfig, saveConfig, run, firstNonTerminalTask, isResumable, findClaudeSessionPid, evaluateLock, backoffExceeded, decideSessionEndRelaunch, decideWake, detectAllowlist, wakePlist, parseEnvFile, loadAutoloopEnv, stopFingerprint, decideStop, STOP_IDLE_MAX, hasPendingStop, sessionStartContext, stopPath } from "../../cli/autoloop.mjs";
 
 function tmp() { return mkdtempSync(join(tmpdir(), "autoloop-")); }
 
@@ -1184,6 +1184,59 @@ describe("relaunch decisions (pure)", () => {
     expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
     expect(decideWake({ lockState: "dead", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
   });
+
+  it("decideStop: block while live & progressing/under-cap; allow on terminal/paused/pending-stop/idle-cap", () => {
+    const live = { loopStatus: "running", hasPendingStop: false, progressed: true, idleCount: 0, idleMax: 3 };
+    expect(decideStop(live).block).toBe(true);                                   // progressing → keep going
+    expect(decideStop({ ...live, loopStatus: "completed" }).block).toBe(false);  // terminal → allow
+    expect(decideStop({ ...live, loopStatus: undefined }).block).toBe(false);    // no loop → allow
+    expect(decideStop({ ...live, loopStatus: "paused" }).block).toBe(false);     // paused → allow
+    expect(decideStop({ ...live, hasPendingStop: true }).block).toBe(false);     // user stopping → allow
+    expect(decideStop({ ...live, progressed: false, idleCount: 0 }).block).toBe(true);  // 1st idle → block
+    expect(decideStop({ ...live, progressed: false, idleCount: 2 }).block).toBe(false); // idleCount+1>=3 → allow
+    expect(decideStop({ ...live, progressed: false, idleCount: 2 }).wedged).toBe(true); // …flagged wedged
+    // non-wedged allow paths must NOT be flagged wedged
+    expect(decideStop({ ...live, loopStatus: "paused" }).wedged).toBeFalsy();
+    expect(decideStop({ ...live, hasPendingStop: true }).wedged).toBeFalsy();
+    expect(decideStop({ ...live, loopStatus: "completed" }).wedged).toBeFalsy();
+  });
+
+  it("stopFingerprint changes when the loop advances, stable otherwise", () => {
+    const base = {
+      loop: { status: "running", currentPhaseId: "p1", currentTaskId: "t1" },
+      phases: [{ id: "p1", status: "running" }],
+      tasks: [{ id: "t1", status: "running" }, { id: "t2", status: "queued" }],
+      openBugs: [{ id: "b1" }],
+      scenarios: [{ id: "s1", latestComposite: 70, latestTestRun: { passed: 1, failed: 1 } }],
+    };
+    const fp = stopFingerprint(base);
+    expect(stopFingerprint(structuredClone(base))).toBe(fp);                 // identical → same
+    const advanced = structuredClone(base); advanced.tasks[0].status = "completed";
+    expect(stopFingerprint(advanced)).not.toBe(fp);                          // task completed → changed
+    const scored = structuredClone(base); scored.scenarios[0].latestComposite = 85;
+    expect(stopFingerprint(scored)).not.toBe(fp);                            // new score → changed
+    const ptr = structuredClone(base); ptr.loop.currentTaskId = "t2";
+    expect(stopFingerprint(ptr)).not.toBe(fp);                               // current-task pointer moved → changed
+    const bugged = structuredClone(base); bugged.openBugs.push({ id: "b2" });
+    expect(stopFingerprint(bugged)).not.toBe(fp);                            // open bug added → changed
+    const tested = structuredClone(base); tested.scenarios[0].latestTestRun.failed = 0;
+    expect(stopFingerprint(tested)).not.toBe(fp);                            // test result changed → changed
+  });
+
+  it("hasPendingStop: exact-match stop/pause, ignores other text", () => {
+    expect(hasPendingStop([{ text: "Stop" }])).toBe(true);
+    expect(hasPendingStop([{ text: "  pause " }])).toBe(true);
+    expect(hasPendingStop([{ text: "don't stop" }])).toBe(false);   // not an exact command
+    expect(hasPendingStop([{ text: "add dark mode" }])).toBe(false);
+    expect(hasPendingStop([])).toBe(false);
+  });
+  it("sessionStartContext: resume note when resumable, null otherwise", () => {
+    const running = { loop: { id: "loop-1", status: "running", currentTaskId: "t2" }, tasks: [{ id: "t2", status: "running" }], pendingMessages: [] };
+    expect(sessionStartContext(running)).toMatch(/loop resume/);
+    expect(sessionStartContext({ loop: { status: "completed" } })).toBeNull();
+    expect(sessionStartContext({ loop: { status: "paused" } })).toBeNull();
+    expect(sessionStartContext(null)).toBeNull();
+  });
 });
 
 describe("parseEnvFile / loadAutoloopEnv (~/.autoloop/env)", () => {
@@ -1452,5 +1505,137 @@ describe("init --relaunch / --uninstall / status", () => {
     expect(existsSync(s.envFile)).toBe(false);                // holds the API key — removed
     expect(loadConfig(s.dir).relaunch).toBeUndefined();
     expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "unload")).toBe(true);
+  });
+
+  it("installRelaunch registers SessionEnd + SessionStart + Stop, idempotently", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api" });
+    const env = { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" };
+    const opts = { cwd: dir, env, log: () => {}, err: () => {}, execImpl: () => "", platform: "linux" };
+    await run(["init", "--relaunch"], opts); await run(["init", "--relaunch"], opts); // twice → must not duplicate
+    const s = JSON.parse(readFileSync(join(dir, ".claude/settings.json"), "utf8"));
+    const cmds = (ev: string) => (s.hooks[ev] ?? []).flatMap((h: any) => h.hooks.map((x: any) => x.command));
+    expect(cmds("SessionEnd").filter((c: string) => c.includes("hook session-end"))).toHaveLength(1);
+    expect(cmds("SessionStart").filter((c: string) => c.includes("hook session-start"))).toHaveLength(1);
+    expect(cmds("Stop").filter((c: string) => c.includes("hook stop"))).toHaveLength(1);
+  });
+});
+
+describe("hook session-start", () => {
+  const RESUMABLE_STATE = { loop: { id: "loop-1", status: "running", currentTaskId: "t2" }, phases: [], tasks: [{ id: "t2", status: "running" }], pendingMessages: [] };
+  const TERMINAL_STATE = { loop: { id: "loop-1", status: "completed" }, phases: [], tasks: [], pendingMessages: [] };
+
+  it("emits hookSpecificOutput.additionalContext when a loop is resumable", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "loop-1" });
+    const out: string[] = [];
+    await run(["hook", "session-start"], {
+      cwd: dir, env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: RESUMABLE_STATE }) }),
+    });
+    const emitted = JSON.parse(out.join("\n"));
+    expect(emitted.hookSpecificOutput.additionalContext).toMatch(/loop resume/);
+    expect(emitted.hookSpecificOutput.hookEventName).toBe("SessionStart");
+  });
+
+  it("emits nothing when the loop is terminal or paused", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "loop-1" });
+    const out: string[] = [];
+    await run(["hook", "session-start"], {
+      cwd: dir, env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: TERMINAL_STATE }) }),
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it("exits 0 quietly when the project is not initialized", async () => {
+    const out: string[] = [];
+    expect(await run(["hook", "session-start"], {
+      cwd: tmp(), env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    })).toBe(0);
+    expect(out).toHaveLength(0);
+  });
+});
+
+describe("hook stop", () => {
+  const stuck = { loop: { id: "L", status: "running", currentTaskId: "t1" }, phases: [], tasks: [{ id: "t1", status: "running" }], openBugs: [], scenarios: [], pendingMessages: [] };
+
+  it("blocks a live, progressing loop and allows after STOP_IDLE_MAX idle turns", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
+    const HOME = tmp();
+    const calls: Array<{ url: string; method: string }> = [];
+    const call = async () => {
+      const out: string[] = [];
+      await run(["hook", "stop"], {
+        cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
+        log: (m: string) => out.push(m), err: () => {},
+        fetchImpl: async (url: string, init: { method?: string }) => {
+          calls.push({ url, method: init?.method ?? "GET" });
+          return { ok: true, status: 200, json: async () => ({ state: stuck }) };
+        },
+      });
+      return out.join("");
+    };
+    // Call 1 establishes the fingerprint (prev was null ⇒ progressed=true, idle NOT incremented).
+    // Calls 2–3 are the real no-progress turns (idle 0→1, 1→2); call 4 trips the cap (2+1≥3 ⇒ allow).
+    expect(JSON.parse(await call()).decision).toBe("block");  // 1: establish fingerprint
+    expect(JSON.parse(await call()).decision).toBe("block");  // 2: idle 0→1
+    expect(JSON.parse(await call()).decision).toBe("block");  // 3: idle 1→2
+    expect(await call()).toBe("");                            // 4: idle 2→3 ≥ max → allow (no block)
+    // at the cap, the handler posts a visible "wedged" message (best-effort)
+    expect(calls.some((c) => c.method === "POST" && c.url.includes("/messages"))).toBe(true);
+  });
+
+  it("allows immediately when a stop/pause message is pending", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
+    const HOME = tmp();
+    const out: string[] = [];
+    const stateWithStop = { ...stuck, pendingMessages: [{ text: "stop" }] };
+    await run(["hook", "stop"], {
+      cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: stateWithStop }) }),
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it("allows immediately when the loop is paused", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
+    const HOME = tmp();
+    const out: string[] = [];
+    const paused = { ...stuck, loop: { ...stuck.loop, status: "paused" } };
+    await run(["hook", "stop"], {
+      cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ state: paused }) }),
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it("exits 0 quietly when the project is not initialized", async () => {
+    const out: string[] = [];
+    expect(await run(["hook", "stop"], {
+      cwd: tmp(), env: { HOME: tmp(), AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    })).toBe(0);
+    expect(out).toHaveLength(0);
+  });
+
+  it("does NOT block when another live session holds the lock (live-other)", async () => {
+    const dir = tmp(); saveConfig(dir, { teamId: "t", projectSlug: "p", apiUrl: "http://api", currentLoopId: "L" });
+    const HOME = tmp();
+    mkdirSync(join(HOME, ".autoloop", "run"), { recursive: true });
+    writeFileSync(join(HOME, ".autoloop", "run", "t-p.lock"), JSON.stringify({ pid: 99999 })); // another pid
+    const out: string[] = [];
+    expect(await run(["hook", "stop"], {
+      cwd: dir, env: { HOME, AUTOLOOP_API_KEY: "al_k" },
+      log: (m: string) => out.push(m), err: () => {},
+      isAlive: () => true, psLookup: () => null,                 // lock pid alive, not our ancestor → live-other
+      fetchImpl: async () => { throw new Error("should not be called"); }, // guard returns before any fetch
+    })).toBe(0);
+    expect(out).toHaveLength(0);                                  // no decision:block emitted
   });
 });
