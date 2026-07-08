@@ -1,6 +1,6 @@
 ---
 name: autoloop-reporting
-description: Use when running a development loop that should report its status (project, phases, commits) to an Autoloop dashboard. Reports via the bundled autoloop CLI as the loop progresses. Requires AUTOLOOP_API_KEY in the environment and a one-time `autoloop init`.
+description: Use when running a development loop that should report its status (project, phases, commits) to an Autoloop dashboard. Reports via the bundled autoloop CLI as the loop progresses. Requires an API key (a .autoloop.key file or AUTOLOOP_API_KEY in the environment) and a one-time `autoloop init`.
 ---
 
 # Autoloop Reporting
@@ -12,13 +12,16 @@ actual development work.
 
 ## Prerequisites (set up once)
 
-- **`AUTOLOOP_API_KEY`** must be set in the environment — a per-user key minted in
-  the Autoloop app under **API keys** (you must be a member of the team you report
-  to). The CLI never reads the key from a file.
-- Run **`autoloop init`** once in the loop's working directory to write `.autoloop.json`:
+- **An API key** — a per-user key minted in the Autoloop app under **API keys**
+  (you must be a member of the team you report to). Preferred: a **`.autoloop.key`**
+  file in the loop's working directory (add it to `.gitignore`, never commit it),
+  so concurrent loops on one machine each report with their own key.
+  `AUTOLOOP_API_KEY` in the environment overrides the file when set.
+- Run **`autoloop init`** once in the loop's working directory to write
+  `.autoloop.json` (and, with `--key`, the `.autoloop.key` file):
 
   ```
-  autoloop init --team <teamId> --project <slug>
+  autoloop init --team <teamId> --project <slug> [--key <apiKey>]
   ```
 
   (The CLI defaults to the hosted Autoloop API; pass `--url <apiUrl>` only to point

@@ -17,8 +17,11 @@ manually any time with `/plugin marketplace update autoloop`.
 
 ## After installing (one-time)
 
-1. Mint a key in the Autoloop app → **API keys**, then `export AUTOLOOP_API_KEY=…`
-2. In a loop's working directory: `autoloop init --team <teamId> --project <slug>`
+1. Mint a key in the Autoloop app → **API keys**.
+2. In a loop's working directory: `autoloop init --team <teamId> --project <slug> --key <apiKey>`
+   — writes `.autoloop.json` plus a mode-600 `.autoloop.key` (gitignore it). Each
+   project directory can hold its own key, so concurrent loops on one machine stay
+   isolated; `export AUTOLOOP_API_KEY=…` still works and overrides the file.
 
 The skills auto-discover and activate automatically. See the **Skills** section
 below for a description of each.

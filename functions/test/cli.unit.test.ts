@@ -66,7 +66,52 @@ describe("init", () => {
 });
 
 // @ts-ignore
-import { report, resolveApiUrl, fetchWithRetry } from "../../cli/autoloop.mjs";
+import { report, resolveApiUrl, fetchWithRetry, loadKeyFile, saveKeyFile } from "../../cli/autoloop.mjs";
+
+describe("per-project API key (.autoloop.key)", () => {
+  function keyInitDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: null, phases: {} });
+    return dir;
+  }
+  it("saveKeyFile/loadKeyFile round-trip with 600 perms; loadKeyFile is undefined when absent or blank", () => {
+    const dir = tmp();
+    expect(loadKeyFile(dir)).toBeUndefined();
+    saveKeyFile(dir, "al_project_key");
+    expect(loadKeyFile(dir)).toBe("al_project_key");
+    expect(statSync(join(dir, ".autoloop.key")).mode & 0o777).toBe(0o600);
+    writeFileSync(join(dir, ".autoloop.key"), "  \n");
+    expect(loadKeyFile(dir)).toBeUndefined();
+  });
+  it("authenticates a command from .autoloop.key when no env key is set", async () => {
+    const dir = keyInitDir();
+    saveKeyFile(dir, "al_from_file");
+    let captured: any;
+    const code = await run(["project", "set", "--title", "Web", "--status", "running"],
+      { cwd: dir, env: {}, log: () => {}, err: () => {},
+        fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
+    expect(code).toBe(0);
+    expect(captured.init.headers.Authorization).toBe("Bearer al_from_file");
+  });
+  it("env AUTOLOOP_API_KEY overrides the key file", async () => {
+    const dir = keyInitDir();
+    saveKeyFile(dir, "al_from_file");
+    let captured: any;
+    await run(["project", "set", "--title", "Web", "--status", "running"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_from_env" }, log: () => {}, err: () => {},
+        fetchImpl: async (url: string, init: any) => { captured = { url, init }; return { ok: true, status: 200, json: async () => ({}) }; } });
+    expect(captured.init.headers.Authorization).toBe("Bearer al_from_env");
+  });
+  it("init --key writes .autoloop.key and mentions .gitignore", async () => {
+    const dir = tmp();
+    const logs: string[] = [];
+    const code = await run(["init", "--team", "acme", "--project", "web", "--key", "al_new"],
+      { cwd: dir, env: {}, log: (m: string) => logs.push(m), err: () => {} });
+    expect(code).toBe(0);
+    expect(loadKeyFile(dir)).toBe("al_new");
+    expect(logs.join(" ")).toMatch(/gitignore/i);
+  });
+});
 
 describe("resolveApiUrl precedence", () => {
   it("flag > env > config", () => {

@@ -8,6 +8,7 @@ export const STATUSES = ["queued", "running", "blocked", "paused", "completed", 
 export const TERMINAL_STATUSES = ["completed", "failed", "cancelled"];
 const ID_RE = /^[a-z0-9._-]+$/;
 const CONFIG_FILE = ".autoloop.json";
+const KEY_FILE = ".autoloop.key";
 const LEGACY_CONFIG_FILE = ".daloop.json"; // back-compat: pre-rename config name
 export const DEFAULT_API_URL = "https://api-5ds5e4zsxq-uc.a.run.app";
 
@@ -55,6 +56,23 @@ export function loadConfig(cwd) {
 }
 export function saveConfig(cwd, cfg) {
   writeFileSync(join(cwd, CONFIG_FILE), JSON.stringify(cfg, null, 2) + "\n");
+}
+
+/** Per-project API key: .autoloop.key beside .autoloop.json, so concurrent loops on one
+ *  machine each use their own key/team. Env AUTOLOOP_API_KEY remains an explicit override.
+ *  NEVER commit this file — `init --key` reminds about .gitignore. */
+export function loadKeyFile(cwd) {
+  try {
+    const k = readFileSync(join(cwd, KEY_FILE), "utf8").trim();
+    return k || undefined;
+  } catch {
+    return undefined;
+  }
+}
+export function saveKeyFile(cwd, key) {
+  const p = join(cwd, KEY_FILE);
+  writeFileSync(p, key + "\n", { mode: 0o600 });
+  chmodSync(p, 0o600); // writeFileSync mode applies only on create — enforce on rewrite too
 }
 
 export function parseGitHead(out) {
@@ -135,7 +153,7 @@ export async function fetchWithRetry(url, init, deps = {}) {
 export async function report(req, deps) {
   const { env = process.env, fetchImpl = fetch, err = (m) => console.error(m), strict = false, teamId } = deps;
   const key = env.AUTOLOOP_API_KEY;
-  if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
+  if (!key) throw new UsageError("no API key — write .autoloop.key in the project dir (or set AUTOLOOP_API_KEY); mint one in the Autoloop app");
 
   let res;
   try {
@@ -184,7 +202,7 @@ export async function fetchJson(req, deps) {
     render = (body) => JSON.stringify(body.messages ?? body, null, 2),
   } = deps;
   const key = env.AUTOLOOP_API_KEY;
-  if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
+  if (!key) throw new UsageError("no API key — write .autoloop.key in the project dir (or set AUTOLOOP_API_KEY); mint one in the Autoloop app");
 
   let res;
   try {
@@ -219,7 +237,7 @@ export async function fetchJson(req, deps) {
 export async function getJson(url, deps) {
   const { env = process.env, fetchImpl = fetch } = deps;
   const key = env.AUTOLOOP_API_KEY;
-  if (!key) throw new UsageError("set AUTOLOOP_API_KEY (a key minted via POST /v1/keys)");
+  if (!key) throw new UsageError("no API key — write .autoloop.key in the project dir (or set AUTOLOOP_API_KEY); mint one in the Autoloop app");
   try {
     const res = await fetchWithRetry(url, { method: "GET", headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` } }, deps);
     let body = null;
@@ -453,8 +471,11 @@ export function launchHeadless({ cwd, slug, env, spawnImpl, log }) {
   const out = openSync(logFile, "a");
   // launchd/cron parents carry a bare env: spawn the absolute claude path (CLAUDE_BIN from
   // ~/.autoloop/env) and pass the API key through so the session's own autoloop calls work.
+  // When the project has its own .autoloop.key, don't inject a key env var — the child's
+  // autoloop calls read the file from cwd, and an env var would shadow later key rotation.
   const childEnv = { ...process.env };
-  for (const k of ["AUTOLOOP_API_KEY", "AUTOLOOP_API_URL"]) {
+  const keys = loadKeyFile(cwd) ? ["AUTOLOOP_API_URL"] : ["AUTOLOOP_API_KEY", "AUTOLOOP_API_URL"];
+  for (const k of keys) {
     if (env[k] && !childEnv[k]) childEnv[k] = env[k];
   }
   if (env.CLAUDE_BIN) childEnv.PATH = `${dirname(env.CLAUDE_BIN)}${childEnv.PATH ? ":" + childEnv.PATH : ""}`;
@@ -598,8 +619,11 @@ function installRelaunch(projDir, env, { log, err, execImpl, platform, uninstall
     try { const p = String(execImpl("which", ["claude"])).trim(); return p || null; } catch { return null; }
   })();
   const envLines = [];
-  if (env.AUTOLOOP_API_KEY) envLines.push(`AUTOLOOP_API_KEY=${env.AUTOLOOP_API_KEY}`);
-  else err("autoloop: AUTOLOOP_API_KEY is not set — the wake job cannot reach the API until you add it to " + envFile);
+  // ~/.autoloop/env is SHARED by every project's wake job — never write a project's
+  // .autoloop.key key into it. Wake jobs cd into the project dir, so the key file covers them.
+  if (loadKeyFile(projDir)) log(`autoloop: project uses ${KEY_FILE} — not persisting an API key to ${envFile}`);
+  else if (env.AUTOLOOP_API_KEY) envLines.push(`AUTOLOOP_API_KEY=${env.AUTOLOOP_API_KEY}`);
+  else err("autoloop: no API key (env or " + KEY_FILE + ") — the wake job cannot reach the API until you add one");
   if (env.AUTOLOOP_API_URL) envLines.push(`AUTOLOOP_API_URL=${env.AUTOLOOP_API_URL}`);
   if (claudeBin) envLines.push(`CLAUDE_BIN=${claudeBin}`);
   else err("autoloop: `claude` not found on PATH — relaunches will fail until you add CLAUDE_BIN to " + envFile);
@@ -660,10 +684,12 @@ export async function run(argv, deps = {}) {
   // Back-compat: accept the pre-rename DALOOP_* env vars as fallbacks for AUTOLOOP_*.
   // Normalizing here means every downstream `env.AUTOLOOP_*` read (report/fetchJson/
   // resolveApiUrl/strict checks) transparently picks up the legacy value.
+  // The key falls back to the project's .autoloop.key file, so concurrent loops on one
+  // machine each authenticate as their own project without a shared global env var.
   const rawEnv = deps.env ?? process.env;
   const env = {
     ...rawEnv,
-    AUTOLOOP_API_KEY: rawEnv.AUTOLOOP_API_KEY ?? rawEnv.DALOOP_API_KEY,
+    AUTOLOOP_API_KEY: rawEnv.AUTOLOOP_API_KEY ?? rawEnv.DALOOP_API_KEY ?? loadKeyFile(cwd),
     AUTOLOOP_API_URL: rawEnv.AUTOLOOP_API_URL ?? rawEnv.DALOOP_API_URL,
     AUTOLOOP_STRICT: rawEnv.AUTOLOOP_STRICT ?? rawEnv.DALOOP_STRICT,
   };
@@ -691,6 +717,12 @@ export async function run(argv, deps = {}) {
         const apiUrl = (typeof flags.url === "string" && flags.url) || DEFAULT_API_URL;
         saveConfig(cwd, { apiUrl, teamId, projectSlug, currentLoopId: null, loops: {}, currentPhaseId: null, currentTaskId: null, phases: {}, tasks: {} });
         log(`autoloop: initialized .autoloop.json (team=${teamId}, project=${projectSlug})`);
+        if (flags.key) {
+          const key = oneFlag("key", flags.key);
+          if (typeof key !== "string" || !key) throw new UsageError("init --key requires a value");
+          saveKeyFile(cwd, key);
+          log(`autoloop: wrote ${KEY_FILE} (mode 600) — add ${KEY_FILE} to .gitignore, never commit it`);
+        }
         if (flags["session-log"]) installSessionLogHook(env, log);
         if (flags.relaunch) return installRelaunch(cwd, env, { log, err, execImpl, platform, uninstall: !!flags.uninstall });
         return 0;
