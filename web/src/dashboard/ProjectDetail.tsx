@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas, useVisionChanges,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas, useVisionChanges, usePages, useComments, useMyTeams,
 } from "./hooks";
+import { auth } from "../firebase";
 import { postMessage, putUserIdea } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor, loopIsRunning, effectiveProjectStatus } from "./loopView";
 import { useLoopTrend } from "./useLoopTrend";
@@ -46,6 +47,9 @@ export function ProjectDetail() {
   const goals = useGoals(teamId, slug);
   const scenarios = useScenarios(teamId, slug);
   const documents = useDocuments(teamId, slug);
+  const pages = usePages(teamId, slug);
+  const comments = useComments(teamId, slug);
+  const teams = useMyTeams();
 
   // Project-direct reads: detect legacy data for `main` synthesis.
   const directPhases = usePhases(teamId, slug);
@@ -83,12 +87,16 @@ export function ProjectDetail() {
   // does not claim an agent is listening.
   const agentActive = loops.data.some(loopIsRunning) || (loops.data.length === 0 && project.data?.status === "running");
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
+  const currentUid = auth.currentUser?.uid;
+  // Owner/manager on THIS team may accept any comment (backend enforces; UI mirrors).
+  const myRole = teams.data.find((t) => t.teamId === teamId)?.role;
+  const isAdmin = myRole === "owner" || myRole === "manager";
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
   const renderTask = (t: Task, isCurrent: boolean) => <PlanTask teamId={teamId} slug={slug} task={t} loopId={loopArg} isCurrent={isCurrent} />;
 
   // Surface (don't swallow) load errors from any of the project's data sources.
   const dataError = loops.error || phases.error || tasks.error || scores.error || testRuns.error
-    || revisions.error || verifications.error || bugs.error || loopBugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || trend.error || null;
+    || revisions.error || verifications.error || bugs.error || loopBugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || trend.error || pages.error || comments.error || null;
   // Show a spinner only on a source's FIRST load (loading + still empty), so switching
   // loops — which keeps prior data until the new snapshot arrives — doesn't flash.
   const tabLoading =
@@ -99,7 +107,7 @@ export function ProjectDetail() {
     : tab === "ideas" ? (ideas.loading && ideas.data.length === 0)
     : tab === "messages" ? (messages.loading && messages.data.length === 0)
     : tab === "map" ? (goals.loading && goals.data.length === 0)
-    : (scenarios.loading && scenarios.data.length === 0); // vision
+    : (scenarios.loading && scenarios.data.length === 0) || (pages.loading && pages.data.length === 0); // vision (pages gate the wiki)
 
   return (
     <div className="main main--narrow">
@@ -123,7 +131,8 @@ export function ProjectDetail() {
                 {tab === "vision" && (
                   <VisionTab teamId={teamId} slug={slug} editable={editable}
                     goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data} documents={documents.data}
-                    verifications={verifications.data} />
+                    verifications={verifications.data} pages={pages.data} comments={comments.data}
+                    currentUid={currentUid} isAdmin={isAdmin} />
                 )}
                 {tab === "loops" && (
                   <LoopsTab teamId={teamId} slug={slug} loops={loopList} scenarios={scenarios.data}
