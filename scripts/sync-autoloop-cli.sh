@@ -11,13 +11,17 @@ cp cli/autoloop.mjs plugins/autoloop/bin/autoloop
 chmod +x plugins/autoloop/bin/autoloop
 cp cli/vision-schema.mjs plugins/autoloop/bin/vision-schema.mjs
 chmod +x plugins/autoloop/bin/vision-schema.mjs
+cp cli/vision-pages.mjs plugins/autoloop/bin/vision-pages.mjs
+chmod +x plugins/autoloop/bin/vision-pages.mjs
 
 # vision + loop skills for the curl installer (plugin already bundles them)
 mkdir -p web/public/skill/autoloop-vision web/public/skill/autoloop
 cp plugins/autoloop/skills/autoloop-vision/SKILL.md web/public/skill/autoloop-vision/SKILL.md
 cp plugins/autoloop/skills/autoloop/SKILL.md        web/public/skill/autoloop/SKILL.md
 cp cli/vision-schema.mjs web/public/skill/vision-schema.mjs
+cp cli/vision-pages.mjs web/public/skill/vision-pages.mjs
 
 echo "✓ synced cli/autoloop.mjs → web/public/skill/autoloop.mjs, plugins/autoloop/bin/autoloop"
 echo "✓ synced cli/vision-schema.mjs → plugins/autoloop/bin/vision-schema.mjs"
+echo "✓ synced cli/vision-pages.mjs → plugins/autoloop/bin/vision-pages.mjs"
 echo "✓ synced autoloop-vision/autoloop SKILL.md + vision-schema.mjs → web/public/skill/ (curl installer)"
