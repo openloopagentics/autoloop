@@ -57,6 +57,14 @@ export async function postMessage(teamId: string, slug: string, text: string): P
   await ok(await fetch(u(teamId, slug, "/messages"), { method: "POST", headers: await headers(), body: JSON.stringify({ text }) }));
 }
 
+export async function postComment(teamId: string, slug: string, body: { pageId: string; anchor: { exact: string; prefix: string; suffix: string }; body: string; severity: "advisory" | "blocking"; targetScenarioId?: string }): Promise<void> {
+  await ok(await fetch(u(teamId, slug, "/comments"), { method: "POST", headers: await headers(), body: JSON.stringify(body) }));
+}
+
+export async function acceptComment(teamId: string, slug: string, id: string): Promise<void> {
+  await ok(await fetch(u(teamId, slug, `/comments/${id}/accept`), { method: "POST", headers: await headers() }));
+}
+
 export async function deleteProject(teamId: string, slug: string): Promise<void> {
   await ok(await fetch(u(teamId, slug), { method: "DELETE", headers: await headers() }));
 }

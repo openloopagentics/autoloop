@@ -58,6 +58,15 @@ export interface Idea {
   createdAt?: unknown; updatedAt?: unknown; decidedAt?: unknown;
 }
 export interface Message { id: string; text: string; author: "user" | "agent"; status?: "pending" | "delivered"; createdAt?: unknown; deliveredAt?: unknown; }
+export interface Page { id: string; path?: string; title?: string; order?: number; markdown?: string; contentHash?: string; goalIds?: string[]; scenarioIds?: string[]; updatedAt?: unknown; }
+export interface CommentThreadEntry { by: "user" | "agent"; text: string; at?: unknown; }
+export interface PageComment {
+  id: string; pageId?: string; anchor?: { exact: string; prefix?: string; suffix?: string };
+  targetScenarioId?: string; body?: string; author?: string;
+  severity?: "advisory" | "blocking"; status?: "open" | "resolved" | "declined";
+  accepted?: boolean; acceptedBy?: string; thread?: CommentThreadEntry[];
+  createdAt?: unknown; resolvedAt?: unknown;
+}
 
 export type SessionEntry =
   | { kind: "user";      text: string; ts: number }

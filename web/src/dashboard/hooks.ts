@@ -6,7 +6,7 @@ import {
 import { auth, db } from "../firebase";
 import type { Notification } from "../notifications/types";
 import { basePath } from "./loopView";
-import type { Bug, Commit, Decision, DocumentRec, Goal, Idea, Loop, Message, Phase, Project, Revision, Scenario, Score, SessionDoc, Task, Team, TeamRef, TestRun, Verification, VisionChange } from "./types";
+import type { Bug, Commit, Decision, DocumentRec, Goal, Idea, Loop, Message, Page, PageComment, Phase, Project, Revision, Scenario, Score, SessionDoc, Task, Team, TeamRef, TestRun, Verification, VisionChange } from "./types";
 
 interface Result<T> { data: T; loading: boolean; error: string | null; }
 
@@ -322,6 +322,24 @@ export function useIdeas(teamId: string, slug: string): Result<Idea[]> {
   return useFirestoreQuery<Idea[]>(
     () => query(collection(db, "teams", teamId, "projects", slug, "ideas"), orderBy(documentId())),
     (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Idea[],
+    [],
+    [teamId, slug],
+  );
+}
+
+export function usePages(teamId: string, slug: string): Result<Page[]> {
+  return useFirestoreQuery<Page[]>(
+    () => query(collection(db, "teams", teamId, "projects", slug, "pages"), orderBy("order")),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as Page[],
+    [],
+    [teamId, slug],
+  );
+}
+
+export function useComments(teamId: string, slug: string): Result<PageComment[]> {
+  return useFirestoreQuery<PageComment[]>(
+    () => query(collection(db, "teams", teamId, "projects", slug, "comments"), orderBy(documentId())),
+    (snap) => snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as PageComment[],
     [],
     [teamId, slug],
   );
