@@ -795,6 +795,112 @@ describe("vision sync / vision migrate verbs", () => {
     });
     expect(code).toBe(1);
   });
+
+  it("sync exits 1 in strict mode when the GET /pages list fails (HTTP 500)", async () => {
+    const dir = initDir(); writeVisionDir(dir);
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => {
+      const method = init?.method ?? "GET";
+      c.calls.push({ url, method, init });
+      if (method === "GET" && url.endsWith("/pages")) return { ok: false, status: 500, json: async () => ({ ok: false }) };
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    const errs: string[] = [];
+    const code = await run(["vision", "sync", "--strict"], base(dir, c, errs));
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/500/); // surfaces the status
+    // strict abort happens before any write
+    expect(c.calls.filter((x: any) => x.method !== "GET")).toHaveLength(0);
+  });
+
+  it("sync (non-strict) treats a GET /pages failure as an empty server list and re-uploads all pages", async () => {
+    const dir = initDir(); writeVisionDir(dir);
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => {
+      const method = init?.method ?? "GET";
+      c.calls.push({ url, method, init });
+      if (method === "GET" && url.endsWith("/pages")) return { ok: false, status: 500, json: async () => ({ ok: false }) };
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    const code = await run(["vision", "sync"], base(dir, c));
+    expect(code).toBe(0);
+    // every page re-uploaded (server treated as empty)
+    expect(puts(c).filter((x: any) => x.url.includes("/pages/")).map((x: any) => x.url).sort()).toEqual([
+      "http://api/v1/teams/acme/projects/web/pages/g1",
+      "http://api/v1/teams/acme/projects/web/pages/overview",
+    ]);
+    expect(deletes(c)).toHaveLength(0); // no server list => nothing to delete
+  });
+
+  it("migrate FAILS LOUDLY (not exit 0) when a description with an unbalanced fence would swallow a goal block", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      title: "Prod",
+      // g1's description contains a stray ``` opener that, emitted raw, would swallow the ```goal fence.
+      goals: [{ id: "g1", title: "Ship", order: 1, description: "Example:\n```js\nconst x = 1;" }],
+      scenarios: [],
+    }));
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("net"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toMatch(/g1/); // actionable, names the goal
+    expect(errs.join("\n")).not.toMatch(/internal bug/);
+  });
+
+  it("migrate warns and drops an orphan scenario (goalId matches no goal) without failing", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      goals: [{ id: "g1", title: "Ship", order: 1 }],
+      scenarios: [
+        { id: "s1", goalId: "g1", title: "Login", rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } },
+        { id: "orphan", goalId: "ghost", title: "Nowhere", rubric: { criteria: [{ id: "c2", name: "C", weight: 1, max: 5 }] } },
+      ],
+    }));
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("net"); },
+    });
+    expect(code).toBe(0);
+    expect(errs.join("\n")).toMatch(/orphan/);
+    expect(errs.join("\n")).toMatch(/ghost/);
+    const { parsePages, readVisionDir } = await import("../../cli/vision-pages.mjs");
+    const parsed = parsePages(readVisionDir(join(dir, "vision")));
+    expect(parsed.ok).toBe(true);
+    expect(parsed.scenarios.map((s: any) => s.id)).toEqual(["s1"]); // orphan not emitted
+  });
+
+  it("migrate quotes a numeric/boolean-looking title so it round-trips as a string", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      title: "true",
+      goals: [{ id: "g1", title: "2048", order: 1 }, { id: "g2", title: "null", order: 2 }],
+      scenarios: [],
+    }));
+    const code = await run(["vision", "migrate"], base(dir, cap()));
+    expect(code).toBe(0);
+    const { parsePages, readVisionDir } = await import("../../cli/vision-pages.mjs");
+    const parsed = parsePages(readVisionDir(join(dir, "vision")));
+    expect(parsed.ok).toBe(true);
+    expect(parsed.pages.find((p: any) => p.id === "g1").title).toBe("2048");
+    expect(parsed.pages.find((p: any) => p.id === "g2").title).toBe("null");
+    expect(parsed.pages.find((p: any) => p.id === "overview").title).toBe("true");
+  });
+
+  it("migrate rejects a title containing a double-quote or newline with an actionable UsageError naming the goal", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      goals: [{ id: "g1", title: 'has "quote"', order: 1 }],
+      scenarios: [],
+    }));
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("net"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toMatch(/g1/);
+  });
 });
 
 describe("bug add/set verbs", () => {

@@ -30,7 +30,7 @@ const MARKDOWN_MAX_BYTES = 100 * 1024;
 class BlockParseError extends Error {}
 
 /** Coerce a scalar token: true/false, int, float, else string (matched quotes stripped). */
-function coerceScalar(raw) {
+export function coerceScalar(raw) {
   const s = raw.trim();
   if (s === "true") return true;
   if (s === "false") return false;

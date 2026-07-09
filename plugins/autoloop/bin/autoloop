@@ -247,6 +247,27 @@ export async function getJson(url, deps) {
 }
 
 /**
+ * Upsert extracted goals then scenarios through the project-direct vision endpoints (shared by
+ * `vision import` and `vision sync` so the two can't drift). Strips the loop-local scenario `test`
+ * field client-side. `proj` is the .../projects/:slug base; returns the worst report exit code.
+ */
+export async function upsertGoalsScenarios(proj, goals, scenarios, reportDeps, reportImpl = report) {
+  let worst = 0;
+  for (const g of goals) {
+    validateId("goalId", g.id);
+    const { id, ...body } = g;
+    worst = Math.max(worst, await reportImpl({ method: "PUT", url: `${proj}/goals/${id}`, body }, reportDeps));
+  }
+  for (const s of scenarios) {
+    validateId("scenarioId", s.id);
+    // `test` is a loop-local hint (how the loop tests the scenario), never part of the contract.
+    const { id, test, ...body } = s;
+    worst = Math.max(worst, await reportImpl({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
+  }
+  return worst;
+}
+
+/**
  * Fetch the resume state bundle, following the loopId fallback chain:
  * explicit → cfg.currentLoopId → the server project's currentLoopId (one extra hop via the
  * project-direct /state). Returns { state, loopId } or null on any network/HTTP failure.
@@ -1217,19 +1238,7 @@ export async function run(argv, deps = {}) {
         const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
         const reportDeps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
         const proj = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
-        let worst = 0;
-        for (const g of vision.goals ?? []) {
-          validateId("goalId", g.id);
-          const { id, ...body } = g;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/goals/${id}`, body }, reportDeps));
-        }
-        for (const s of vision.scenarios ?? []) {
-          validateId("scenarioId", s.id);
-          // `test` is a loop-local hint (how /autoloop-loop tests the scenario), not part
-          // of the contract — strip it client-side so the import body never carries it.
-          const { id, test, ...body } = s;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
-        }
+        let worst = await upsertGoalsScenarios(proj, vision.goals ?? [], vision.scenarios ?? [], reportDeps);
         for (const d of vision.documents ?? []) {
           validateId("docId", d.id);
           const { id, ...body } = d;
@@ -1265,7 +1274,10 @@ export async function run(argv, deps = {}) {
         const { parsePages, readVisionDir } = await import("./vision-pages.mjs");
         let files;
         try { files = readVisionDir(join(cwd, dir)); }
-        catch { files = []; } // missing dir → treat as empty, handled below
+        catch (e) {
+          if (e?.code === "ENOENT") files = []; // missing dir → treat as empty, handled below
+          else throw new UsageError(`could not read '${dir}/': ${e.message}`); // EACCES etc. — a real error, not "no pages"
+        }
         if (files.length === 0) throw new UsageError(`no vision pages found in '${dir}/' — author pages or run vision migrate`);
 
         const parsed = parsePages(files);
@@ -1288,7 +1300,7 @@ export async function run(argv, deps = {}) {
         if (res?.ok && Array.isArray(res.body?.pages)) {
           serverPages = res.body.pages;
         } else if (strict) {
-          err("autoloop: vision sync failed to list server pages (strict)");
+          err(`autoloop: vision sync failed to list server pages (strict)${res ? ` — HTTP ${res.status}` : " — network error"}`);
           return 1;
         } else {
           err("autoloop: could not list server pages — re-uploading all (best-effort)");
@@ -1308,17 +1320,8 @@ export async function run(argv, deps = {}) {
         for (const sp of serverPages) {
           if (!diskIds.has(sp.id)) worst = Math.max(worst, await report({ method: "DELETE", url: `${proj}/pages/${sp.id}` }, reportDeps));
         }
-        // Upsert the extracted goals then scenarios (same contract as vision import; test stripped).
-        for (const g of parsed.goals) {
-          validateId("goalId", g.id);
-          const { id, ...body } = g;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/goals/${id}`, body }, reportDeps));
-        }
-        for (const s of parsed.scenarios) {
-          validateId("scenarioId", s.id);
-          const { id, test, ...body } = s;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
-        }
+        // Upsert the extracted goals then scenarios (shared with vision import; test stripped).
+        worst = Math.max(worst, await upsertGoalsScenarios(proj, parsed.goals, parsed.scenarios, reportDeps));
         return worst;
       }
       case "vision migrate": {
@@ -1334,11 +1337,39 @@ export async function run(argv, deps = {}) {
 
         const goals = vision.goals ?? [];
         const scenarios = vision.scenarios ?? [];
-        const byGoal = new Map(goals.map((g) => [g.id, []]));
-        for (const s of scenarios) {
-          if (byGoal.has(s.goalId)) byGoal.get(s.goalId).push(s);
-        }
+        const { parsePages, readVisionDir, coerceScalar } = await import("./vision-pages.mjs");
+
+        // Emit a frontmatter title verbatim, but quote it when it would otherwise parse as a
+        // non-string (2048 → number, true/null → boolean/null). Reject titles with a `"` or newline
+        // rather than silently mangle them — the frontmatter subset has no escaping.
+        const fmTitle = (title, id) => {
+          const t = String(title);
+          if (t.includes('"') || /[\r\n]/.test(t)) throw new UsageError(`goal '${id}' title contains a double-quote or newline — rename it (frontmatter can't escape those)`);
+          return coerceScalar(t) === t ? t : `"${t}"`;
+        };
         const fence = (kind, obj) => ["```" + kind, JSON.stringify(obj), "```"].join("\n");
+        // A description whose own line opens a fence (```) would, emitted raw, swallow the real
+        // ```goal/```scenario block — refuse it with an actionable message instead.
+        const assertNoFence = (text, id) => {
+          if (/^```/m.test(String(text))) throw new UsageError(`goal '${id}' description contains a line starting with \`\`\` — remove or indent the fence (it would swallow the goal/scenario block)`);
+        };
+
+        // Bucket scenarios by goal; warn on + drop orphans (goalId matching no goal).
+        const byGoal = new Map(goals.map((g) => [g.id, []]));
+        const keptScenarioIds = new Set();
+        for (const s of scenarios) {
+          if (byGoal.has(s.goalId)) { byGoal.get(s.goalId).push(s); keptScenarioIds.add(s.id); }
+          else err(`autoloop: dropping orphan scenario '${s.id}' — its goalId '${s.goalId}' matches no goal`);
+        }
+
+        // Validate every title + description BEFORE writing anything, so a bad input throws with an
+        // empty target dir (a partial write would leave the "already exists" guard tripped on retry).
+        fmTitle(vision.title ?? "Overview", "overview");
+        for (const g of goals) {
+          fmTitle(g.title ?? g.id, g.id);
+          if (g.description) assertNoFence(g.description, g.id);
+          for (const s of byGoal.get(g.id) ?? []) if (s.description) assertNoFence(s.description, s.id);
+        }
 
         mkdirSync(outDir, { recursive: true });
         const written = [];
@@ -1348,12 +1379,12 @@ export async function run(argv, deps = {}) {
           ...goals.map((g) => `- ${g.title ?? g.id}`),
           "",
         ].join("\n");
-        const overview = [`---`, `id: overview`, `title: ${vision.title ?? "Overview"}`, `order: 0`, `---`, ``, overviewBody].join("\n");
+        const overview = [`---`, `id: overview`, `title: ${fmTitle(vision.title ?? "Overview", "overview")}`, `order: 0`, `---`, ``, overviewBody].join("\n");
         writeFileSync(join(outDir, "overview.md"), overview);
         written.push("overview.md");
 
         for (const g of goals) {
-          const lines = [`---`, `id: ${g.id}`, `title: ${g.title ?? g.id}`, `order: ${Number.isInteger(g.order) ? g.order : 0}`, `---`, ``];
+          const lines = [`---`, `id: ${g.id}`, `title: ${fmTitle(g.title ?? g.id, g.id)}`, `order: ${Number.isInteger(g.order) ? g.order : 0}`, `---`, ``];
           if (g.description) lines.push(g.description, "");
           lines.push(fence("goal", g), "");
           for (const s of byGoal.get(g.id) ?? []) {
@@ -1365,12 +1396,21 @@ export async function run(argv, deps = {}) {
           written.push(fname);
         }
 
-        // Self-check: the generator must never emit a wiki its own parser rejects.
-        const { parsePages, readVisionDir } = await import("./vision-pages.mjs");
+        // Load-bearing self-check: re-parse the generated wiki and confirm it recovers EXACTLY the
+        // goal ids and (kept) scenario ids we fed in. A parse-clean wiki that lost a block to a
+        // stray fence would still fail here — this converts every silent-loss variant into a hard
+        // error, not a success exit.
         const check = parsePages(readVisionDir(outDir));
         if (!check.ok) {
           for (const e of check.errors) err(`${e.file}:${e.line}: ${e.message}`);
-          throw new Error("vision migrate produced an unparseable wiki (internal bug)");
+          throw new UsageError("vision migrate produced an unparseable wiki — check the goal/scenario descriptions above");
+        }
+        const setEq = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
+        const gotGoals = new Set(check.goals.map((x) => x.id));
+        const gotScenarios = new Set(check.scenarios.map((x) => x.id));
+        const wantGoals = new Set(goals.map((x) => x.id));
+        if (!setEq(gotGoals, wantGoals) || !setEq(gotScenarios, keptScenarioIds)) {
+          throw new UsageError(`vision migrate lost content — recovered goals [${[...gotGoals].sort()}] scenarios [${[...gotScenarios].sort()}] but expected goals [${[...wantGoals].sort()}] scenarios [${[...keptScenarioIds].sort()}]`);
         }
         log(`migrated ${written.length} pages — review, commit, and run: autoloop vision sync`);
         return 0;
