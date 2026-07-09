@@ -19,7 +19,7 @@ export async function upsertPage(teamId: string, slug: string, pageId: string, b
     goalIds: body.goalIds,
     scenarioIds: body.scenarioIds,
     updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  });
 }
 
 /** List pages as the sync diff view: id + contentHash ONLY (never the markdown bodies). */

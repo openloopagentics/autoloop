@@ -7,7 +7,7 @@ export const pagesRouter = Router({ mergeParams: true }); // agent (API key) —
 
 pagesRouter.put("/:pageId", async (req, res, next) => {
   try {
-    const { teamId, slug, pageId } = req.params as Record<string, string>;
+    const { teamId, slug, pageId } = req.params as { teamId: string; slug: string; pageId: string };
     for (const [name, val] of [["teamId", teamId], ["slug", slug], ["pageId", pageId]] as const) {
       if (!idPattern.test(val)) throw new AppError(400, "validation", `invalid ${name}`);
     }
@@ -29,7 +29,7 @@ pagesRouter.get("/", async (req, res, next) => {
 
 pagesRouter.delete("/:pageId", async (req, res, next) => {
   try {
-    const { teamId, slug, pageId } = req.params as Record<string, string>;
+    const { teamId, slug, pageId } = req.params as { teamId: string; slug: string; pageId: string };
     for (const [name, val] of [["teamId", teamId], ["slug", slug], ["pageId", pageId]] as const) {
       if (!idPattern.test(val)) throw new AppError(400, "validation", `invalid ${name}`);
     }

@@ -49,6 +49,16 @@ describe("PUT /v1/teams/:teamId/projects/:slug/pages/:pageId", () => {
     expect(d.updatedAt.toDate()).toBeInstanceOf(Date);
   });
 
+  it("advances updatedAt on re-upsert", async () => {
+    await createProject();
+    await request(app).put("/v1/teams/team1/projects/acme/pages/p1").set(authHeader()).send(pageBody());
+    const first = (await db().doc("teams/team1/projects/acme/pages/p1").get()).data()!.updatedAt.toMillis();
+    await request(app).put("/v1/teams/team1/projects/acme/pages/p1").set(authHeader())
+      .send(pageBody({ contentHash: HASH2 }));
+    const second = (await db().doc("teams/team1/projects/acme/pages/p1").get()).data()!.updatedAt.toMillis();
+    expect(second).toBeGreaterThan(first);
+  });
+
   it("updates an existing page (changed title + hash)", async () => {
     await createProject();
     await request(app).put("/v1/teams/team1/projects/acme/pages/p1").set(authHeader()).send(pageBody());
@@ -117,6 +127,13 @@ describe("GET /v1/teams/:teamId/projects/:slug/pages", () => {
       expect(p).not.toHaveProperty("markdown");
     }
   });
+
+  it("returns an empty list for a project with zero pages", async () => {
+    await createProject();
+    const res = await request(app).get("/v1/teams/team1/projects/acme/pages").set(authHeader());
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, pages: [] });
+  });
 });
 
 describe("DELETE /v1/teams/:teamId/projects/:slug/pages/:pageId", () => {
@@ -126,6 +143,12 @@ describe("DELETE /v1/teams/:teamId/projects/:slug/pages/:pageId", () => {
     const res = await request(app).delete("/v1/teams/team1/projects/acme/pages/p1").set(authHeader());
     expect(res.status).toBe(200);
     expect((await db().doc("teams/team1/projects/acme/pages/p1").get()).exists).toBe(false);
+  });
+
+  it("returns 200 deleting a nonexistent page (resume-safe idempotent delete)", async () => {
+    await createProject();
+    const res = await request(app).delete("/v1/teams/team1/projects/acme/pages/ghost").set(authHeader());
+    expect(res.status).toBe(200);
   });
 
   it("400s on an invalid pageId", async () => {
