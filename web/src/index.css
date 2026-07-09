@@ -1489,7 +1489,9 @@ a.docrow-title:hover { color: var(--accent); }
    Columns collapse to a single stack on narrow viewports. */
 .wiki-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr) 264px; gap: 22px; align-items: start; }
 .wiki-layout-main { min-width: 0; }
-@media (max-width: 860px) {
+/* Stack below ~1020px: in the 861–1000px band the fluid .main leaves the page body
+   barely wider than the 264px rail, so collapse to a full-width nav → page → sidebar stack. */
+@media (max-width: 1020px) {
   .wiki-layout { grid-template-columns: 1fr; gap: 18px; }
 }
 
