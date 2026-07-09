@@ -41,3 +41,34 @@ autoloop project set --status completed            # or failed / cancelled
 `status` ∈ `queued|running|blocked|paused|completed|failed|cancelled`.
 IDs must match `^[a-z0-9._-]+$`. `autoloop commit` reads git HEAD and attaches the
 commit to the current phase.
+
+## Vision wiki
+
+```
+# push the repo vision wiki (vision/*.md) — parses + validates locally, then diffs
+# page hashes and pushes only what changed (PUT changed, DELETE removed, upsert goals/scenarios):
+autoloop vision sync                  # [--dir vision] [--strict]
+
+# convert a legacy vision.json into a wiki (local-only; refuses to overwrite vision/):
+autoloop vision migrate               # [--file vision.json] [--dir vision]
+
+# legacy: push a single vision.json:
+autoloop vision import --file vision.json
+```
+
+`vision sync` fails fast with `file:line` on a parse error and uploads nothing; fix the
+page and re-sync. `vision migrate` self-checks the round-trip — review + commit the
+pages, then `vision sync`.
+
+## Steering comments
+
+Users comment on Vision pages to steer the loop. Answer every open comment:
+
+```
+autoloop comments pull                # list open comments (--check = silent exit-0-iff-any probe)
+autoloop comments reply <id> --text "<message>"
+autoloop comments resolve <id> [--declined] [--note "<text>"]
+```
+
+A **blocking** comment suppresses its target scenario's met until the loop resolves it
+AND the comment's author or a team admin accepts.

@@ -16,7 +16,8 @@ pick next queued task
 → autoloop commit --task <id>                    ← report commit
 → autoloop test-run / score / bug                ← report evaluation
 → autoloop task set <id> --status completed      ← dashboard updates NOW
-→ check messages, evaluate, revise if needed
+→ autoloop vision sync                            ← push any wiki edits; keep dashboard current
+→ triage comments, check messages, evaluate, revise if needed
 → repeat
 ```
 
@@ -53,7 +54,9 @@ completed/failed/cancelled):
   phase order, then task order** — the header names it (`next: …`).
 - **Drain `state.pendingMessages` FIRST** (they are oldest-first): act on each,
   then `autoloop messages ack <id>`. A message may change scope or direction —
-  honor it before picking up the next task.
+  honor it before picking up the next task. Then **triage open vision comments**
+  (`autoloop comments pull`, per Step 2f) — a resume may inherit comments left while
+  the loop was down; blocking ones gate their scenarios' met.
 - Then continue the normal **Step 2** per-task loop from that next task
   (re-run `autoloop session-log` so the session-log hook points at this
   session — the bare team-less verb; `init --session-log` without `--team` exits 1).
@@ -172,7 +175,51 @@ reference is not acceptable — redo it with the specifics.
 autoloop task set <taskId> --status completed
 ```
 
-### 2e. Evaluate, revise, drain messages
+### 2e. Sync the vision wiki
+
+If this task edited the vision wiki (any `vision/*.md` page — a reworded scenario, a
+new goal, a tightened rubric), push it now so the dashboard reflects reality:
+
+```bash
+autoloop vision sync   # parses vision/*.md, then diffs page hashes → pushes only changes
+```
+
+A sync **failure is a hard stop, like a failing test**: `vision sync` prints
+`file:line: message` and uploads nothing on a parse error. Fix the offending page and
+re-sync — do NOT proceed to the next task with a stale or unsyncable dashboard.
+(No wiki edits this task → nothing to sync; skip it.)
+
+### 2f. Triage vision comments
+
+Users steer the loop by selecting text on any Vision page and leaving a **comment**
+(advisory, or **BLOCKING**). At every iteration boundary, pull the open comments and
+give **every** one exactly one response — the same discipline as messages; nothing
+sits unacknowledged:
+
+```bash
+autoloop comments pull   # lists every open comment (id, target page/scenario, body, blocking?)
+```
+
+For EACH open comment, do exactly one of:
+- **Revise** — the comment asks for a wiki change you agree with. Edit the page/block,
+  `autoloop vision sync` (per 2e), then resolve it pointing at the change:
+  `autoloop comments resolve <id> --note "reworded scenario X / added goal Y"`.
+- **Act** — the comment implies build work. Spawn a task (add it to the remaining plan
+  tagged to its scenario) or an idea, reply with the plan
+  (`autoloop comments reply <id> --text "<plan>"`), and resolve it when the work lands
+  (`autoloop comments resolve <id> --note "<what shipped>"`).
+- **Decline** — you won't act. Reply with why
+  (`autoloop comments reply <id> --text "<why not>"`), then
+  `autoloop comments resolve <id> --declined --note "<reason>"`.
+
+**Blocking comments are prioritized.** A blocking comment **suppresses its target
+scenario's "met" state** until the loop resolves it AND the comment's author or a
+team admin accepts the resolution — so a scenario can have a passing test and a
+composite over threshold yet still read unmet on the dashboard because of an open
+blocking comment. Clear blocking comments first; don't count their scenarios met in
+any summary while the block stands.
+
+### 2g. Evaluate, revise, drain messages
 
 After closing the task:
 - If a phase is fully done: `autoloop phase set <phaseId> --status completed`
@@ -203,6 +250,9 @@ After closing the task:
   building immediately — autonomous-with-veto: the change applies now and the user can
   reject it from the dashboard later. If the proposal added a **new scenario**, add a
   task tagged to it to the remaining plan so it gets built and tested this loop.
+  **Also mirror the change into the wiki** — edit the goal/scenario block on its
+  `vision/*.md` page (or add a page for a new goal) and `autoloop vision sync`, so the
+  repo wiki and the dashboard don't drift. A sync failure here blocks the same as in 2e.
 - **Poll for messages** — run the pull/ack loop below. The subagent may have run for
   several minutes; messages that arrived during that window are waiting here.
 
@@ -372,7 +422,9 @@ A scenario is **met** in this summary if AND ONLY IF, for that scenario, you
 submitted ALL of:
 1. a score with `composite >= threshold` (default 80), AND
 2. a test-run with `failed = 0`, AND
-3. its latest test-run was NOT `refuted` by verification.
+3. its latest test-run was NOT `refuted` by verification, AND
+4. it has **no open blocking comment** — a blocking comment suppresses met until the
+   loop resolves it AND the author/team admin accepts (see 2f).
 
 If any of these is missing, the scenario is **unmet** — even if the composite is
 high. Conditions 1–2 match the UI's met/unmet state; a refuted verdict
@@ -461,6 +513,15 @@ done
 - **No scenario left behind.** Before closing a loop, run the Step 3a sweep: every scenario tagged to this loop's tasks must end either met (passing test + score) or with a revision explaining why not. Never close a loop with implemented-but-untested scenarios silently unmet.
 - **Verification is independent.** The verifier subagent never implements code and the implementer never verifies; refuted = unmet.
 - **Traceability is mandatory.** Every test-run names the exact test (file + test name) and command in its `--summary`; every bug links `--scenario` + `--task` and records the catching test, commit sha, and expected-vs-actual in `--description`; fixed bugs cite the fixing commit. Vague "tests pass" summaries or bugs with no scenario/test/commit reference must be redone.
+- **Keep the wiki synced.** Whenever you edit the vision wiki (`vision/*.md`) — a
+  revision, a mirrored `vision propose`, any reword — run `autoloop vision sync`. A sync
+  failure is a hard stop like a failing test: it prints `file:line` and uploads nothing;
+  fix the page and re-sync before proceeding. Never drive on with a stale dashboard.
+- **No comment left unanswered.** At every iteration boundary run `autoloop comments
+  pull` and give each open comment exactly one of revise / act / decline, each ending in
+  a `comments resolve` (or reply + resolve). Blocking comments are prioritized and
+  suppress their scenario's met until resolved AND accepted by the author/team admin —
+  don't report such a scenario as met while its block stands. Same discipline as messages.
 - **Loop is the default.** Do not stop between loops unless the user explicitly said to, gave a round count you've hit, or you've hit genuine context exhaustion. "The app looks good" is not a stopping condition.
 - **Pause parks the loop, never orphans it.** With relaunch machinery installed
   (`autoloop status` → `relaunchInstalled: true`), a paused session drains briefly,
