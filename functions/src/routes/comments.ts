@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { idPattern, commentReplyBody, commentResolveBody } from "../schemas.js";
 import { AppError } from "../errors.js";
-import { listComments, replyToComment, resolveComment } from "../services/comments.js";
+import { listComments, replyToComment, resolveComment, COMMENT_STATUSES } from "../services/comments.js";
 
 export const commentsRouter = Router({ mergeParams: true }); // agent (API key)
 
@@ -10,6 +10,11 @@ commentsRouter.get("/", async (req, res, next) => {
     const { teamId, slug } = req.params as Record<string, string>;
     if (!idPattern.test(teamId) || !idPattern.test(slug)) throw new AppError(400, "validation", "invalid teamId/slug");
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    // Whitelist the filter: a bogus ?status would otherwise silently return [] on the
+    // endpoint that drives triage. Reject anything outside the known statuses.
+    if (status !== undefined && !(COMMENT_STATUSES as readonly string[]).includes(status)) {
+      throw new AppError(400, "validation", "invalid status filter");
+    }
     const comments = await listComments(teamId, slug, status);
     res.status(200).json({ ok: true, comments });
   } catch (err) { next(err); }

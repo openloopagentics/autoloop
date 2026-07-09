@@ -130,6 +130,12 @@ describe("GET /v1/teams/:teamId/projects/:slug/comments — agent pull", () => {
     expect(ids).toContain(openId);
     expect(ids).not.toContain(resolvedId);
   });
+
+  it("400s on a bogus ?status value", async () => {
+    await createProject();
+    const res = await request(agentApp).get("/v1/teams/team1/projects/acme/comments?status=bogus").set(authHeader());
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("POST /v1/teams/:teamId/projects/:slug/comments/:id/reply — agent reply", () => {
@@ -240,6 +246,29 @@ describe("POST /v1/u/teams/:teamId/projects/:slug/comments/:id/accept — user a
     const d = (await db().doc(`teams/team1/projects/acme/comments/${id}`).get()).data()!;
     expect(d.accepted).toBe(true);
     expect(d.acceptedBy).toBe("bob");
+  });
+
+  it("double-accept is idempotent: acceptedBy keeps the first acceptor", async () => {
+    await createProject();
+    await seedUserMember(); // alice = member, author
+    const id = await createComment();
+    // alice (author) accepts first
+    const first = await request(userApp())
+      .post(`/v1/u/teams/team1/projects/acme/comments/${id}/accept`)
+      .set(tok("alice"))
+      .send({});
+    expect(first.status).toBe(200);
+    // bob (admin) tries to accept again — should be a no-op that preserves acceptedBy=alice
+    await db().doc("users/bob").set({ email: "bob@x.com", isAllowed: true });
+    await db().doc("teams/team1/members/bob").set({ uid: "bob", role: "admin" });
+    const second = await request(userApp())
+      .post(`/v1/u/teams/team1/projects/acme/comments/${id}/accept`)
+      .set(tok("bob"))
+      .send({});
+    expect(second.status).toBe(200);
+    const d = (await db().doc(`teams/team1/projects/acme/comments/${id}`).get()).data()!;
+    expect(d.accepted).toBe(true);
+    expect(d.acceptedBy).toBe("alice"); // unchanged by the second accept
   });
 
   it("403s for a non-author plain member", async () => {
