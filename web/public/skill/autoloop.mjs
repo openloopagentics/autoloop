@@ -1257,6 +1257,124 @@ export async function run(argv, deps = {}) {
         return report({ method: "POST", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
+      case "vision sync": {
+        // Read the repo vision wiki (vision/*.md), diff page hashes against the server, and
+        // push only what changed: PUT new/changed pages, DELETE server pages gone from disk,
+        // then upsert the extracted goals/scenarios through the same endpoints as vision import.
+        const dir = oneFlag("dir", flags.dir) || "vision";
+        const { parsePages, readVisionDir } = await import("./vision-pages.mjs");
+        let files;
+        try { files = readVisionDir(join(cwd, dir)); }
+        catch { files = []; } // missing dir → treat as empty, handled below
+        if (files.length === 0) throw new UsageError(`no vision pages found in '${dir}/' — author pages or run vision migrate`);
+
+        const parsed = parsePages(files);
+        if (!parsed.ok) {
+          // Print each error as file:line: message and abort — NOTHING uploads on a parse failure.
+          for (const e of parsed.errors) err(`${e.file}:${e.line}: ${e.message}`);
+          return 1;
+        }
+
+        const cfg = loadConfig(cwd);
+        const apiBase = resolveApiUrl(cfg, env, flags.url);
+        const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
+        const reportDeps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
+        const proj = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
+
+        // Server page list (id + contentHash only). Best-effort like other reads: on a network/HTTP
+        // failure, non-strict treats the server as empty (everything re-uploads); strict fails.
+        const res = await getJson(`${proj}/pages`, { env, fetchImpl });
+        let serverPages;
+        if (res?.ok && Array.isArray(res.body?.pages)) {
+          serverPages = res.body.pages;
+        } else if (strict) {
+          err("autoloop: vision sync failed to list server pages (strict)");
+          return 1;
+        } else {
+          err("autoloop: could not list server pages — re-uploading all (best-effort)");
+          serverPages = [];
+        }
+        const serverHash = new Map(serverPages.map((p) => [p.id, p.contentHash]));
+
+        let worst = 0;
+        // Upload each new/changed page (body = page minus id).
+        for (const page of parsed.pages) {
+          if (serverHash.get(page.id) === page.contentHash) continue; // unchanged
+          const { id, ...body } = page;
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/pages/${id}`, body }, reportDeps));
+        }
+        // Delete server pages that no longer exist on disk.
+        const diskIds = new Set(parsed.pages.map((p) => p.id));
+        for (const sp of serverPages) {
+          if (!diskIds.has(sp.id)) worst = Math.max(worst, await report({ method: "DELETE", url: `${proj}/pages/${sp.id}` }, reportDeps));
+        }
+        // Upsert the extracted goals then scenarios (same contract as vision import; test stripped).
+        for (const g of parsed.goals) {
+          validateId("goalId", g.id);
+          const { id, ...body } = g;
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/goals/${id}`, body }, reportDeps));
+        }
+        for (const s of parsed.scenarios) {
+          validateId("scenarioId", s.id);
+          const { id, test, ...body } = s;
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
+        }
+        return worst;
+      }
+      case "vision migrate": {
+        // Purely local: turn a legacy vision.json into a repo vision wiki (vision/*.md) for the
+        // author to review + commit, then `autoloop vision sync`. No network.
+        const file = oneFlag("file", flags.file) || "vision.json";
+        const dir = oneFlag("dir", flags.dir) || "vision";
+        let vision;
+        try { vision = JSON.parse(readFileSync(join(cwd, file), "utf8")); }
+        catch (e) { throw new UsageError(`could not read --file '${file}': ${e.message}`); }
+        const outDir = join(cwd, dir);
+        if (existsSync(outDir)) throw new UsageError(`'${dir}/' already exists — remove it or pass --dir <other>`);
+
+        const goals = vision.goals ?? [];
+        const scenarios = vision.scenarios ?? [];
+        const byGoal = new Map(goals.map((g) => [g.id, []]));
+        for (const s of scenarios) {
+          if (byGoal.has(s.goalId)) byGoal.get(s.goalId).push(s);
+        }
+        const fence = (kind, obj) => ["```" + kind, JSON.stringify(obj), "```"].join("\n");
+
+        mkdirSync(outDir, { recursive: true });
+        const written = [];
+        const overviewBody = [
+          `# ${vision.title ?? "Overview"}`,
+          "",
+          ...goals.map((g) => `- ${g.title ?? g.id}`),
+          "",
+        ].join("\n");
+        const overview = [`---`, `id: overview`, `title: ${vision.title ?? "Overview"}`, `order: 0`, `---`, ``, overviewBody].join("\n");
+        writeFileSync(join(outDir, "overview.md"), overview);
+        written.push("overview.md");
+
+        for (const g of goals) {
+          const lines = [`---`, `id: ${g.id}`, `title: ${g.title ?? g.id}`, `order: ${Number.isInteger(g.order) ? g.order : 0}`, `---`, ``];
+          if (g.description) lines.push(g.description, "");
+          lines.push(fence("goal", g), "");
+          for (const s of byGoal.get(g.id) ?? []) {
+            if (s.description) lines.push(s.description, "");
+            lines.push(fence("scenario", s), ""); // KEEP test — it's loop-local and stays in the repo
+          }
+          const fname = `${g.id}.md`;
+          writeFileSync(join(outDir, fname), lines.join("\n"));
+          written.push(fname);
+        }
+
+        // Self-check: the generator must never emit a wiki its own parser rejects.
+        const { parsePages, readVisionDir } = await import("./vision-pages.mjs");
+        const check = parsePages(readVisionDir(outDir));
+        if (!check.ok) {
+          for (const e of check.errors) err(`${e.file}:${e.line}: ${e.message}`);
+          throw new Error("vision migrate produced an unparseable wiki (internal bug)");
+        }
+        log(`migrated ${written.length} pages — review, commit, and run: autoloop vision sync`);
+        return 0;
+      }
       case "messages pull": {
         const cfg = loadConfig(cwd);
         const api = resolveApiUrl(cfg, env, flags.url);

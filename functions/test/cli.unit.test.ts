@@ -621,6 +621,182 @@ describe("event + vision verbs (request shapes)", () => {
   });
 });
 
+describe("vision sync / vision migrate verbs", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {} });
+    return dir;
+  }
+
+  // A vision/ dir with two valid pages: overview + a goal page carrying one goal + one scenario.
+  function writeVisionDir(dir: string, subdir = "vision") {
+    const vdir = join(dir, subdir);
+    mkdirSync(vdir, { recursive: true });
+    writeFileSync(join(vdir, "overview.md"), [
+      "---",
+      "id: overview",
+      "title: Overview",
+      "order: 0",
+      "---",
+      "",
+      "The project overview.",
+      "",
+    ].join("\n"));
+    writeFileSync(join(vdir, "g1.md"), [
+      "---",
+      "id: g1",
+      "title: Ship it",
+      "order: 1",
+      "---",
+      "",
+      "Ship the thing.",
+      "",
+      "```goal",
+      JSON.stringify({ id: "g1", title: "Ship it", order: 1 }),
+      "```",
+      "",
+      "Log in works.",
+      "",
+      "```scenario",
+      JSON.stringify({ id: "s1", goalId: "g1", title: "Login", test: { command: "npm test -- login" }, rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } }),
+      "```",
+      "",
+    ].join("\n"));
+    return vdir;
+  }
+
+  // Route mock: GET /pages returns `serverPages`; PUT/DELETE record + succeed.
+  function cap(serverPages: { id: string; contentHash: string }[] = []) {
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => {
+      const method = init?.method ?? "GET";
+      c.calls.push({ url, method, init });
+      if (method === "GET" && url.endsWith("/pages")) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, pages: serverPages }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, id: "01XYZ" }) };
+    };
+    return c;
+  }
+  const base = (dir: string, c: any, errsOut: string[] = []) => ({
+    cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errsOut.push(m), fetchImpl: c.fetchImpl,
+  });
+  const puts = (c: any) => c.calls.filter((x: any) => x.method === "PUT");
+  const deletes = (c: any) => c.calls.filter((x: any) => x.method === "DELETE");
+
+  it("sync PUTs new pages (body carries contentHash/goalIds/scenarioIds, no id) + upserts goals/scenarios (test stripped)", async () => {
+    const dir = initDir(); writeVisionDir(dir); const c = cap([]);
+    const code = await run(["vision", "sync"], base(dir, c));
+    expect(code).toBe(0);
+    const pagePuts = puts(c).filter((x: any) => x.url.includes("/pages/"));
+    expect(pagePuts.map((x: any) => x.url).sort()).toEqual([
+      "http://api/v1/teams/acme/projects/web/pages/g1",
+      "http://api/v1/teams/acme/projects/web/pages/overview",
+    ]);
+    const g1Body = JSON.parse(pagePuts.find((x: any) => x.url.endsWith("/pages/g1")).init.body);
+    expect(g1Body).toMatchObject({ path: "g1.md", title: "Ship it", order: 1, goalIds: ["g1"], scenarioIds: ["s1"] });
+    expect(g1Body.contentHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(g1Body.markdown).toContain("```goal");
+    expect("id" in g1Body).toBe(false);
+    // goal + scenario upserts through the existing endpoints
+    const urls = c.calls.map((x: any) => x.url);
+    expect(urls).toContain("http://api/v1/teams/acme/projects/web/goals/g1");
+    expect(urls).toContain("http://api/v1/teams/acme/projects/web/scenarios/s1");
+    const scnBody = JSON.parse(puts(c).find((x: any) => x.url.endsWith("/scenarios/s1")).init.body);
+    expect("test" in scnBody).toBe(false); // loop-local test stripped before upload
+    expect(scnBody).toMatchObject({ goalId: "g1", title: "Login" });
+  });
+
+  it("sync skips page PUTs whose server hash matches, but still upserts goals/scenarios (idempotent)", async () => {
+    const dir = initDir(); const vdir = writeVisionDir(dir);
+    // Server already holds the exact current hashes -> zero page PUTs.
+    const { parsePages, readVisionDir } = await import("../../cli/vision-pages.mjs");
+    const parsed = parsePages(readVisionDir(vdir));
+    const serverPages = parsed.pages.map((p: any) => ({ id: p.id, contentHash: p.contentHash }));
+    const c = cap(serverPages);
+    const code = await run(["vision", "sync"], base(dir, c));
+    expect(code).toBe(0);
+    expect(puts(c).filter((x: any) => x.url.includes("/pages/"))).toHaveLength(0);
+    expect(deletes(c)).toHaveLength(0);
+    // goals/scenarios still upserted
+    expect(c.calls.map((x: any) => x.url)).toContain("http://api/v1/teams/acme/projects/web/goals/g1");
+    expect(c.calls.map((x: any) => x.url)).toContain("http://api/v1/teams/acme/projects/web/scenarios/s1");
+  });
+
+  it("sync DELETEs server pages not present on disk", async () => {
+    const dir = initDir(); writeVisionDir(dir);
+    const c = cap([{ id: "stale", contentHash: "deadbeef" }]);
+    const code = await run(["vision", "sync"], base(dir, c));
+    expect(code).toBe(0);
+    expect(deletes(c).map((x: any) => x.url)).toContain("http://api/v1/teams/acme/projects/web/pages/stale");
+  });
+
+  it("sync uploads NOTHING on a parse error (exit 1, fetchImpl never called)", async () => {
+    const dir = initDir();
+    const vdir = join(dir, "vision");
+    mkdirSync(vdir, { recursive: true });
+    writeFileSync(join(vdir, "broken.md"), "no frontmatter here\n"); // fails parsePages
+    const errs: string[] = [];
+    const code = await run(["vision", "sync"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toMatch(/broken\.md:\d+:/);
+  });
+
+  it("sync errors (UsageError) when the vision dir is missing / empty", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["vision", "sync"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/no vision pages found/);
+  });
+
+  it("migrate writes overview.md + one page per goal, round-trips through parsePages, keeps scenario test", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      title: "My Product",
+      goals: [
+        { id: "g1", title: "Ship", order: 1, description: "Ship the thing" },
+        { id: "g2", title: "Grow", order: 2 },
+      ],
+      scenarios: [
+        { id: "s1", goalId: "g1", title: "Login", description: "user logs in", test: { command: "npm test -- login" }, rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } },
+        { id: "s2", goalId: "g2", title: "Signup", rubric: { criteria: [{ id: "c2", name: "C", weight: 1, max: 5 }] } },
+      ],
+    }));
+    const code = await run(["vision", "migrate"], base(dir, cap()));
+    expect(code).toBe(0);
+    const vdir = join(dir, "vision");
+    expect(existsSync(join(vdir, "overview.md"))).toBe(true);
+    expect(existsSync(join(vdir, "g1.md"))).toBe(true);
+    expect(existsSync(join(vdir, "g2.md"))).toBe(true);
+    // migrate output keeps the loop-local test in the scenario block
+    expect(readFileSync(join(vdir, "g1.md"), "utf8")).toContain("npm test -- login");
+    // round-trip: parsing the generated wiki recovers the same goal/scenario ids
+    const { parsePages, readVisionDir } = await import("../../cli/vision-pages.mjs");
+    const parsed = parsePages(readVisionDir(vdir));
+    expect(parsed.ok).toBe(true);
+    expect(parsed.goals.map((g: any) => g.id).sort()).toEqual(["g1", "g2"]);
+    expect(parsed.scenarios.map((s: any) => s.id).sort()).toEqual(["s1", "s2"]);
+    expect(parsed.scenarios.find((s: any) => s.id === "s1").test).toEqual({ command: "npm test -- login" });
+  });
+
+  it("migrate refuses to overwrite an existing vision dir (UsageError)", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({ goals: [], scenarios: [] }));
+    mkdirSync(join(dir, "vision"), { recursive: true });
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); },
+    });
+    expect(code).toBe(1);
+  });
+});
+
 describe("bug add/set verbs", () => {
   function initDir(extra: Record<string, unknown> = {}) {
     const dir = tmp();
