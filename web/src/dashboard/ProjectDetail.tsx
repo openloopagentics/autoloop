@@ -88,9 +88,9 @@ export function ProjectDetail() {
   const agentActive = loops.data.some(loopIsRunning) || (loops.data.length === 0 && project.data?.status === "running");
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
   const currentUid = auth.currentUser?.uid;
-  // Owner/manager on THIS team may accept any comment (backend enforces; UI mirrors).
+  // Owner/admin on THIS team may accept any comment (backend enforces; UI mirrors).
   const myRole = teams.data.find((t) => t.teamId === teamId)?.role;
-  const isAdmin = myRole === "owner" || myRole === "manager";
+  const isAdmin = myRole === "owner" || myRole === "admin";
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
   const renderTask = (t: Task, isCurrent: boolean) => <PlanTask teamId={teamId} slug={slug} task={t} loopId={loopArg} isCurrent={isCurrent} />;
 

@@ -73,11 +73,13 @@ describe("VisionTab wiki gate", () => {
   });
 
   it("falls back to the legacy list view when there are no pages", () => {
-    render(<VisionTab {...props({ pages: [], comments: [] })} />);
+    const { container } = render(<VisionTab {...props({ pages: [], comments: [] })} />);
     // Legacy VisionSection header shown (editable=false, hasScenarios).
     expect(screen.getByRole("heading", { name: "Vision" })).toBeInTheDocument();
-    // No wiki nav.
-    expect(screen.queryByText(/scenarios met/i)).toBeInTheDocument(); // banner also says "scenarios met"; ensure no wiki nav rollup specifically
+    // The wiki nav is genuinely absent (the legacy banner shares the "scenarios met" text,
+    // so assert on the nav's own root class instead).
+    expect(container.querySelector(".wikinav")).toBeNull();
+    expect(container.querySelector(".wiki-layout")).toBeNull();
   });
 });
 
@@ -130,5 +132,29 @@ describe("VisionWikiTab accept path", () => {
     const acceptBtn = await screen.findByRole("button", { name: /accept/i });
     fireEvent.click(acceptBtn);
     await waitFor(() => expect(acceptComment).toHaveBeenCalledWith("t1", "p1", "c1"));
+  });
+
+  it("shows Accept to a team admin on someone else's blocking comment (isAdmin path)", async () => {
+    // isAdmin is derived in ProjectDetail as role === "owner" || "admin"; here the viewer
+    // (u2) is NOT the author (u1) but is an admin, so the accept button must still show.
+    const blocking: PageComment[] = [
+      { id: "c1", pageId: "overview", author: "u1", body: "stop", severity: "blocking", status: "open", anchor: { exact: "log in" } },
+    ];
+    render(
+      <VisionWikiTab teamId="t1" slug="p1" currentUid="u2" isAdmin scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} pages={pages} comments={blocking} />,
+    );
+    const acceptBtn = await screen.findByRole("button", { name: /accept/i });
+    fireEvent.click(acceptBtn);
+    await waitFor(() => expect(acceptComment).toHaveBeenCalledWith("t1", "p1", "c1"));
+  });
+
+  it("hides Accept from a non-admin who is not the author", () => {
+    const blocking: PageComment[] = [
+      { id: "c1", pageId: "overview", author: "u1", body: "stop", severity: "blocking", status: "open", anchor: { exact: "log in" } },
+    ];
+    render(
+      <VisionWikiTab teamId="t1" slug="p1" currentUid="u2" scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} pages={pages} comments={blocking} />,
+    );
+    expect(screen.queryByRole("button", { name: /accept/i })).toBeNull();
   });
 });

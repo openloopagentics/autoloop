@@ -4,6 +4,7 @@ import { GoalForm } from "./GoalForm";
 import { ScenarioForm } from "./ScenarioForm";
 import { DocumentForm } from "./DocumentForm";
 import { NewProjectForm } from "./NewProjectForm";
+import type { TeamRef } from "../../types";
 
 describe("GoalForm", () => {
   it("submits title + order via onSave and clears", async () => {
@@ -94,7 +95,7 @@ describe("DocumentForm", () => {
 });
 
 describe("NewProjectForm", () => {
-  const teams = [{ teamId: "t1", role: "member" }];
+  const teams: TeamRef[] = [{ teamId: "t1", role: "member" }];
 
   it("submits teamId, slug, title via onCreate", async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);

@@ -1,4 +1,6 @@
-export interface TeamRef { teamId: string; role: string; }
+import type { Role } from "../teams/types";
+
+export interface TeamRef { teamId: string; role: Role; }
 export interface Team { name?: string; }
 export interface Project { slug: string; title?: string; status?: string; visionOwner?: "web" | "loop"; currentPhaseId?: string | null; currentTaskId?: string | null; currentLoopId?: string | null; design?: { format: "markdown" | "url"; content: string } | null; createdAt?: unknown; }
 
