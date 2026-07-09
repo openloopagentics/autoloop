@@ -1580,13 +1580,19 @@ describe("relaunch decisions (pure)", () => {
     expect(decideSessionEndRelaunch({ lockState: "ours", resumable: true, backoff: false }).relaunch).toBe(true);
   });
 
-  it("decideWake: wake only when no live lock AND loop is paused AND messages are pending", () => {
+  it("decideWake: wake only when no live lock AND loop is paused AND there is pending work (message OR open comment)", () => {
     expect(decideWake({ lockState: "live-other", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "running", hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: false }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: undefined, hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
     expect(decideWake({ lockState: "dead", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
+    // open steering comments are pending work too: they wake a paused loop even with no messages …
+    expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: false, hasOpenComments: true }).wake).toBe(true);
+    // … but neither messages nor comments ⇒ no wake, and a live lock / non-paused loop still gates it.
+    expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: false, hasOpenComments: false }).wake).toBe(false);
+    expect(decideWake({ lockState: "live-other", loopStatus: "paused", hasPendingMessages: false, hasOpenComments: true }).wake).toBe(false);
+    expect(decideWake({ lockState: "none", loopStatus: "running", hasPendingMessages: false, hasOpenComments: true }).wake).toBe(false);
   });
 });
 
@@ -1682,10 +1688,12 @@ describe("hook wake", () => {
     mkdirSync(join(home, ".autoloop", "run"), { recursive: true }); // tests write the lockfile directly
     return { home, dir, spawned, spawnImpl, lockFile: join(home, ".autoloop", "run", "acme-web.lock") };
   }
-  // Route the two GETs by URL: …/state → loop status; …/messages → pending list.
-  const fetchFor = (loopStatus: string, messages: unknown[]) => async (url: string) => ({
+  // Route the GETs by URL: …/state → loop status; …/messages → pending list; …/comments → open list.
+  const fetchFor = (loopStatus: string, messages: unknown[], comments: unknown[] = []) => async (url: string) => ({
     ok: true, status: 200,
-    json: async () => url.endsWith("/messages")
+    json: async () => url.includes("/comments")
+      ? { ok: true, comments }
+      : url.endsWith("/messages")
       ? { ok: true, messages }
       : { ok: true, state: { loop: { id: "l1", goal: "g", order: 1, status: loopStatus }, project: { slug: "web", currentLoopId: "l1" }, phases: [], tasks: [], scenarios: [], openBugs: [], pendingMessages: [] } },
   });
@@ -1736,6 +1744,34 @@ describe("hook wake", () => {
     await run(["hook", "wake"], deps(s, fetchFor("running", [{ id: "m1", text: "go" }])));
     expect(s.spawned.length).toBe(0);
     await run(["hook", "wake"], deps(s, fetchFor("paused", [])));
+    expect(s.spawned.length).toBe(0);
+  });
+
+  it("wakes a paused loop when an open steering comment exists even with no messages", async () => {
+    const s = setup();
+    expect(await run(["hook", "wake"], deps(s, fetchFor("paused", [], [{ id: "c1", text: "steer" }])))).toBe(0);
+    expect(s.spawned.length).toBe(1);
+  });
+
+  it("does NOT wake when neither messages nor open comments are pending", async () => {
+    const s = setup();
+    await run(["hook", "wake"], deps(s, fetchFor("paused", [], [])));
+    expect(s.spawned.length).toBe(0);
+  });
+
+  it("treats a comments-probe network failure as no open comments (messages behavior unchanged)", async () => {
+    const s = setup();
+    // Comments GET rejects; messages/state resolve normally. No messages either ⇒ no wake, no throw.
+    const fetchImpl = async (url: string) => {
+      if (url.includes("/comments")) throw new Error("net");
+      return {
+        ok: true, status: 200,
+        json: async () => url.endsWith("/messages")
+          ? { ok: true, messages: [] }
+          : { ok: true, state: { loop: { id: "l1", goal: "g", order: 1, status: "paused" }, project: { slug: "web", currentLoopId: "l1" }, phases: [], tasks: [], scenarios: [], openBugs: [], pendingMessages: [] } },
+      };
+    };
+    expect(await run(["hook", "wake"], deps(s, fetchImpl))).toBe(0);
     expect(s.spawned.length).toBe(0);
   });
 });

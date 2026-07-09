@@ -474,12 +474,13 @@ export function decideSessionEndRelaunch({ lockState, resumable, backoff }) {
   return { relaunch: true, reason: "resumable loop, no live lock, under backoff" };
 }
 
-/** Pure decision for the wake job: paused loop + pending message + no live lock. */
-export function decideWake({ lockState, loopStatus, hasPendingMessages }) {
+/** Pure decision for the wake job: paused loop + pending work + no live lock. Pending work is a
+ *  pending user message OR an open steering comment — either should wake a parked loop. */
+export function decideWake({ lockState, loopStatus, hasPendingMessages, hasOpenComments }) {
   if (lockState === "live-other" || lockState === "ours") return { wake: false, reason: "a live session holds the lock" };
   if (loopStatus !== "paused") return { wake: false, reason: `loop status is ${loopStatus ?? "none"} — wake only resumes paused loops` };
-  if (!hasPendingMessages) return { wake: false, reason: "no pending user messages" };
-  return { wake: true, reason: "paused loop with pending messages and no live lock" };
+  if (!hasPendingMessages && !hasOpenComments) return { wake: false, reason: "no pending user messages or open comments" };
+  return { wake: true, reason: "paused loop with pending work (message or open comment) and no live lock" };
 }
 
 /** Launch the headless driver, fully detached (nohup-equivalent): stdin /dev/null, output
@@ -933,9 +934,12 @@ export async function run(argv, deps = {}) {
         const api = resolveApiUrl(cfg, henv, undefined);
         const msgs = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`, { env: henv, fetchImpl });
         const hasPendingMessages = !!(msgs?.ok && Array.isArray(msgs.body?.messages) && msgs.body.messages.length > 0);
+        // open steering comments — same probe as `comments pull --check` (GET only; any failure ⇒ none)
+        const cmts = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments?status=open`, { env: henv, fetchImpl });
+        const hasOpenComments = !!(cmts?.ok && Array.isArray(cmts.body?.comments) && cmts.body.comments.length > 0);
 
-        const d = decideWake({ lockState, loopStatus, hasPendingMessages });
-        hookLog(henv, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
+        const d = decideWake({ lockState, loopStatus, hasPendingMessages, hasOpenComments });
+        hookLog(henv, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} comments=${hasOpenComments} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
         if (!d.wake) return 0;
         if (lockState === "dead") rmSync(lockFile);    // steal the stale lock; the new session re-acquires
         launchHeadless({ cwd, slug: cfg.projectSlug, env: henv, spawnImpl, log });

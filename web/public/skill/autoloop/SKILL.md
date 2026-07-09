@@ -461,9 +461,10 @@ autoloop lock release
 ```
 
 Then **end the session**. The launchd wake job (every 5 min) relaunches a headless
-driver when a dashboard message arrives for the paused loop; the new session's Step 0
-resume check rebuilds the plan and acts on the message. The SessionEnd hook will see
-the loop is `paused` and correctly NOT relaunch (pause is woken by messages only).
+driver when a dashboard message OR an open steering comment arrives for the paused
+loop; the new session's Step 0 resume check rebuilds the plan and acts on it. The
+SessionEnd hook will see the loop is `paused` and correctly NOT relaunch (pause is
+woken by pending messages or open comments only).
 
 **How the user actually stops Autoloop:** set the loop to a terminal status
 (send a shutdown message, or `autoloop loop set <loopId> --status cancelled`) — or
