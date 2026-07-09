@@ -1,9 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { blockedScenarioIds } from "./blockedScenarios";
+import { blockedScenarioIds, isBlocking } from "./blockedScenarios";
 import type { Page, PageComment } from "./types";
 
 const comment = (over: Partial<PageComment> = {}): PageComment => ({ id: "c1", severity: "blocking", status: "open", ...over });
 const page = (over: Partial<Page> = {}): Page => ({ id: "p1", ...over });
+
+describe("isBlocking (shared gate predicate)", () => {
+  it("gates an open blocking comment", () => {
+    expect(isBlocking(comment())).toBe(true);
+  });
+  it("gates a resolved-but-unaccepted blocking comment", () => {
+    expect(isBlocking(comment({ status: "resolved", accepted: false }))).toBe(true);
+  });
+  it("lifts only when closed AND accepted", () => {
+    expect(isBlocking(comment({ status: "resolved", accepted: true }))).toBe(false);
+  });
+  it("never gates an advisory comment", () => {
+    expect(isBlocking(comment({ severity: "advisory" }))).toBe(false);
+  });
+});
 
 describe("blockedScenarioIds", () => {
   it("open blocking + targetScenarioId → blocked", () => {

@@ -4,7 +4,7 @@ import { ScenarioCard } from "../components/ScenarioCard";
 import { Mermaid } from "./Mermaid";
 import { parseBlockBody } from "./blockBody";
 import { makeAnchor, locateAnchor, type Anchor } from "./anchor";
-import { offsetInContainer } from "./domOffsets";
+import { offsetInContainer, rangeForOffsets } from "./domOffsets";
 import { CommentPopover } from "./CommentPopover";
 import type { Components } from "react-markdown";
 import type { Page, PageComment, Scenario, Score, TestRun, Verification } from "../types";
@@ -141,6 +141,9 @@ interface PendingSelection {
  * `onPageTextChange` reports the rendered body's flat text after each content change —
  * this is what CommentSidebar's `pageText` must be fed (anchors are built from rendered
  * text, so re-locating against raw markdown would orphan every formatted-prose comment).
+ * Task 10 should pass a STABLE callback (e.g. useCallback / a setState fn) — the callback
+ * is an effect dep, so a fresh inline closure each render re-fires the effect; harmless
+ * (same text) but noisy.
  * Props-in/render-out — no data fetching here.
  */
 export function WikiPage({ page, scenarios, scores, testRuns, verifications, blockedIds, comments, onComment, onPageTextChange }: {
@@ -254,25 +257,4 @@ export function WikiPage({ page, scenarios, scores, testRuns, verifications, blo
       )}
     </div>
   );
-}
-
-/** Build a DOM Range spanning [start, end) of the container's flattened text. */
-function rangeForOffsets(container: Node, start: number, end: number): Range | null {
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  let acc = 0;
-  let startNode: Node | null = null;
-  let startOff = 0;
-  let endNode: Node | null = null;
-  let endOff = 0;
-  for (let tn = walker.nextNode(); tn; tn = walker.nextNode()) {
-    const len = (tn.textContent ?? "").length;
-    if (startNode === null && acc + len >= start) { startNode = tn; startOff = start - acc; }
-    if (endNode === null && acc + len >= end) { endNode = tn; endOff = end - acc; break; }
-    acc += len;
-  }
-  if (!startNode || !endNode) return null;
-  const range = document.createRange();
-  range.setStart(startNode, startOff);
-  range.setEnd(endNode, endOff);
-  return range;
 }

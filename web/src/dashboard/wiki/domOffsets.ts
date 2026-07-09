@@ -49,3 +49,30 @@ function sumTextBefore(container: Node, node: Node): number {
 function textLength(node: Node): number {
   return (node.textContent ?? "").length;
 }
+
+/**
+ * Inverse of offsetInContainer: build a DOM Range spanning [start, end) of the
+ * container's flattened text, so a located anchor can be highlighted. Walks text
+ * nodes accumulating length; the boundary lands in the first text node whose running
+ * end reaches the offset (`acc + len >= start`), so an offset on a node seam attaches
+ * to the node that ends there. Returns null if the offsets fall outside the text.
+ */
+export function rangeForOffsets(container: Node, start: number, end: number): Range | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let acc = 0;
+  let startNode: Node | null = null;
+  let startOff = 0;
+  let endNode: Node | null = null;
+  let endOff = 0;
+  for (let tn = walker.nextNode(); tn; tn = walker.nextNode()) {
+    const len = (tn.textContent ?? "").length;
+    if (startNode === null && acc + len >= start) { startNode = tn; startOff = start - acc; }
+    if (endNode === null && acc + len >= end) { endNode = tn; endOff = end - acc; break; }
+    acc += len;
+  }
+  if (!startNode || !endNode) return null;
+  const range = document.createRange();
+  range.setStart(startNode, startOff);
+  range.setEnd(endNode, endOff);
+  return range;
+}

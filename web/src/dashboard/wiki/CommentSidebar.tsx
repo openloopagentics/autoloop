@@ -1,10 +1,10 @@
 import { locateAnchor } from "./anchor";
+import { isBlocking } from "../blockedScenarios";
 import type { PageComment } from "../types";
 
-/** True when a blocking comment is currently gating the loop (open & not accepted). */
-export function isBlocking(c: PageComment): boolean {
-  return c.severity === "blocking" && !(c.status !== "open" && c.accepted === true);
-}
+// isBlocking (the gate predicate — blocking AND not-(closed AND accepted); a
+// resolved-but-unaccepted blocking comment still gates) lives in blockedScenarios.ts
+// as the single source of truth shared with the scenario met-state suppression.
 
 /**
  * Accept is allowed for the comment's author or a team owner/admin (the backend

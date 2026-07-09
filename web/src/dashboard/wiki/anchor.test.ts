@@ -66,4 +66,26 @@ describe("locateAnchor", () => {
     const edited = text.replace("Users can log in with valid credentials. ", "");
     expect(locateAnchor(edited, a)).toBeNull();
   });
+
+  it("breaks a tie of equal context scores toward the earliest occurrence", () => {
+    // "xx" appears twice with symmetric surroundings; with no distinguishing context
+    // (empty prefix/suffix) both score 0 — the earliest must win deterministically.
+    const t = "a xx b xx c";
+    const a = { exact: "xx", prefix: "", suffix: "" };
+    expect(locateAnchor(t, a)).toEqual({ start: t.indexOf("xx"), end: t.indexOf("xx") + 2 });
+  });
+
+  it("anchors a selection at position 0 (start of text)", () => {
+    const a = makeAnchor(text, 0, 3);
+    expect(a.exact).toBe("The");
+    expect(a.prefix).toBe("");
+    expect(locateAnchor(text, a)).toEqual({ start: 0, end: 3 });
+  });
+
+  it("anchors a selection at the very end of text", () => {
+    const a = makeAnchor(text, text.length - 6, text.length);
+    expect(a.exact).toBe("again.");
+    expect(a.suffix).toBe("");
+    expect(locateAnchor(text, a)).toEqual({ start: text.length - 6, end: text.length });
+  });
 });
