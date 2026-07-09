@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { VisionTab } from "./VisionTab";
 import { VisionWikiTab } from "./VisionWikiTab";
+import { wikiWideLayout } from "../components/Tabs";
 import type { Goal, Page, PageComment, Scenario, Score, TestRun, Verification, DocumentRec } from "../types";
 
 // Mock the api module so the comment submit / accept paths are observable.
@@ -156,5 +157,62 @@ describe("VisionWikiTab accept path", () => {
       <VisionWikiTab teamId="t1" slug="p1" currentUid="u2" scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} pages={pages} comments={blocking} />,
     );
     expect(screen.queryByRole("button", { name: /accept/i })).toBeNull();
+  });
+
+  it("surfaces a failed accept and re-enables the button", async () => {
+    vi.mocked(acceptComment).mockRejectedValueOnce(new Error("forbidden"));
+    const blocking: PageComment[] = [
+      { id: "c1", pageId: "overview", author: "u1", body: "stop", severity: "blocking", status: "open", anchor: { exact: "log in" } },
+    ];
+    render(
+      <VisionWikiTab teamId="t1" slug="p1" currentUid="u1" scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} pages={pages} comments={blocking} />,
+    );
+    const acceptBtn = await screen.findByRole("button", { name: /accept/i });
+    fireEvent.click(acceptBtn);
+    // The failure message shows and the button is interactive again (not stuck disabled).
+    expect(await screen.findByText(/forbidden/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /accept/i })).not.toBeDisabled());
+  });
+});
+
+describe("ProjectDetail wiki container width", () => {
+  it("goes wide only on the vision tab when pages exist", () => {
+    expect(wikiWideLayout("vision", true)).toBe(true);
+    expect(wikiWideLayout("vision", false)).toBe(false); // legacy list keeps the narrow measure
+    expect(wikiWideLayout("map", true)).toBe(false);      // other tabs stay narrow
+    expect(wikiWideLayout("dashboard", true)).toBe(false);
+  });
+});
+
+describe("VisionWikiTab page switching", () => {
+  it("submits a comment carrying the NEW page's id after a nav click", async () => {
+    const { container } = render(
+      <VisionWikiTab teamId="t1" slug="p1" scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} pages={pages} comments={[]} />,
+    );
+    // Switch from the default page (overview) to the Login page via the nav.
+    fireEvent.click(screen.getByText("Login page").closest("button")!);
+    const body = container.querySelector(".wiki-page-body") as HTMLElement;
+    mockSelection(body, "Login");
+    fireEvent.mouseUp(body);
+    const input = await screen.findByPlaceholderText(/./);
+    fireEvent.change(input, { target: { value: "rethink" } });
+    fireEvent.click(screen.getByRole("button", { name: /comment|submit|save/i }));
+    await waitFor(() => expect(postComment).toHaveBeenCalled());
+    expect(vi.mocked(postComment).mock.calls[0][2]).toMatchObject({ pageId: "auth", body: "rethink" });
+  });
+
+  it("falls back to the first page when the selected page is deleted", () => {
+    const { rerender, container } = render(
+      <VisionWikiTab teamId="t1" slug="p1" scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} pages={pages} comments={[]} />,
+    );
+    // Select the second page, then delete it from the pages prop.
+    fireEvent.click(screen.getByText("Login page").closest("button")!);
+    expect(container.querySelector(".wikinav-link.is-selected")).toHaveTextContent("Login page");
+    rerender(
+      <VisionWikiTab teamId="t1" slug="p1" scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} pages={[pages[0]]} comments={[]} />,
+    );
+    // Selection falls back to the surviving first page (no crash, no dangling selection).
+    expect(container.querySelector(".wikinav-link.is-selected")).toHaveTextContent("Overview");
+    expect(screen.getByText(/Users can log in with valid credentials/)).toBeInTheDocument();
   });
 });

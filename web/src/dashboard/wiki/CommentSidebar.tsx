@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { locateAnchor } from "./anchor";
 import { isBlocking } from "../blockedScenarios";
+import { ErrorNote } from "../components/ErrorNote";
 import type { PageComment } from "../types";
 
 // isBlocking (the gate predicate — blocking AND not-(closed AND accepted); a
@@ -35,9 +37,20 @@ function Thread({ c, currentUid, isAdmin, onAccept }: {
   c: PageComment;
   currentUid?: string;
   isAdmin?: boolean;
-  onAccept: (id: string) => void;
+  onAccept: (id: string) => Promise<void>;
 }) {
   const showAccept = isBlocking(c) && canAccept(c, currentUid, isAdmin);
+  // Busy + error follow the VisionChangeCard/CommentPopover idiom: disable while pending
+  // (so a slow accept can't double-fire) and surface a failed accept instead of swallowing it.
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function handleAccept() {
+    setBusy(true);
+    setError(null);
+    try { await onAccept(c.id); }
+    catch (err) { setError(err instanceof Error ? err.message : "Failed to accept comment"); }
+    finally { setBusy(false); }
+  }
   return (
     <li className="cmt-thread" data-comment-id={c.id}>
       <div className="cmt-thread-head">
@@ -58,10 +71,11 @@ function Thread({ c, currentUid, isAdmin, onAccept }: {
       )}
       {c.accepted && <p className="cmt-accepted">Accepted{c.acceptedBy ? ` by ${c.acceptedBy}` : ""}</p>}
       {showAccept && (
-        <button type="button" className="btn btn--primary cmt-accept" onClick={() => onAccept(c.id)}>
-          Accept &amp; unblock
+        <button type="button" className="btn btn--primary cmt-accept" disabled={busy} onClick={() => void handleAccept()}>
+          {busy ? "Accepting…" : "Accept & unblock"}
         </button>
       )}
+      {error && <ErrorNote message={error} />}
     </li>
   );
 }
@@ -84,7 +98,7 @@ export function CommentSidebar({ comments, pageText, currentUid, isAdmin, onAcce
   pageText: string;
   currentUid?: string;
   isAdmin?: boolean;
-  onAccept: (id: string) => void;
+  onAccept: (id: string) => Promise<void>;
 }) {
   const anchored: PageComment[] = [];
   const unanchored: PageComment[] = [];

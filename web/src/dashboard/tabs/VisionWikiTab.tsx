@@ -24,7 +24,8 @@ function firstPageId(pages: Page[]): string | null {
  * The live wiki: WikiNav (left) + WikiPage (center) + CommentSidebar (right). Owns the
  * selected page and the rendered page's flat text (fed from WikiPage's onPageTextChange —
  * NEVER page.markdown; anchors are built from rendered text). The blocked set is computed
- * once here and shared with nav (roll-up + chips), page (scenario-card gating), and sidebar.
+ * once here and shared with nav (roll-up + chips) and page (scenario-card gating); the
+ * sidebar shares the isBlocking PREDICATE (not this set) to badge/gate its own threads.
  * Scenario-status props (scores/testRuns/verifications) are plumbed exactly as VisionTab does.
  */
 export function VisionWikiTab({ teamId, slug, scenarios, scores, testRuns, verifications, pages, comments, currentUid, isAdmin }: {
@@ -34,7 +35,10 @@ export function VisionWikiTab({ teamId, slug, scenarios, scores, testRuns, verif
   currentUid?: string; isAdmin?: boolean;
 }) {
   const [picked, setPicked] = useState<string | null>(null);
-  const [pageText, setPageText] = useState("");
+  // The rendered flat text tagged with the page it came from. WikiPage reports the new
+  // page's text one render AFTER selectedPage flips, so tag-and-match keeps the sidebar
+  // from re-locating the incoming page's comments against the outgoing page's text.
+  const [rendered, setRendered] = useState<{ pageId: string | null; text: string }>({ pageId: null, text: "" });
 
   const defaultPageId = useMemo(() => firstPageId(pages), [pages]);
   const selectedPageId = (picked && pages.some((p) => p.id === picked)) ? picked : defaultPageId;
@@ -47,8 +51,12 @@ export function VisionWikiTab({ teamId, slug, scenarios, scores, testRuns, verif
     [comments, selectedPageId],
   );
 
+  // Only trust the rendered text when it belongs to the page now selected; otherwise ""
+  // (the sidebar then treats every comment as unanchored for the one frame until text lands).
+  const pageText = rendered.pageId === selectedPageId ? rendered.text : "";
+
   // Stable callback — WikiPage uses it as an effect dep, so an inline closure would re-fire the effect.
-  const handlePageText = useCallback((text: string) => setPageText(text), []);
+  const handlePageText = useCallback((text: string) => setRendered({ pageId: selectedPageId, text }), [selectedPageId]);
 
   const onComment = useCallback(
     async (c: NewComment) => {

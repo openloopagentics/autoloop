@@ -124,24 +124,24 @@ describe("CommentSidebar", () => {
 
   it("shows Accept on a blocking comment for its author", () => {
     const c: PageComment = { id: "c1", pageId: "p1", author: "u1", body: "block", status: "open", severity: "blocking", anchor: { exact: "valid credentials" } };
-    render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" isAdmin={false} onAccept={() => {}} />);
+    render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" isAdmin={false} onAccept={async () => {}} />);
     expect(screen.getByRole("button", { name: /accept/i })).toBeInTheDocument();
   });
 
   it("hides Accept for a non-author when not admin", () => {
     const c: PageComment = { id: "c1", pageId: "p1", author: "someone-else", body: "block", status: "open", severity: "blocking", anchor: { exact: "valid credentials" } };
-    render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" isAdmin={false} onAccept={() => {}} />);
+    render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" isAdmin={false} onAccept={async () => {}} />);
     expect(screen.queryByRole("button", { name: /accept/i })).toBeNull();
   });
 
   it("shows Accept for an admin regardless of authorship", () => {
     const c: PageComment = { id: "c1", pageId: "p1", author: "someone-else", body: "block", status: "open", severity: "blocking", anchor: { exact: "valid credentials" } };
-    render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" isAdmin={true} onAccept={() => {}} />);
+    render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" isAdmin={true} onAccept={async () => {}} />);
     expect(screen.getByRole("button", { name: /accept/i })).toBeInTheDocument();
   });
 
   it("fires onAccept with the comment id", () => {
-    const onAccept = vi.fn();
+    const onAccept = vi.fn(async () => {});
     const c: PageComment = { id: "c1", pageId: "p1", author: "u1", body: "block", status: "open", severity: "blocking", anchor: { exact: "valid credentials" } };
     render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" onAccept={onAccept} />);
     fireEvent.click(screen.getByRole("button", { name: /accept/i }));
@@ -150,7 +150,7 @@ describe("CommentSidebar", () => {
 
   it("routes a comment whose anchor no longer locates into the Unanchored section", () => {
     const c: PageComment = { id: "c1", pageId: "p1", body: "orphan", status: "open", anchor: { exact: "text that is gone" } };
-    const { container } = render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" onAccept={() => {}} />);
+    const { container } = render(<CommentSidebar comments={[c]} pageText={pageText} currentUid="u1" onAccept={async () => {}} />);
     const section = container.querySelector(".cmt-unanchored");
     expect(section).not.toBeNull();
     expect(section!.textContent).toContain("orphan");
@@ -161,7 +161,7 @@ describe("CommentSidebar", () => {
       { id: "c1", pageId: "p1", body: "b1", status: "open", severity: "blocking", anchor: { exact: "valid credentials" } },
       { id: "c2", pageId: "p1", body: "b2", status: "open", severity: "advisory", anchor: { exact: "log in" } },
     ];
-    render(<CommentSidebar comments={comments} pageText={pageText} currentUid="u1" onAccept={() => {}} />);
+    render(<CommentSidebar comments={comments} pageText={pageText} currentUid="u1" onAccept={async () => {}} />);
     expect(screen.getByLabelText(/1 open blocking comments/i)).toHaveTextContent("1");
   });
 
@@ -169,7 +169,7 @@ describe("CommentSidebar", () => {
     const comments: PageComment[] = [
       { id: "c1", pageId: "p1", body: "b1", status: "resolved", accepted: true, severity: "blocking", anchor: { exact: "valid credentials" } },
     ];
-    const { container } = render(<CommentSidebar comments={comments} pageText={pageText} currentUid="u1" onAccept={() => {}} />);
+    const { container } = render(<CommentSidebar comments={comments} pageText={pageText} currentUid="u1" onAccept={async () => {}} />);
     expect(container.querySelector(".cmt-blocking-count")).toBeNull();
   });
 });

@@ -16,6 +16,14 @@ export function isTabKey(v: string | undefined): v is TabKey {
   return v !== undefined && (TAB_KEYS as string[]).includes(v);
 }
 
+/**
+ * The vision wiki is a three-column reader that needs the full-width container; every
+ * other tab (and the legacy vision list, which has no pages) keeps the narrow measure.
+ */
+export function wikiWideLayout(tab: TabKey, hasPages: boolean): boolean {
+  return tab === "vision" && hasPages;
+}
+
 export function Tabs({ active, onChange }: { active: TabKey; onChange: (k: TabKey) => void }) {
   return (
     <div className="tabbar" role="tablist">

@@ -10,7 +10,7 @@ import { buildLoopList, defaultSelectedLoop, loopArgFor, loopIsRunning, effectiv
 import { useLoopTrend } from "./useLoopTrend";
 import { buildTrend } from "./trendView";
 import { ProjectHeader } from "./components/ProjectHeader";
-import { Tabs, isTabKey, type TabKey } from "./components/Tabs";
+import { Tabs, isTabKey, wikiWideLayout, type TabKey } from "./components/Tabs";
 import { TaskItem } from "./components/TaskItem";
 import { PhaseItem } from "./components/PhaseItem";
 import { Spinner } from "./components/Spinner";
@@ -109,8 +109,10 @@ export function ProjectDetail() {
     : tab === "map" ? (goals.loading && goals.data.length === 0)
     : (scenarios.loading && scenarios.data.length === 0) || (pages.loading && pages.data.length === 0); // vision (pages gate the wiki)
 
+  const wideLayout = wikiWideLayout(tab, pages.data.length > 0);
+
   return (
-    <div className="main main--narrow">
+    <div className={`main${wideLayout ? "" : " main--narrow"}`}>
       <Link to="/dashboard" className="back">← back to dashboard</Link>
       {project.loading ? <Spinner />
         : project.error ? <ErrorNote message={project.error} />
