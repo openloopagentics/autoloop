@@ -1483,3 +1483,39 @@ a.docrow-title:hover { color: var(--accent); }
 .mapscrub-play { min-width: 34px; }
 .mapscrub-label { font-size: 12px; min-width: 140px; text-align: right; }
 .docrow-json { font-size: 12px; overflow-x: auto; white-space: pre; margin: 6px 0 0; }
+
+/* ── Wiki reader (Vision pages) ───────────────────────────────────────────── */
+/* Nav sidebar */
+.wikinav { display: flex; flex-direction: column; gap: 10px; }
+.wikinav-rollup { font-size: 12.5px; color: var(--fg-soft); padding-bottom: 8px; border-bottom: 1px solid var(--border-soft); }
+.wikinav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.wikinav-dir { display: block; font-size: 11px; color: var(--fg-meta); text-transform: uppercase; letter-spacing: .04em; padding: 4px 8px; }
+.wikinav-link {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  background: none; border: none; cursor: pointer; text-align: left;
+  padding: 5px 8px; border-radius: var(--radius-sm); color: var(--fg-body); font-size: 13px;
+}
+.wikinav-link:hover { background: var(--surface-inset); }
+.wikinav-link.is-selected { background: color-mix(in oklab, var(--accent) 14%, transparent); color: var(--fg); }
+.wikinav-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wikinav-chip { font-size: 11px; color: var(--fg-soft); flex-shrink: 0; }
+.wikinav-unanchored { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
+.wikinav-unanchored-head { margin: 0; font-size: 11px; color: var(--fg-meta); text-transform: uppercase; letter-spacing: .04em; }
+
+/* Page body — embedded blocks */
+.wiki-goal { margin: 0 0 .7em; padding: 10px 12px; border: 1px solid var(--border-soft); border-left: 3px solid var(--accent); border-radius: var(--radius-md); background: var(--surface-inset); }
+.wiki-goal-title { font-size: 13.5px; font-weight: 600; color: var(--fg); }
+.wiki-goal-desc { margin: 4px 0 0; font-size: 12.5px; color: var(--fg-soft); line-height: 1.55; }
+.wiki-scenario { position: relative; margin: 0 0 .7em; }
+.wiki-blocked-badge {
+  display: inline-flex; align-items: center; margin-bottom: 6px;
+  padding: 2px 9px; border-radius: var(--radius-full); font-size: 11px; font-weight: 500;
+  color: var(--st-failed);
+  background: color-mix(in oklab, var(--st-failed) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--st-failed) 36%, transparent);
+}
+.wiki-block-invalid { margin: 0 0 .7em; }
+.wiki-block-note { font-size: 11px; color: var(--st-running); }
+.wiki-mermaid { margin: 0 0 .7em; overflow-x: auto; }
+.wiki-mermaid svg { max-width: 100%; height: auto; }
+.wiki-mermaid-loading, .wiki-mermaid-err { opacity: .7; }

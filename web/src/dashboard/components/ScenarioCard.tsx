@@ -3,8 +3,8 @@ import { scenarioVerification } from "../verificationView";
 import { VerificationBadge } from "./VerificationBadge";
 import type { Scenario, Score, TestRun, Verification } from "../types";
 
-export function ScenarioCard({ scenario, scores, testRuns, verifications = [] }: { scenario: Scenario; scores: Score[]; testRuns: TestRun[]; verifications?: Verification[] }) {
-  const { state, latestComposite, latestTest, reasons } = scenarioStatus(scenario, scores, testRuns, verifications);
+export function ScenarioCard({ scenario, scores, testRuns, verifications = [], blockedIds }: { scenario: Scenario; scores: Score[]; testRuns: TestRun[]; verifications?: Verification[]; blockedIds?: Set<string> }) {
+  const { state, latestComposite, latestTest, reasons } = scenarioStatus(scenario, scores, testRuns, verifications, blockedIds);
   const verdict = scenarioVerification(scenario.id, latestTest?.id ?? null, verifications);
   const threshold = scenario.threshold ?? DEFAULT_THRESHOLD;
   const pct = Math.max(0, Math.min(100, latestComposite ?? 0));
