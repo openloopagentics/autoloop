@@ -1074,8 +1074,7 @@ describe("comments pull/reply/resolve verbs", () => {
 
   it("comments pull GETs project-level /comments?status=open and prints JSON (no loopSeg even with currentLoopId)", async () => {
     const dir = initDir({ currentLoopId: "l1" });
-    const comments = [{ id: "01JXKM8F3XABCDE12345", text: "steer left" }];
-    const c = cap(comments);
+    const c = cap({ ok: true, comments: [{ id: "01JXKM8F3XABCDE12345", text: "steer left" }] });
     const logs: string[] = [];
     const code = await run(["comments", "pull"], base(dir, c, logs));
     expect(code).toBe(0);
@@ -1085,7 +1084,7 @@ describe("comments pull/reply/resolve verbs", () => {
   });
 
   it("comments pull --check exits 0 silently when open comments exist (GET only, never mutates)", async () => {
-    const dir = initDir(); const c = cap([{ id: "c1", text: "x" }]);
+    const dir = initDir(); const c = cap({ ok: true, comments: [{ id: "c1", text: "x" }] });
     const logs: string[] = [];
     expect(await run(["comments", "pull", "--check"], base(dir, c, logs))).toBe(0);
     expect(logs.length).toBe(0);
@@ -1095,7 +1094,7 @@ describe("comments pull/reply/resolve verbs", () => {
   });
 
   it("comments pull --check exits 1 when there are no open comments", async () => {
-    const dir = initDir(); const c = cap([]);
+    const dir = initDir(); const c = cap({ ok: true, comments: [] });
     expect(await run(["comments", "pull", "--check"], base(dir, c))).toBe(1);
   });
 

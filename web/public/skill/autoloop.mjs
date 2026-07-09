@@ -1450,9 +1450,9 @@ export async function run(argv, deps = {}) {
           // silent probe: exit 0 iff open steering comments exist.
           // GET only — pulling NEVER mutates; any failure ⇒ 1 (can't confirm open).
           const res = await getJson(url, { env, fetchImpl });
-          return res?.ok && Array.isArray(res.body) && res.body.length > 0 ? 0 : 1;
+          return res?.ok && Array.isArray(res.body?.comments) && res.body.comments.length > 0 ? 0 : 1;
         }
-        return fetchJson({ method: "GET", url }, { env, fetchImpl, log, err, label: "comments pull" });
+        return fetchJson({ method: "GET", url }, { env, fetchImpl, log, err, label: "comments pull", render: (body) => JSON.stringify(body.comments ?? body, null, 2) });
       }
       case "comments reply": {
         const id = positionals[2];
