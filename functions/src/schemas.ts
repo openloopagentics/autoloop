@@ -217,6 +217,31 @@ export type KeyMintBody = z.infer<typeof keyMintBody>;
 export const messageBody = z.object({ text: z.string().min(1).max(8192) });
 export type MessageBody = z.infer<typeof messageBody>;
 
+// Steering comment: user anchors a note to wiki-page text; the loop triages it.
+// pageId/targetScenarioId are client ids (idPattern); the comment's own id is a
+// server ULID stamped in the service.
+export const commentBody = z.object({
+  pageId: id,
+  anchor: z.object({
+    exact: z.string().min(1).max(2000),
+    prefix: z.string().max(200),
+    suffix: z.string().max(200),
+  }),
+  body: z.string().min(1).max(10_000),
+  severity: z.enum(["advisory", "blocking"]),
+  targetScenarioId: id.optional(),
+});
+export type CommentBody = z.infer<typeof commentBody>;
+
+export const commentReplyBody = z.object({ text: z.string().min(1).max(10_000) });
+export type CommentReplyBody = z.infer<typeof commentReplyBody>;
+
+export const commentResolveBody = z.object({
+  resolution: z.enum(["resolved", "declined"]),
+  note: z.string().min(1).max(10_000).optional(),
+});
+export type CommentResolveBody = z.infer<typeof commentResolveBody>;
+
 const sessionEntry = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("user"),      text: z.string().max(500), ts: z.number() }),
   z.object({ kind: z.literal("assistant"), text: z.string().max(500), ts: z.number() }),

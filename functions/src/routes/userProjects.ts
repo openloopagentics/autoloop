@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../firestore.js";
 import { AppError } from "../errors.js";
-import { idPattern, projectBody, goalBody, scenarioBody, documentBody, messageBody, ideaBody } from "../schemas.js";
+import { idPattern, projectBody, goalBody, scenarioBody, documentBody, messageBody, ideaBody, commentBody } from "../schemas.js";
 import { assertWebEditable } from "../services/visionOwner.js";
 import { applyProjectUpsert, deleteProject } from "../services/projects.js";
 import { applyGoalUpsert, deleteGoal } from "../services/goals.js";
@@ -10,6 +10,7 @@ import { applyDocumentUpsert, deleteDocument } from "../services/documents.js";
 import { createMessage } from "../services/messages.js";
 import { upsertIdea } from "../services/ideas.js";
 import { rejectVisionChange } from "../services/visionChanges.js";
+import { createComment, acceptComment } from "../services/comments.js";
 
 export const userProjectsRouter = Router({ mergeParams: true });
 
@@ -165,6 +166,32 @@ userProjectsRouter.post("/:slug/vision-changes/:changeId/reject", async (req, re
     const { teamId, slug, changeId } = req.params as Record<string, string>;
     if (!changeId || changeId.trim() === "") throw new AppError(400, "validation", "invalid changeId");
     await rejectVisionChange(teamId, slug, changeId);
+    res.status(200).json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// comments: POST /:slug/comments  (create) and  POST /:slug/comments/:id/accept.
+// Deliberately NO assertWebEditable — like the ideas veto and vision-change reject,
+// steering must work WHILE the loop owns the vision.
+userProjectsRouter.post("/:slug/comments", async (req, res, next) => {
+  try {
+    ids(req, ["teamId", "slug"]);
+    const parsed = commentBody.safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, "validation", parsed.error.issues[0].message);
+    const { teamId, slug } = req.params as Record<string, string>;
+    const id = await createComment(teamId, slug, parsed.data, (req as { uid?: string }).uid ?? "");
+    res.status(200).json({ ok: true, id });
+  } catch (err) { next(err); }
+});
+
+// commentId is a server ULID (UPPERCASE) — validate non-empty only, never idPattern
+// (precedent: messages ack, vision-changes reject).
+userProjectsRouter.post("/:slug/comments/:id/accept", async (req, res, next) => {
+  try {
+    ids(req, ["teamId", "slug"]);
+    const { teamId, slug, id } = req.params as Record<string, string>;
+    if (!id || id.trim() === "") throw new AppError(400, "validation", "invalid id");
+    await acceptComment(teamId, slug, id, (req as { uid?: string }).uid ?? "");
     res.status(200).json({ ok: true });
   } catch (err) { next(err); }
 });
