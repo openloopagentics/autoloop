@@ -6,6 +6,7 @@ import type { Page, PageComment } from "./types";
  * severity==="blocking" && !(status !== "open" && accepted === true).
  * Target = the stamped targetScenarioId if present, else every scenario on the
  * comment's page (via the page's scenarioIds).
+ * Compute once per render and pass the set to summarize/scenarioStatus.
  */
 export function blockedScenarioIds(comments: PageComment[], pages: Page[]): Set<string> {
   const byPage = new Map(pages.map((p) => [p.id, p.scenarioIds ?? []]));

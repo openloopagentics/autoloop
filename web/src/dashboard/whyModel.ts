@@ -63,7 +63,7 @@ export function explainScenario(
 
   reasons.sort((a, b) => Number(a.ok) - Number(b.ok)); // failing reasons first
   if (blockedIds?.has(scenario.id)) {
-    reasons.unshift({ kind: "blocked", ok: false, text: "blocked by an unresolved blocking comment" });
+    reasons.unshift({ kind: "blocked", ok: false, text: "blocked by a blocking comment awaiting acceptance" });
     return { state: "unmet", reasons };
   }
   const state: SubjectState = reasons.every((r) => r.ok) ? "met" : "unmet";

@@ -16,6 +16,11 @@ describe("blockedScenarioIds", () => {
     expect(out.has("s1")).toBe(true);
   });
 
+  it("open + accepted:true → still blocked (acceptance alone doesn't unblock)", () => {
+    const out = blockedScenarioIds([comment({ targetScenarioId: "s1", status: "open", accepted: true })], []);
+    expect(out.has("s1")).toBe(true);
+  });
+
   it("resolved + accepted → unblocked", () => {
     const out = blockedScenarioIds([comment({ targetScenarioId: "s1", status: "resolved", accepted: true })], []);
     expect(out.has("s1")).toBe(false);
