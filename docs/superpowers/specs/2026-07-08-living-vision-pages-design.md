@@ -45,6 +45,9 @@ Decisions made during brainstorming:
   — same ids, `goalId` references, rubrics, thresholds, `test.command` — so scoring,
   Tests tab, Loops tab, and Map need zero changes.
 - Mermaid diagrams and images are ordinary markdown.
+- Fenced `goal`/`scenario` block bodies are parsed as **YAML** (YAML 1.2 is a JSON
+  superset, so JSON-shaped bodies — e.g. straight from a `vision.json` migration — are
+  also valid). One parser, both styles accepted.
 
 Example page:
 
@@ -75,8 +78,12 @@ test: { command: "npm run test:e2e -- passkey" }
 - Goals and scenarios stay in their existing collections; sync extracts them from
   blocks and upserts through the existing import path.
 - New per-page `comments` collection: `{ id, pageId, anchor: { exact, prefix, suffix },
-  body, author, severity: advisory|blocking, status: open|resolved|declined,
-  thread: [replies], createdAt, resolvedAt, acceptedBy }`.
+  targetScenarioId?, body, author, severity: advisory|blocking,
+  status: open|resolved|declined, thread: [replies], createdAt, resolvedAt, acceptedBy }`.
+- `targetScenarioId` is stamped **client-side at comment creation** (the client knows
+  which rendered block the selection falls in; the server never parses markdown in this
+  design). It is immutable thereafter: a blocking comment keeps suppressing its target
+  even if a later rewrite orphans the anchor, until the comment is resolved + accepted.
 
 ### Back-compat / migration
 
@@ -144,7 +151,8 @@ test: { command: "npm run test:e2e -- passkey" }
 - **Orphaning**: when a rewrite breaks an anchor, the comment drops to an "unanchored"
   sidebar section — still open, still requiring triage. `comments pull` always includes
   the original quoted text so the loop can still act. Re-anchoring is client-side only;
-  never fatal.
+  never fatal. Open comments whose *page* was deleted surface in a project-level
+  "unanchored" section at the bottom of the nav tree (they have no page view to live in).
 - **Threads & steering UI**: thread per comment (user → loop replies → resolution
   state), Accept step for blocking comments, severity toggle on the composer (default
   advisory), red badge on affected scenario cards and in the nav for blocking comments.
