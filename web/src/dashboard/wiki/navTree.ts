@@ -21,6 +21,16 @@ export function buildNavTree(pages: Page[]): NavNode[] {
   const roots: NavNode[] = [];
   // dirKey → node, so intermediate directories are created once and reused.
   const dirs = new Map<string, NavNode>();
+  // Every emitted node key, so `key` stays unique across the whole tree — WikiNav
+  // uses it as the React key. Two pages sharing a path, or a leaf path colliding
+  // with a directory key, would otherwise duplicate keys; suffix on collision.
+  const usedKeys = new Set<string>();
+  const uniqueKey = (base: string): string => {
+    let key = base;
+    for (let n = 2; usedKeys.has(key); n++) key = `${base}#${n}`;
+    usedKeys.add(key);
+    return key;
+  };
 
   const childrenOf = (parentKey: string | null): NavNode[] =>
     parentKey === null ? roots : dirs.get(parentKey)!.children;
@@ -33,14 +43,14 @@ export function buildNavTree(pages: Page[]): NavNode[] {
     for (let i = 0; i < segments.length - 1; i++) {
       const dirKey = segments.slice(0, i + 1).join("/");
       if (!dirs.has(dirKey)) {
-        const node: NavNode = { key: dirKey, title: segments[i], order: 0, children: [] };
+        const node: NavNode = { key: uniqueKey(dirKey), title: segments[i], order: 0, children: [] };
         dirs.set(dirKey, node);
         childrenOf(parentKey).push(node);
       }
       parentKey = dirKey;
     }
     childrenOf(parentKey).push({
-      key: path,
+      key: uniqueKey(path),
       title: page.title ?? page.id,
       pageId: page.id,
       page,

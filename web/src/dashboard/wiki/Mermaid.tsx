@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 let mermaidReady: Promise<typeof import("mermaid").default> | null = null;
 // Lazy-load + init mermaid once, shared across every diagram on the page.
@@ -13,25 +13,25 @@ function loadMermaid() {
   return mermaidReady;
 }
 
-let seq = 0;
-
 /** Renders a mermaid diagram to inline SVG. A parse/render failure falls back to
  *  a <pre> showing the source — a bad diagram must never crash the surrounding page. */
 export function Mermaid({ code }: { code: string }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const idRef = useRef(`mermaid-${seq++}`);
+  // mermaid.render needs a DOM-id-valid, unique id; useId gives a stable one per
+  // instance but may contain ":" which is invalid in an id, so strip non-word chars.
+  const id = `mermaid-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
   useEffect(() => {
     let cancelled = false;
     setSvg(null);
     setFailed(false);
     loadMermaid()
-      .then((mermaid) => mermaid.render(idRef.current, code))
+      .then((mermaid) => mermaid.render(id, code))
       .then(({ svg }) => { if (!cancelled) setSvg(svg); })
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
-  }, [code]);
+  }, [code, id]);
 
   if (failed) return <pre className="wiki-mermaid-err">{code}</pre>;
   if (svg === null) return <pre className="wiki-mermaid-loading">{code}</pre>;

@@ -1516,6 +1516,8 @@ a.docrow-title:hover { color: var(--accent); }
 }
 .wiki-block-invalid { margin: 0 0 .7em; }
 .wiki-block-note { font-size: 11px; color: var(--st-running); }
-.wiki-mermaid { margin: 0 0 .7em; overflow-x: auto; }
+/* Mermaid renders with theme "dark" and bakes colors into the SVG, so it needs an
+   opaque dark backdrop to stay legible under every app theme (incl. the light one). */
+.wiki-mermaid { margin: 0 0 .7em; overflow-x: auto; background: #1a1713; padding: 12px; border-radius: var(--radius-md); }
 .wiki-mermaid svg { max-width: 100%; height: auto; }
 .wiki-mermaid-loading, .wiki-mermaid-err { opacity: .7; }

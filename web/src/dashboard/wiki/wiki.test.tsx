@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import mermaid from "mermaid";
 import { WikiPage } from "./WikiPage";
 import { WikiNav } from "./WikiNav";
 import type { Page, Scenario, Score, TestRun, Verification } from "../types";
@@ -60,6 +61,13 @@ describe("WikiPage", () => {
   it("renders a mermaid fence via the Mermaid component (mocked import)", async () => {
     const { container } = render(<WikiPage page={page("```mermaid\ngraph TD; A-->B;\n```")} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} />);
     await waitFor(() => expect(container.querySelector(".wiki-mermaid svg")).not.toBeNull());
+  });
+
+  it("falls back to the source <pre> when mermaid render rejects", async () => {
+    vi.mocked(mermaid.render).mockRejectedValueOnce(new Error("parse error"));
+    const { container } = render(<WikiPage page={page("```mermaid\nnot a diagram\n```")} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} />);
+    await waitFor(() => expect(container.querySelector(".wiki-mermaid-err")).not.toBeNull());
+    expect(container.querySelector(".wiki-mermaid-err")).toHaveTextContent("not a diagram");
   });
 
   it("renders an 'invalid block' note for a malformed scenario block but still renders the page", () => {
