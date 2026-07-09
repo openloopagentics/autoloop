@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import mermaid from "mermaid";
 import { WikiPage } from "./WikiPage";
 import { WikiNav } from "./WikiNav";
-import type { Page, Scenario, Score, TestRun, Verification } from "../types";
+import type { Page, PageComment, Scenario, Score, TestRun, Verification } from "../types";
 
 // Mock the mermaid dynamic import so tests don't pull in the real (heavy) renderer.
 vi.mock("mermaid", () => ({
@@ -123,8 +123,20 @@ describe("WikiNav", () => {
     expect(onSelect).toHaveBeenCalledWith("p1");
   });
 
-  it("renders the unanchored-comments stub container", () => {
+  it("omits the unanchored-comments section when there are no orphaned comments", () => {
     render(<WikiNav pages={pages} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} selectedPageId={null} onSelect={() => {}} />);
+    expect(screen.queryByText(/unanchored comments/i)).toBeNull();
+  });
+
+  it("lists open comments whose page no longer exists, with their quoted text", () => {
+    const comments: PageComment[] = [
+      { id: "c1", pageId: "gone.md", body: "Reconsider this", status: "open", anchor: { exact: "removed passage" } },
+      { id: "c2", pageId: "overview", body: "on a live page", status: "open", anchor: { exact: "still here" } },
+    ];
+    render(<WikiNav pages={pages} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} comments={comments} selectedPageId={null} onSelect={() => {}} />);
     expect(screen.getByText(/unanchored comments/i)).toBeInTheDocument();
+    expect(screen.getByText(/removed passage/)).toBeInTheDocument();
+    // A comment anchored to a live page is NOT listed as unanchored.
+    expect(screen.queryByText(/still here/)).toBeNull();
   });
 });

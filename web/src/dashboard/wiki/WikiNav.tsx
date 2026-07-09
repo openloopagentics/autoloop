@@ -1,6 +1,6 @@
 import { buildNavTree, type NavNode } from "./navTree";
 import { scenarioStatus, summarize } from "../scenarioState";
-import type { Page, Scenario, Score, TestRun, Verification } from "../types";
+import type { Page, PageComment, Scenario, Score, TestRun, Verification } from "../types";
 
 /** Met-count for a single page's scenarios (verification- and blocking-aware). */
 function pageMet(page: Page, byId: Map<string, Scenario>, scores: Score[], testRuns: TestRun[], verifications: Verification[], blockedIds?: Set<string>): { met: number; total: number } | null {
@@ -64,15 +64,18 @@ function NavTreeNodes({ nodes, selectedPageId, onSelect, pages, byId, scores, te
 /**
  * Wiki nav sidebar: a tree of pages (nested by path), a "N of M scenarios met"
  * roll-up, per-page met chips, and a project-level "unanchored comments" section
- * (a labeled empty container — Task 9 populates it). Props-in/render-out.
+ * listing open comments whose page no longer exists (the loop deleted the page but
+ * the steering note survives). Each is shown with its quoted anchor text.
+ * Props-in/render-out.
  */
-export function WikiNav({ pages, scenarios, scores, testRuns, verifications, blockedIds, selectedPageId, onSelect }: {
+export function WikiNav({ pages, scenarios, scores, testRuns, verifications, blockedIds, comments, selectedPageId, onSelect }: {
   pages: Page[];
   scenarios: Scenario[];
   scores: Score[];
   testRuns: TestRun[];
   verifications: Verification[];
   blockedIds?: Set<string>;
+  comments?: PageComment[];
   selectedPageId: string | null;
   onSelect: (pageId: string) => void;
 }) {
@@ -80,6 +83,11 @@ export function WikiNav({ pages, scenarios, scores, testRuns, verifications, blo
   const byId = new Map(scenarios.map((s) => [s.id, s]));
   const pageById = new Map(pages.map((p) => [p.id, p]));
   const { met, total } = summarize(scenarios, scores, testRuns, verifications, blockedIds);
+
+  const livePageIds = new Set(pages.map((p) => p.id));
+  const orphaned = (comments ?? []).filter(
+    (c) => (c.status ?? "open") === "open" && (!c.pageId || !livePageIds.has(c.pageId)),
+  );
 
   return (
     <nav className="wikinav">
@@ -89,10 +97,19 @@ export function WikiNav({ pages, scenarios, scores, testRuns, verifications, blo
       <NavTreeNodes nodes={tree} selectedPageId={selectedPageId} onSelect={onSelect}
         pages={pageById} byId={byId} scores={scores} testRuns={testRuns} verifications={verifications}
         blockedIds={blockedIds} depth={0} />
-      <section className="wikinav-unanchored" aria-label="Unanchored comments">
-        <h4 className="wikinav-unanchored-head">Unanchored comments</h4>
-        {/* Task 9 populates this container. */}
-      </section>
+      {orphaned.length > 0 && (
+        <section className="wikinav-unanchored" aria-label="Unanchored comments">
+          <h4 className="wikinav-unanchored-head">Unanchored comments</h4>
+          <ul className="wikinav-unanchored-list">
+            {orphaned.map((c) => (
+              <li key={c.id} className="wikinav-unanchored-item">
+                {c.anchor?.exact && <span className="wikinav-unanchored-quote">"{c.anchor.exact}"</span>}
+                {c.body && <span className="wikinav-unanchored-body">{c.body}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </nav>
   );
 }
