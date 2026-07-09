@@ -1350,8 +1350,8 @@ export async function run(argv, deps = {}) {
         const fence = (kind, obj) => ["```" + kind, JSON.stringify(obj), "```"].join("\n");
         // A description whose own line opens a fence (```) would, emitted raw, swallow the real
         // ```goal/```scenario block — refuse it with an actionable message instead.
-        const assertNoFence = (text, id) => {
-          if (/^```/m.test(String(text))) throw new UsageError(`goal '${id}' description contains a line starting with \`\`\` — remove or indent the fence (it would swallow the goal/scenario block)`);
+        const assertNoFence = (kind, text, id) => {
+          if (/^```/m.test(String(text))) throw new UsageError(`${kind} '${id}' description contains a line starting with \`\`\` — remove or indent the fence (it would swallow the goal/scenario block)`);
         };
 
         // Bucket scenarios by goal; warn on + drop orphans (goalId matching no goal).
@@ -1367,8 +1367,8 @@ export async function run(argv, deps = {}) {
         fmTitle(vision.title ?? "Overview", "overview");
         for (const g of goals) {
           fmTitle(g.title ?? g.id, g.id);
-          if (g.description) assertNoFence(g.description, g.id);
-          for (const s of byGoal.get(g.id) ?? []) if (s.description) assertNoFence(s.description, s.id);
+          if (g.description) assertNoFence("goal", g.description, g.id);
+          for (const s of byGoal.get(g.id) ?? []) if (s.description) assertNoFence("scenario", s.description, s.id);
         }
 
         mkdirSync(outDir, { recursive: true });
@@ -1441,6 +1441,36 @@ export async function run(argv, deps = {}) {
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
         return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "comments pull": {
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments?status=open`;
+        if (flags.check) {
+          // silent probe: exit 0 iff open steering comments exist.
+          // GET only — pulling NEVER mutates; any failure ⇒ 1 (can't confirm open).
+          const res = await getJson(url, { env, fetchImpl });
+          return res?.ok && Array.isArray(res.body) && res.body.length > 0 ? 0 : 1;
+        }
+        return fetchJson({ method: "GET", url }, { env, fetchImpl, log, err, label: "comments pull" });
+      }
+      case "comments reply": {
+        const id = positionals[2];
+        if (!id || typeof id !== "string" || id.trim() === "") throw new UsageError("comments reply requires a non-empty comment id");
+        if (!flags.text) throw new UsageError("comments reply requires --text");
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments/${id}/reply`;
+        return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "comments resolve": {
+        const id = positionals[2];
+        if (!id || typeof id !== "string" || id.trim() === "") throw new UsageError("comments resolve requires a non-empty comment id");
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments/${id}/resolve`;
+        const body = { resolution: flags.declined ? "declined" : "resolved", ...(flags.note && { note: flags.note }) };
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "state": {
         const cfg = loadConfig(cwd);

@@ -849,6 +849,20 @@ describe("vision sync / vision migrate verbs", () => {
     expect(errs.join("\n")).not.toMatch(/internal bug/);
   });
 
+  it("migrate FAILS LOUDLY naming the scenario when a scenario description would swallow its block", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      goals: [{ id: "g1", title: "Ship", order: 1 }],
+      scenarios: [{ id: "s1", goalId: "g1", title: "Login", description: "Example:\n```js\nconst x = 1;", rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } }],
+    }));
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("net"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toMatch(/scenario 's1'/); // names the entity kind + id, not "goal"
+  });
+
   it("migrate warns and drops an orphan scenario (goalId matches no goal) without failing", async () => {
     const dir = initDir();
     writeFileSync(join(dir, "vision.json"), JSON.stringify({
@@ -1037,6 +1051,106 @@ describe("messages pull/ack/send verbs", () => {
     const code = await run(["messages", "pull", "--check"],
       { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("net"); } });
     expect(code).toBe(1);
+  });
+});
+
+describe("comments pull/reply/resolve verbs", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {}, ...extra });
+    return dir;
+  }
+  const cap = (jsonBody: any = { ok: true }) => {
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => jsonBody }; };
+    return c;
+  };
+  const base = (dir: string, c: any, logsOut: string[] = [], errsOut: string[] = []) => ({
+    cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" },
+    log: (m: string) => logsOut.push(m),
+    err: (m: string) => errsOut.push(m),
+    fetchImpl: c.fetchImpl,
+  });
+
+  it("comments pull GETs project-level /comments?status=open and prints JSON (no loopSeg even with currentLoopId)", async () => {
+    const dir = initDir({ currentLoopId: "l1" });
+    const comments = [{ id: "01JXKM8F3XABCDE12345", text: "steer left" }];
+    const c = cap(comments);
+    const logs: string[] = [];
+    const code = await run(["comments", "pull"], base(dir, c, logs));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/comments?status=open");
+    expect(c.init.method).toBe("GET");
+    expect(logs.join("\n")).toContain("01JXKM8F3XABCDE12345");
+  });
+
+  it("comments pull --check exits 0 silently when open comments exist (GET only, never mutates)", async () => {
+    const dir = initDir(); const c = cap([{ id: "c1", text: "x" }]);
+    const logs: string[] = [];
+    expect(await run(["comments", "pull", "--check"], base(dir, c, logs))).toBe(0);
+    expect(logs.length).toBe(0);
+    expect(c.calls.length).toBe(1);
+    expect(c.calls[0].init.method).toBe("GET");
+    expect(c.calls[0].url).toBe("http://api/v1/teams/acme/projects/web/comments?status=open");
+  });
+
+  it("comments pull --check exits 1 when there are no open comments", async () => {
+    const dir = initDir(); const c = cap([]);
+    expect(await run(["comments", "pull", "--check"], base(dir, c))).toBe(1);
+  });
+
+  it("comments pull --check exits 1 on a network error", async () => {
+    const dir = initDir();
+    const code = await run(["comments", "pull", "--check"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("net"); } });
+    expect(code).toBe(1);
+  });
+
+  it("comments reply POSTs to project-level /comments/:id/reply with {text}", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    const code = await run(["comments", "reply", "01JXKM8F3XABCDE12345", "--text", "on it"], base(dir, c));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/comments/01JXKM8F3XABCDE12345/reply");
+    expect(c.init.method).toBe("POST");
+    expect(JSON.parse(c.init.body)).toMatchObject({ text: "on it" });
+  });
+
+  it("comments reply requires a non-empty id", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["comments", "reply", "--text", "hi"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/id/i);
+  });
+
+  it("comments reply requires --text", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["comments", "reply", "01JXKM8F3XABCDE12345"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/--text/);
+  });
+
+  it("comments resolve POSTs default body {resolution:'resolved'}", async () => {
+    const dir = initDir(); const c = cap();
+    const code = await run(["comments", "resolve", "01JXKM8F3XABCDE12345"], base(dir, c));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/comments/01JXKM8F3XABCDE12345/resolve");
+    expect(c.init.method).toBe("POST");
+    const body = JSON.parse(c.init.body);
+    expect(body).toEqual({ resolution: "resolved" });
+  });
+
+  it("comments resolve --declined sends {resolution:'declined'} and passes --note through", async () => {
+    const dir = initDir(); const c = cap();
+    const code = await run(["comments", "resolve", "01JXKM8F3XABCDE12345", "--declined", "--note", "out of scope"], base(dir, c));
+    expect(code).toBe(0);
+    expect(JSON.parse(c.init.body)).toEqual({ resolution: "declined", note: "out of scope" });
+  });
+
+  it("comments resolve requires a non-empty id", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["comments", "resolve"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/id/i);
   });
 });
 
