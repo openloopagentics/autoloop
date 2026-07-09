@@ -106,6 +106,19 @@ export const taskBody = z.object({
   scenarioIds: z.array(id).optional(),
 });
 
+// Wiki page synced up from the loop's markdown. All fields required — the CLI always
+// sends a full page (contentHash gates the sync diff), so there is no partial-patch mode.
+export const pageBody = z.object({
+  path: z.string().min(1),
+  title: z.string().min(1),
+  order: z.number().int(),
+  markdown: z.string().max(CONTENT_MAX_BYTES, "page.markdown exceeds 100KB"),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/, "contentHash must be a sha256 hex digest"),
+  goalIds: z.array(id),
+  scenarioIds: z.array(id),
+});
+export type PageBody = z.infer<typeof pageBody>;
+
 export const documentBody = z.object({
   kind: z.string().min(1).optional(),
   title: z.string().min(1).optional(),

@@ -16,6 +16,7 @@ import { scenariosRouter } from "./routes/scenarios.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { taskCommitsRouter } from "./routes/taskCommits.js";
 import { documentsRouter } from "./routes/documents.js";
+import { pagesRouter } from "./routes/pages.js";
 import { scoresRouter, testRunsRouter, revisionsRouter, verificationsRouter, decisionsRouter } from "./routes/events.js";
 import { loopsRouter } from "./routes/loops.js";
 import { bugsRouter } from "./routes/bugs.js";
@@ -50,6 +51,7 @@ export function makeApp() {
   teamRouter.use("/:slug/tasks/:taskId/commits", taskCommitsRouter);
   teamRouter.use("/:slug/tasks", tasksRouter);
   teamRouter.use("/:slug/documents", documentsRouter);
+  teamRouter.use("/:slug/pages", pagesRouter);
   teamRouter.use("/:slug/scores", scoresRouter);
   teamRouter.use("/:slug/testRuns", testRunsRouter);
   teamRouter.use("/:slug/revisions", revisionsRouter);
