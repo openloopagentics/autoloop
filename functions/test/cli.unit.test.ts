@@ -1080,7 +1080,9 @@ describe("comments pull/reply/resolve verbs", () => {
     expect(code).toBe(0);
     expect(c.url).toBe("http://api/v1/teams/acme/projects/web/comments?status=open");
     expect(c.init.method).toBe("GET");
-    expect(logs.join("\n")).toContain("01JXKM8F3XABCDE12345");
+    // print just the comments array (like `messages pull`), not the {ok,comments} envelope —
+    // pins the render override so it can't silently regress to the whole envelope / default fallback.
+    expect(JSON.parse(logs.join("\n"))).toEqual([{ id: "01JXKM8F3XABCDE12345", text: "steer left" }]);
   });
 
   it("comments pull --check exits 0 silently when open comments exist (GET only, never mutates)", async () => {
@@ -1103,6 +1105,13 @@ describe("comments pull/reply/resolve verbs", () => {
     const code = await run(["comments", "pull", "--check"],
       { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("net"); } });
     expect(code).toBe(1);
+  });
+
+  it("comments pull --check exits 1 when the body is a bare array (probe requires the {ok,comments} envelope)", async () => {
+    // Regression guard: the server returns {ok,comments:[...]}, NOT a top-level array. A probe
+    // that read a bare array would exit 1 here too — but this pins that the envelope is required.
+    const dir = initDir(); const c = cap([{ id: "c1", text: "x" }]);
+    expect(await run(["comments", "pull", "--check"], base(dir, c))).toBe(1);
   });
 
   it("comments reply POSTs to project-level /comments/:id/reply with {text}", async () => {
