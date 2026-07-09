@@ -55,7 +55,7 @@ describe("user vision write path", () => {
   });
 });
 
-describe("DELETE /v1/u/teams/:teamId/projects/:slug (recursive, owner/manager only)", () => {
+describe("DELETE /v1/u/teams/:teamId/projects/:slug (recursive, owner/admin only)", () => {
   async function seedProjectTree(role: string, uid = "alice") {
     await db().doc(`users/${uid}`).set({ email: `${uid}@x.com`, isAllowed: true });
     await db().doc("teams/t1").set({ name: "T", createdBy: uid });
@@ -77,8 +77,8 @@ describe("DELETE /v1/u/teams/:teamId/projects/:slug (recursive, owner/manager on
     expect(await gone("teams/t1/projects/web/loops/l1/scores/01ABC")).toBe(true);
     expect(await gone("teams/t1/projects/web/goals/g1")).toBe(true);
   });
-  it("a manager can delete", async () => {
-    await seedProjectTree("manager");
+  it("an admin can delete", async () => {
+    await seedProjectTree("admin");
     expect((await request(app()).delete("/v1/u/teams/t1/projects/web").set(tok("alice"))).status).toBe(200);
     expect(await gone("teams/t1/projects/web")).toBe(true);
   });
