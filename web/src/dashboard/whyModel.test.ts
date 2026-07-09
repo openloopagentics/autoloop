@@ -38,6 +38,11 @@ describe("explainScenario", () => {
     expect(e.state).toBe("unmet");
     expect(e.reasons.some((r) => r.kind === "missing")).toBe(true);
   });
+  it("unmet with a prepended 'blocked' reason when the scenario id is in blockedIds", () => {
+    const e = explainScenario(scn, [score("A", 90)], [test("A", 0)], [], new Set(["s1"]));
+    expect(e.state).toBe("unmet");
+    expect(e.reasons[0]).toMatchObject({ kind: "blocked", ok: false });
+  });
 });
 
 describe("toDecisions", () => {

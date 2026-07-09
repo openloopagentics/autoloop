@@ -4,7 +4,7 @@ import type { Scenario, Score, TestRun, Verification, Revision, VisionChange, De
 export type SubjectState = "met" | "unmet" | "neutral" | "active" | "bugged";
 
 export interface ExplanationReason {
-  kind: "score" | "test" | "verification" | "missing";
+  kind: "score" | "test" | "verification" | "missing" | "blocked";
   ok: boolean;
   text: string;
   evidenceId?: string;
@@ -25,6 +25,9 @@ export function explainScenario(
   scores: Score[],
   testRuns: TestRun[],
   verifications: Verification[],
+  // v1 scope: only the Vision tab (Task 10) passes this — Map/Loops leave it undefined.
+  // When the scenario id is in the set, a blocking comment suppresses met (spec §2).
+  blockedIds?: Set<string>,
 ): Explanation {
   const latestScore = latestById(scores.filter((s) => s.scenarioId === scenario.id));
   const latestTest = latestById(testRuns.filter((r) => r.scenarioId === scenario.id));
@@ -58,8 +61,12 @@ export function explainScenario(
     reasons.push({ kind: "verification", ok: true, text: "verification confirmed", evidenceId: latestVer.id });
   }
 
-  const state: SubjectState = reasons.every((r) => r.ok) ? "met" : "unmet";
   reasons.sort((a, b) => Number(a.ok) - Number(b.ok)); // failing reasons first
+  if (blockedIds?.has(scenario.id)) {
+    reasons.unshift({ kind: "blocked", ok: false, text: "blocked by an unresolved blocking comment" });
+    return { state: "unmet", reasons };
+  }
+  const state: SubjectState = reasons.every((r) => r.ok) ? "met" : "unmet";
   return { state, reasons };
 }
 

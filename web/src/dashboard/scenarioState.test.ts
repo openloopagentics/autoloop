@@ -46,3 +46,10 @@ describe("summarize (verification-aware)", () => {
     expect(r).toEqual({ met: 0, total: 1 });
   });
 });
+describe("scenarioStatus (blocked)", () => {
+  it("unmet + 'blocked' reason for a blocked id even when score/test/verification would make it met", () => {
+    const r = scenarioStatus(scn, [scoreV("A", 95)], [runV("A", 0)], [ver("A", "confirmed")], new Set(["s1"]));
+    expect(r.state).toBe("unmet");
+    expect(r.reasons[0]).toMatchObject({ kind: "blocked", ok: false });
+  });
+});
