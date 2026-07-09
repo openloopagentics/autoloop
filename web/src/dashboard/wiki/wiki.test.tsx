@@ -75,6 +75,18 @@ describe("WikiPage", () => {
     expect(screen.getByText(/const x = 1/)).toBeInTheDocument();
     expect(screen.queryByText(/invalid block/i)).toBeNull();
   });
+
+  it("does NOT nest a scenario card inside a <pre> wrapper", () => {
+    const { container } = render(<WikiPage page={page(scenarioFence)} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} />);
+    expect(container.querySelector("pre .scncard")).toBeNull(); // no pre chrome around the card
+    expect(container.querySelector(".scncard")).not.toBeNull(); // card still rendered
+    expect(container.querySelector("[data-scenario-id] pre")).toBeNull(); // no leftover pre inside the wrapper
+  });
+
+  it("keeps the default <pre> wrapper for an ordinary code fence", () => {
+    const { container } = render(<WikiPage page={page("```js\nconst x = 1;\n```")} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} />);
+    expect(container.querySelector("pre code")).not.toBeNull(); // default pre>code preserved
+  });
 });
 
 describe("WikiNav", () => {
