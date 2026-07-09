@@ -1,31 +1,31 @@
 ---
 name: autoloop-reporting
-description: Use when running a development loop that should report its status (project, phases, commits) to an Autoloop dashboard. Reports via the bundled autoloop CLI as the loop progresses. Requires AUTOLOOP_API_KEY in the environment and a one-time `autoloop init`.
+description: Use when running a development loop that should report its status (project, phases, commits) to an Autoloop dashboard. Reports via the bundled autoloop CLI as the loop progresses. Requires an API key (a .autoloop.key file or AUTOLOOP_API_KEY in the environment) and a one-time `autoloop init`.
 ---
 
 # Autoloop Reporting
 
-Report the loop's status to Autoloop as you work, using the bundled `autoloop` CLI.
-Reporting is **best-effort observability** — it must never block or derail the
-actual development work.
+Report the loop's status to Autoloop as you work, using the bundled **`autoloop`**
+CLI (Node 22+, no other deps). Reporting is **best-effort observability** — it must
+never block or derail the actual development work.
 
-In every command below, **`autoloop`** is shorthand for:
-
-```
-node "$HOME/.claude/skills/autoloop-reporting/autoloop.mjs"
-```
-
-(The CLI ships next to this SKILL.md and has no dependencies — Node 22+ only.)
+Invoke it as `autoloop` when it's on your `PATH` (the plugin install adds it there).
+Otherwise call the bundled copy directly:
+`node "${CLAUDE_PLUGIN_ROOT}/bin/autoloop"` (plugin) or
+`node "$HOME/.claude/skills/autoloop-reporting/autoloop.mjs"` (curl install).
 
 ## Prerequisites (set up once)
 
-- **`AUTOLOOP_API_KEY`** must be set in the environment — a per-user key minted in
-  the Autoloop app under **API keys** (you must be a member of the team you report
-  to). The CLI never reads the key from a file.
-- Run **`autoloop init`** once in the loop's working directory to write `.autoloop.json`:
+- **An API key** — a per-user key minted in the Autoloop app under **API keys**
+  (you must be a member of the team you report to). Preferred: a **`.autoloop.key`**
+  file in the loop's working directory (add it to `.gitignore`, never commit it),
+  so concurrent loops on one machine each report with their own key.
+  `AUTOLOOP_API_KEY` in the environment overrides the file when set.
+- Run **`autoloop init`** once in the loop's working directory to write
+  `.autoloop.json` (and, with `--key`, the `.autoloop.key` file):
 
   ```
-  autoloop init --team <teamId> --project <slug>
+  autoloop init --team <teamId> --project <slug> [--key <apiKey>]
   ```
 
   (The CLI defaults to the hosted Autoloop API; pass `--url <apiUrl>` only to point
@@ -45,6 +45,35 @@ node "$HOME/.claude/skills/autoloop-reporting/autoloop.mjs"
   attaches it to the current phase — just run it right after you commit.
 - A `phaseId` is yours to choose (e.g. `build`, `design`); `phase set` reuses the
   name/order you gave at `phase start`.
+
+## Vision wiki (push the repo `vision/` pages)
+
+| Moment | Command |
+|---|---|
+| Push the vision wiki | `autoloop vision sync [--dir vision] [--strict]` |
+| Convert a legacy `vision.json` → wiki | `autoloop vision migrate [--file vision.json] [--dir vision]` |
+| Legacy: push a `vision.json` | `autoloop vision import --file vision.json` |
+
+- `vision sync` parses `vision/*.md` locally first (fails fast with `file:line` on any
+  parse/validation error, uploading nothing), then diffs page hashes against the server
+  — PUTting changed pages, DELETEing pages removed from disk, and upserting the
+  extracted goals/scenarios. Run it whenever the wiki changes. `--strict` makes a
+  server-list failure fatal instead of re-uploading everything best-effort.
+- `vision migrate` is purely local (no network): it writes `vision/*.md` from a legacy
+  `vision.json`, refuses to overwrite an existing `vision/`, and self-checks the
+  round-trip. Review + commit the pages, then `vision sync`.
+
+## Steering comments (the loop answers user comments on Vision pages)
+
+| Moment | Command |
+|---|---|
+| List open comments | `autoloop comments pull` (add `--check` for a silent exit-0-iff-any probe) |
+| Reply to a comment | `autoloop comments reply <id> --text "<message>"` |
+| Resolve a comment | `autoloop comments resolve <id> [--declined] [--note "<text>"]` |
+
+- `comments resolve` marks the comment `resolved` (or `declined` with `--declined`);
+  `--note` records why. A **blocking** comment suppresses its target scenario's met
+  until it is resolved AND accepted by the author/team admin.
 
 ## Rules
 

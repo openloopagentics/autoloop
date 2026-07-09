@@ -6,9 +6,13 @@ description: Use when running a development loop that should report its status (
 # Autoloop Reporting
 
 Report the loop's status to Autoloop as you work, using the bundled **`autoloop`**
-CLI (this plugin adds it to your `PATH`; it needs Node 22+, no other deps).
-Reporting is **best-effort observability** — it must never block or derail the
-actual development work.
+CLI (Node 22+, no other deps). Reporting is **best-effort observability** — it must
+never block or derail the actual development work.
+
+Invoke it as `autoloop` when it's on your `PATH` (the plugin install adds it there).
+Otherwise call the bundled copy directly:
+`node "${CLAUDE_PLUGIN_ROOT}/bin/autoloop"` (plugin) or
+`node "$HOME/.claude/skills/autoloop-reporting/autoloop.mjs"` (curl install).
 
 ## Prerequisites (set up once)
 
@@ -96,8 +100,5 @@ autoloop commit
 autoloop phase set build --status completed
 autoloop project set --status completed
 ```
-
-> If `autoloop` isn't found on your `PATH`, invoke it directly:
-> `node "${CLAUDE_PLUGIN_ROOT}/bin/autoloop" …`
 
 See `CODEX.md` in this directory for the same commands framed for a Codex-driven loop.

@@ -21,7 +21,12 @@ cp plugins/autoloop/skills/autoloop/SKILL.md        web/public/skill/autoloop/SK
 cp cli/vision-schema.mjs web/public/skill/vision-schema.mjs
 cp cli/vision-pages.mjs web/public/skill/vision-pages.mjs
 
+# reporting skill for the curl installer (install.sh ships these as SKILL.md/CODEX.md)
+cp plugins/autoloop/skills/autoloop-reporting/SKILL.md web/public/skill/SKILL.md
+cp plugins/autoloop/skills/autoloop-reporting/CODEX.md web/public/skill/CODEX.md
+
 echo "✓ synced cli/autoloop.mjs → web/public/skill/autoloop.mjs, plugins/autoloop/bin/autoloop"
 echo "✓ synced cli/vision-schema.mjs → plugins/autoloop/bin/vision-schema.mjs"
 echo "✓ synced cli/vision-pages.mjs → plugins/autoloop/bin/vision-pages.mjs"
 echo "✓ synced autoloop-vision/autoloop SKILL.md + vision-schema.mjs → web/public/skill/ (curl installer)"
+echo "✓ synced autoloop-reporting SKILL.md/CODEX.md → web/public/skill/ (curl installer)"

@@ -1,9 +1,11 @@
 # Autoloop reporting (Codex usage)
 
 Same CLI as the Claude Code skill — for a Codex-driven loop, add the following to
-your task/system instructions. The bundled `autoloop` CLI is on your `PATH` when this
-plugin is active (Node 22+, no other deps); otherwise invoke it directly as
-`node "${CLAUDE_PLUGIN_ROOT}/bin/autoloop"`.
+your task/system instructions. The bundled `autoloop` CLI needs Node 22+ (no other
+deps). Invoke it as `autoloop` when it's on your `PATH` (the plugin install adds it
+there); otherwise call the bundled copy directly:
+`node "${CLAUDE_PLUGIN_ROOT}/bin/autoloop"` (plugin) or
+`node "$HOME/.claude/skills/autoloop-reporting/autoloop.mjs"` (curl install).
 
 Reporting is **best-effort**: if a `autoloop` command warns, log it and continue —
 never let a status report block the real work. Reporting failures exit `0` by
