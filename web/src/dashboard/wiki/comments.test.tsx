@@ -38,9 +38,9 @@ describe("WikiPage selection → popover", () => {
     const { container } = render(
       <WikiPage page={page("Users can log in with valid credentials.")} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} onComment={onComment} />,
     );
-    const host = container.querySelector(".wiki-page-host")!;
-    mockSelection(host as HTMLElement, "valid credentials");
-    fireEvent.mouseUp(host);
+    const body = container.querySelector(".wiki-page-body")!;
+    mockSelection(body as HTMLElement, "valid credentials");
+    fireEvent.mouseUp(body);
     expect(screen.getByRole("dialog", { name: /add a comment/i })).toBeInTheDocument();
     expect(screen.getByText("valid credentials")).toBeInTheDocument(); // the quote
   });
@@ -50,9 +50,9 @@ describe("WikiPage selection → popover", () => {
     const { container } = render(
       <WikiPage page={page("Users can log in with valid credentials.")} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} onComment={onComment} />,
     );
-    const host = container.querySelector(".wiki-page-host")!;
-    mockSelection(host as HTMLElement, "valid credentials");
-    fireEvent.mouseUp(host);
+    const body = container.querySelector(".wiki-page-body")!;
+    mockSelection(body as HTMLElement, "valid credentials");
+    fireEvent.mouseUp(body);
     fireEvent.change(screen.getByPlaceholderText(/steer the agent/i), { target: { value: "Please tighten this" } });
     fireEvent.click(screen.getByRole("button", { name: /^comment$/i }));
     await waitFor(() => expect(onComment).toHaveBeenCalledTimes(1));
@@ -68,14 +68,44 @@ describe("WikiPage selection → popover", () => {
     const { container } = render(
       <WikiPage page={page("Users can log in with valid credentials.")} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} onComment={onComment} />,
     );
-    const host = container.querySelector(".wiki-page-host")!;
-    mockSelection(host as HTMLElement, "valid credentials");
-    fireEvent.mouseUp(host);
+    const body = container.querySelector(".wiki-page-body")!;
+    mockSelection(body as HTMLElement, "valid credentials");
+    fireEvent.mouseUp(body);
     fireEvent.click(screen.getByRole("radio", { name: /blocking/i }));
     fireEvent.change(screen.getByPlaceholderText(/steer the agent/i), { target: { value: "Do not ship" } });
     fireEvent.click(screen.getByRole("button", { name: /^comment$/i }));
     await waitFor(() => expect(onComment).toHaveBeenCalledTimes(1));
     expect(onComment.mock.calls[0][0].severity).toBe("blocking");
+  });
+
+  it("stamps targetScenarioId when the selection starts inside a scenario card", async () => {
+    const onComment = vi.fn<(c: NewComment) => Promise<void>>(async () => {});
+    const md = "Intro prose.\n\n```scenario\nid: login\n```";
+    const { container } = render(
+      <WikiPage page={page(md)} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} onComment={onComment} />,
+    );
+    const body = container.querySelector(".wiki-page-body")!;
+    // "Login works" is the scenario title rendered inside the [data-scenario-id] card.
+    const card = body.querySelector('[data-scenario-id="login"]')!;
+    expect(card).not.toBeNull();
+    mockSelection(card as HTMLElement, "Login works");
+    fireEvent.mouseUp(body);
+    fireEvent.change(screen.getByPlaceholderText(/steer the agent/i), { target: { value: "scope to this scenario" } });
+    fireEvent.click(screen.getByRole("button", { name: /^comment$/i }));
+    await waitFor(() => expect(onComment).toHaveBeenCalledTimes(1));
+    expect(onComment.mock.calls[0][0].targetScenarioId).toBe("login");
+  });
+
+  it("reports the RENDERED flat text (not raw markdown) via onPageTextChange", () => {
+    const onPageTextChange = vi.fn<(t: string) => void>();
+    render(
+      <WikiPage page={page("This is **bold** text here.")} scenarios={[scn]} scores={scores} testRuns={runs} verifications={verifs} onPageTextChange={onPageTextChange} />,
+    );
+    expect(onPageTextChange).toHaveBeenCalled();
+    const text = onPageTextChange.mock.calls.at(-1)![0];
+    // Rendered text has no markdown syntax: "bold" is contiguous, "**" is gone.
+    expect(text).toContain("bold text here");
+    expect(text).not.toContain("**");
   });
 
   it("does not crash without the CSS Custom Highlight API (jsdom)", () => {

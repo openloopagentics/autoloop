@@ -68,10 +68,16 @@ function Thread({ c, currentUid, isAdmin, onAccept }: {
 
 /**
  * Right-rail threads for the page the reader is on. Comments split into an
- * "anchored" section (those whose anchor still locates in the current markdown,
- * open ones first) and an "unanchored" section (anchor orphaned — the passage was
- * edited or removed). A red badge counts open blocking comments. Props-in only;
- * accept is a callback (Task 10 wires it to acceptComment).
+ * "anchored" section (those whose anchor still locates in the page, open ones
+ * first) and an "unanchored" section (anchor orphaned — the passage was edited or
+ * removed). A red badge counts open blocking comments. Props-in only; accept is a
+ * callback (Task 10 wires it to acceptComment).
+ *
+ * `pageText` MUST be the RENDERED page's flat text (WikiPage's container.textContent
+ * via its `onPageTextChange` callback), NOT the raw `page.markdown`. Anchors are built
+ * from rendered text (that's what the reader selects and what the server stores), so
+ * markdown syntax like "**bold**" would never round-trip and would wrongly orphan
+ * every comment on formatted prose.
  */
 export function CommentSidebar({ comments, pageText, currentUid, isAdmin, onAccept }: {
   comments: PageComment[];

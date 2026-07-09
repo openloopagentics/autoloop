@@ -137,9 +137,13 @@ interface PendingSelection {
  * scenario card. Existing located comments are highlighted with
  * the CSS Custom Highlight API (degrades silently where unsupported). The markdown body
  * is memoized so selection/popover state never re-parses the page.
+ *
+ * `onPageTextChange` reports the rendered body's flat text after each content change —
+ * this is what CommentSidebar's `pageText` must be fed (anchors are built from rendered
+ * text, so re-locating against raw markdown would orphan every formatted-prose comment).
  * Props-in/render-out — no data fetching here.
  */
-export function WikiPage({ page, scenarios, scores, testRuns, verifications, blockedIds, comments, onComment }: {
+export function WikiPage({ page, scenarios, scores, testRuns, verifications, blockedIds, comments, onComment, onPageTextChange }: {
   page: Page;
   scenarios: Scenario[];
   scores: Score[];
@@ -148,18 +152,24 @@ export function WikiPage({ page, scenarios, scores, testRuns, verifications, blo
   blockedIds?: Set<string>;
   comments?: PageComment[];
   onComment?: (comment: NewComment) => Promise<void>;
+  onPageTextChange?: (text: string) => void;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  // bodyRef wraps ONLY the memoized markdown, never the popover — so its textContent is
+  // the clean page text (offset walks, highlight ranges, and onPageTextChange all use it).
+  // hostRef is the positioned outer box the popover is placed relative to.
+  const hostRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [pending, setPending] = useState<PendingSelection | null>(null);
   const pageText = page.markdown ?? "";
 
   const handleMouseUp = useCallback(() => {
     if (!onComment) return;
-    const container = containerRef.current;
+    const container = bodyRef.current;
     if (!container) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) { setPending(null); return; }
     const range = sel.getRangeAt(0);
+    // Only anchor selections inside the page body — never the popover UI.
     if (!container.contains(range.commonAncestorContainer)) { setPending(null); return; }
 
     const start = offsetInContainer(container, range.startContainer, range.startOffset);
@@ -184,7 +194,7 @@ export function WikiPage({ page, scenarios, scores, testRuns, verifications, blo
     // getBoundingClientRect is absent on Ranges in some test/older environments —
     // fall back to the container origin so the popover still shows.
     const rect = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null;
-    const box = container.getBoundingClientRect();
+    const box = (hostRef.current ?? container).getBoundingClientRect();
     setPending({
       anchor,
       quote: anchor.exact,
@@ -194,20 +204,30 @@ export function WikiPage({ page, scenarios, scores, testRuns, verifications, blo
     });
   }, [onComment]);
 
+  // Report the rendered body's flat text whenever the rendered content changes (NOT on
+  // popover open — deps mirror the memoized body's inputs). This is what CommentSidebar
+  // re-locates comments against; feeding it raw markdown would orphan formatted-prose
+  // comments, since anchors are built from rendered text.
+  useEffect(() => {
+    if (!onPageTextChange) return;
+    onPageTextChange(bodyRef.current?.textContent ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageText, scenarios, scores, testRuns, verifications, blockedIds, onPageTextChange]);
+
   // Highlight located comment anchors via the CSS Custom Highlight API. Guarded so
   // environments without it (jsdom, older browsers) degrade silently — no highlights,
   // no crash. Re-runs when the page body or the comment set changes.
   useEffect(() => {
     if (typeof Highlight === "undefined" || !CSS?.highlights) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const flat = container.textContent ?? "";
+    const body = bodyRef.current;
+    if (!body) return;
+    const flat = body.textContent ?? "";
     const ranges: Range[] = [];
     for (const c of comments ?? []) {
       if (!c.anchor?.exact) continue;
       const loc = locateAnchor(flat, { exact: c.anchor.exact, prefix: c.anchor.prefix ?? "", suffix: c.anchor.suffix ?? "" });
       if (!loc) continue;
-      const range = rangeForOffsets(container, loc.start, loc.end);
+      const range = rangeForOffsets(body, loc.start, loc.end);
       if (range) ranges.push(range);
     }
     const key = "wiki-comment";
@@ -223,8 +243,10 @@ export function WikiPage({ page, scenarios, scores, testRuns, verifications, blo
   }
 
   return (
-    <div className="wiki-page-host" ref={containerRef} onMouseUp={onComment ? handleMouseUp : undefined}>
-      <MemoPageBody page={page} scenarios={scenarios} scores={scores} testRuns={testRuns} verifications={verifications} blockedIds={blockedIds} />
+    <div className="wiki-page-host" ref={hostRef}>
+      <div className="wiki-page-body" ref={bodyRef} onMouseUp={onComment ? handleMouseUp : undefined}>
+        <MemoPageBody page={page} scenarios={scenarios} scores={scores} testRuns={testRuns} verifications={verifications} blockedIds={blockedIds} />
+      </div>
       {pending && onComment && (
         <div className="cmt-popover-host" style={{ top: pending.top, left: pending.left }}>
           <CommentPopover quote={pending.quote} onSubmit={submit} onCancel={() => setPending(null)} />

@@ -1522,8 +1522,11 @@ a.docrow-title:hover { color: var(--accent); }
 .wiki-mermaid svg { max-width: 100%; height: auto; }
 .wiki-mermaid-loading, .wiki-mermaid-err { opacity: .7; }
 
-/* Steering comments — text selection popover, located-anchor highlight, sidebar threads. */
+/* Steering comments — text selection popover, located-anchor highlight, sidebar threads.
+   .wiki-page-body wraps only the rendered markdown (not the popover), so its textContent
+   is the clean page text used for anchoring, highlighting, and the sidebar's re-locate. */
 .wiki-page-host { position: relative; }
+.wiki-page-body { position: static; }
 /* CSS Custom Highlight for located comment anchors (degrades to nothing where unsupported). */
 ::highlight(wiki-comment) { background: var(--accent-glow); color: inherit; }
 

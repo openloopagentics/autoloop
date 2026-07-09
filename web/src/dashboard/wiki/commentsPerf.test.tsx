@@ -30,8 +30,8 @@ describe("WikiPage memoization", () => {
     const afterMount = bodyRenders.n;
     expect(afterMount).toBeGreaterThan(0);
 
-    const host = container.querySelector(".wiki-page-host")!;
-    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const body = container.querySelector(".wiki-page-body")!;
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
     const tn = walker.nextNode()!;
     const range = document.createRange();
     range.setStart(tn, 0);
@@ -39,7 +39,7 @@ describe("WikiPage memoization", () => {
     vi.spyOn(window, "getSelection").mockReturnValue({
       isCollapsed: false, rangeCount: 1, getRangeAt: () => range,
     } as unknown as Selection);
-    fireEvent.mouseUp(host);
+    fireEvent.mouseUp(body);
 
     // Popover is now open (outer state changed) but the memoized body must not re-render.
     expect(bodyRenders.n).toBe(afterMount);
