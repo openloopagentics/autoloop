@@ -14,7 +14,10 @@
 //   - Values that are `{...}` or `[...]` are parsed as inline JSON.
 //   - Scalar coercion: true/false → boolean, integer/float → number, else string
 //     (surrounding matching quotes are stripped).
-//   - Anything else (bad indent, missing colon) ⇒ a parse error with a line number.
+//   - Anything else (tabs, bad indent, missing colon) ⇒ a parse error with a line number.
+//   - A bare `key:` with no value and no deeper-indented children yields {} for
+//     that key (an empty nested block); downstream schema validation catches any
+//     resulting shape problem.
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -61,6 +64,7 @@ function parseYamlSubset(text) {
   let i = 0;
 
   function indentOf(line) {
+    if (/^\s*\t/.test(line)) throw new BlockParseError(`tabs not allowed; indent with spaces: "${line}"`);
     const m = line.match(/^( *)/);
     const n = m[1].length;
     if (n % 2 !== 0) throw new BlockParseError(`bad indentation (must be 2-space multiples): "${line}"`);
@@ -90,6 +94,11 @@ function parseYamlSubset(text) {
       const rest = lines[i].slice(depth);
       if (rest !== "-" && !rest.startsWith("- ")) throw new BlockParseError(`expected list item "- ": "${lines[i]}"`);
       const val = rest === "-" ? "" : rest.slice(2);
+      // A `- key: value` item is block-style list-of-maps, which this subset
+      // doesn't support — flag it clearly instead of coercing to a junk string.
+      if (!val.trim().startsWith("{") && /^[A-Za-z0-9_-]+:(\s|$)/.test(val.trim())) {
+        throw new BlockParseError(`block-style list-of-maps not supported — use inline JSON {...} items: "${lines[i]}"`);
+      }
       i++;
       out.push(parseValue(val));
     }
@@ -153,22 +162,28 @@ function splitFrontmatter(text) {
 
 // Extract ```goal / ```scenario fenced blocks from markdown. Returns
 // { blocks: [{ kind, body, openLine }], error?: {line, message} }. `mdStart` is
-// the 1-based file line of the markdown's first line.
+// the 1-based file line of the markdown's first line. Plain fenced code blocks
+// (any other ```-opener, e.g. ```text showing example syntax) are skipped whole
+// so a literal ```goal line *inside* one is never mistaken for a real block.
 function extractBlocks(markdown, mdStart) {
   const lines = markdown.split("\n");
   const blocks = [];
   let k = 0;
   while (k < lines.length) {
-    const m = lines[k].match(/^```(goal|scenario)\s*$/);
-    if (!m) { k++; continue; }
+    if (!/^```/.test(lines[k])) { k++; continue; }
     const openLine = mdStart + k;
-    const kind = m[1];
+    const goalOrScen = lines[k].match(/^```(goal|scenario)\s*$/);
+    const kind = goalOrScen ? goalOrScen[1] : null;
+    // Find this fence's closer: a bare ``` line.
     let close = -1;
     for (let j = k + 1; j < lines.length; j++) {
       if (/^```\s*$/.test(lines[j])) { close = j; break; }
     }
-    if (close < 0) return { blocks, error: { line: openLine, message: `unclosed \`\`\`${kind} fence` } };
-    blocks.push({ kind, body: lines.slice(k + 1, close).join("\n"), openLine });
+    if (close < 0) {
+      const label = kind ? `\`\`\`${kind}` : "```";
+      return { blocks, error: { line: openLine, message: `unclosed ${label} fence` } };
+    }
+    if (kind) blocks.push({ kind, body: lines.slice(k + 1, close).join("\n"), openLine });
     k = close + 1;
   }
   return { blocks };
@@ -191,7 +206,10 @@ export function parsePages(files) {
   const scenarioLoc = [];
   const seenPageIds = new Map(); // id → first file that used it
 
-  for (const { path, text } of files) {
+  for (const { path, text: rawText } of files) {
+    // Normalize CRLF once so every sub-parser sees plain "\n" (a "---\r" first
+    // line would otherwise be mistaken for missing frontmatter).
+    const text = rawText.replace(/\r\n/g, "\n");
     const { fmLines, fmStart, markdown, mdStart, unterminated } = splitFrontmatter(text);
     if (unterminated || fmLines === null) {
       errors.push({ file: path, line: 1, message: "missing or unterminated frontmatter (--- ... ---)" });

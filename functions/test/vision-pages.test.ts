@@ -115,9 +115,9 @@ describe("parsePages", () => {
     const err = r.errors.find((e: any) => /ghost/.test(e.message));
     expect(err).toBeTruthy();
     expect(err.file).toBe("auth/p.md");
-    // the scenario fence opens after frontmatter (3 lines) + blank + heading + blank + goal fence (3) + blank
-    expect(typeof err.line).toBe("number");
-    expect(err.line).toBeGreaterThan(1);
+    // Lines: 1 ---, 2 id, 3 title, 4 ---, 5 blank, 6 # Heading, 7 blank,
+    // 8-10 goal fence, 11 blank, 12 ```scenario opener.
+    expect(err.line).toBe(12);
   });
 
   it("errors on an unclosed fence, at the opening line", () => {
@@ -147,11 +147,83 @@ describe("parsePages", () => {
     if (!r.ok) return;
     expect(r.pages[0].order).toBe(0);
   });
+
+  it("does NOT extract a ```goal opener that lives inside a plain code block", () => {
+    // A ```text example whose body shows a literal ```goal line (a real one would
+    // be a bare ``` that closes the outer block) must not yield a phantom goal.
+    const fenced =
+      "```text\n" +
+      "Blocks look like:\n" +
+      "```goal\n" +
+      '  { "id": "phantom", "title": "Nope" }\n' +
+      "```";
+    const text = pageWith("doc", "id: doc\ntitle: Doc", fenced);
+    const r = parsePages([{ path: "doc.md", text }]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.goals).toEqual([]);
+    expect(r.pages[0].goalIds).toEqual([]);
+  });
+
+  it("errors on an unclosed plain code fence", () => {
+    const text = "---\nid: doc\ntitle: Doc\n---\n\n```text\nexample\n";
+    const r = parsePages([{ path: "doc.md", text }]);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    const err = r.errors.find((e: any) => /unclosed/.test(e.message));
+    expect(err).toBeTruthy();
+    expect(err.line).toBe(6); // the ```text line
+  });
+
+  it("parses a CRLF page just like an LF page (no phantom frontmatter error)", () => {
+    const lf = pageWith("auth", "id: auth\ntitle: Auth", `${goalFence}\n\n${scenarioFence(scenarioJson)}`);
+    const crlf = lf.replace(/\n/g, "\r\n");
+    const a = parsePages([{ path: "a.md", text: lf }]);
+    const b = parsePages([{ path: "b.md", text: crlf }]);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(b.goals).toEqual(a.goals);
+    expect(b.scenarios).toEqual(a.scenarios);
+    expect(b.pages[0].contentHash).toBe(a.pages[0].contentHash);
+  });
+
+  it("errors on tab-indented block body", () => {
+    const body = "id: s1\ngoalId: g1\ntitle: T\nrubric:\n\tcriteria:\n\t\t- x";
+    const text = pageWith("p", "id: p\ntitle: P", `${goalFence}\n\n${scenarioFence(body)}`);
+    const r = parsePages([{ path: "p.md", text }]);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors.map((e: any) => e.message).join(" ")).toMatch(/tabs not allowed/);
+  });
 });
 
 describe("parseBlockBody", () => {
   it("coerces true/42/quoted-string scalars", () => {
     const out = parseBlockBody('flag: true\ncount: 42\nname: "hi there"');
     expect(out).toEqual({ flag: true, count: 42, name: "hi there" });
+  });
+
+  it("throws on tab indentation", () => {
+    expect(() => parseBlockBody("a:\n\tb: 1")).toThrow(/tabs not allowed/);
+  });
+
+  it("throws on odd (non-2-space) indentation", () => {
+    expect(() => parseBlockBody("a:\n   b: 1")).toThrow(/indentation/);
+  });
+
+  it("throws on a line with no colon (not a key: value)", () => {
+    expect(() => parseBlockBody("just a bare line")).toThrow(/key: value/);
+  });
+
+  it("throws on invalid inline JSON", () => {
+    expect(() => parseBlockBody("val: { nope")).toThrow(/inline JSON/);
+  });
+
+  it("throws on block-style list-of-maps (use inline JSON instead)", () => {
+    expect(() => parseBlockBody("items:\n  - id: x\n    name: X")).toThrow(/list-of-maps/);
+  });
+
+  it("yields {} for a bare key with no value and no children", () => {
+    expect(parseBlockBody("a:")).toEqual({ a: {} });
   });
 });
