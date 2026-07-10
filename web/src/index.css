@@ -579,6 +579,23 @@ ul { margin: 0; padding: 0; list-style: none; }
    ========================================================================== */
 .dim { color: var(--fg-meta); }
 .dash-head { display: flex; align-items: flex-start; justify-content: space-between; }
+.dash-head-right { display: flex; align-items: center; gap: 12px; }
+/* Running | All segmented filter — pill shell matching .live-pill, tab-style active state */
+.filterseg {
+  display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-full);
+  padding: 2px; gap: 2px;
+}
+.filterseg-btn {
+  background: none; border: 0; color: var(--fg-soft); font-size: 11.5px; letter-spacing: .02em;
+  padding: 3px 11px; border-radius: var(--radius-full); transition: color .15s, background .15s;
+}
+.filterseg-btn:hover { color: var(--fg); }
+.filterseg-btn.is-active { color: var(--fg); background: var(--surface-raised); font-weight: 500; }
+.team-filter-note { font-size: 12.5px; margin: 2px 0 0; }
+.btn-link {
+  background: none; border: 0; padding: 0; color: var(--brand); font-size: inherit;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
 .live-pill {
   display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--fg-soft);
   border: 1px solid var(--border); border-radius: var(--radius-full); padding: 4px 11px;

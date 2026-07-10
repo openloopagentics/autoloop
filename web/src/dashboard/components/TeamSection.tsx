@@ -15,11 +15,20 @@ function ProjectCardContainer({ teamId, project, onDelete }: {
   return <ProjectCard teamId={teamId} project={project} status={status} onDelete={onDelete} />;
 }
 
+export type ProjectFilter = "running" | "all";
+
 export function TeamSection(props: {
   teamId?: string; team: Team; projects: Project[]; loading: boolean; error: string | null;
   onDeleteProject?: (slug: string) => void;
+  // Quick-glance filter: "running" shows only projects whose stored status is running
+  // (the loop keeps that current; the card badge still shows the loop-derived effective
+  // status, so a zombie loop surfaces here with a non-running badge — on purpose).
+  filter?: ProjectFilter;
+  onShowAll?: () => void;
 }) {
-  const { teamId = "", team, projects, loading, error, onDeleteProject } = props;
+  const { teamId = "", team, projects, loading, error, onDeleteProject, filter = "all", onShowAll } = props;
+  const visible = filter === "running" ? projects.filter((p) => p.status === "running") : projects;
+  const hidden = projects.length - visible.length;
   return (
     <section className="team-section">
       <div className="team-section-head">
@@ -33,12 +42,26 @@ export function TeamSection(props: {
       {loading ? <Spinner />
         : error ? <ErrorNote message={error} />
         : projects.length === 0 ? <EmptyState message="No projects yet" />
-        : <div className="pgrid">{projects.map((p) => (
-            <ProjectCardContainer
-              key={p.slug} teamId={teamId} project={p}
-              onDelete={onDeleteProject ? () => onDeleteProject(p.slug) : undefined}
-            />
-          ))}</div>}
+        : visible.length === 0 ? (
+            <p className="team-filter-note dim">
+              No running projects · {hidden} hidden{" "}
+              {onShowAll && <button type="button" className="btn-link" onClick={onShowAll}>Show all</button>}
+            </p>
+          )
+        : <>
+            <div className="pgrid">{visible.map((p) => (
+              <ProjectCardContainer
+                key={p.slug} teamId={teamId} project={p}
+                onDelete={onDeleteProject ? () => onDeleteProject(p.slug) : undefined}
+              />
+            ))}</div>
+            {hidden > 0 && (
+              <p className="team-filter-note dim">
+                {hidden} hidden{" "}
+                {onShowAll && <button type="button" className="btn-link" onClick={onShowAll}>Show all</button>}
+              </p>
+            )}
+          </>}
     </section>
   );
 }
