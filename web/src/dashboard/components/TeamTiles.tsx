@@ -8,13 +8,14 @@ export type ProjectFilter = "running" | "all";
 
 /** Which projects the filter keeps, given the per-slug EFFECTIVE statuses (the same
  *  loop-derived value the card badge shows — never the stored project status, which is
- *  stale whenever a project has loops). Falls back to the stored status only while a
- *  project's loops haven't reported yet. */
+ *  stale whenever a project has loops). A project whose loops haven't reported yet is
+ *  NOT shown under "running": tiles must only ever appear as statuses settle, never
+ *  flash in and then disappear (no stored-status guessing on reload). */
 export function visibleProjects(
   projects: Project[], statuses: Record<string, string | undefined>, filter: ProjectFilter,
 ): Project[] {
   if (filter === "all") return projects;
-  return projects.filter((p) => (p.slug in statuses ? statuses[p.slug] : p.status) === "running");
+  return projects.filter((p) => p.slug in statuses && statuses[p.slug] === "running");
 }
 
 /** Resolves a project's effective status from its loops, reports it up for filtering,
@@ -26,7 +27,11 @@ function ProjectCardContainer({ teamId, teamName, project, onDelete, show, onSta
 }) {
   const loops = useLoops(teamId, project.slug);
   const status = effectiveProjectStatus(loops.data, project.status);
-  useEffect(() => { onStatus(project.slug, status); }, [project.slug, status, onStatus]);
+  // Report only once the loops snapshot has arrived — before that, `status` is just the
+  // stored fallback (loops []) and reporting it would re-introduce the reload flash.
+  useEffect(() => {
+    if (!loops.loading) onStatus(project.slug, status);
+  }, [project.slug, status, loops.loading, onStatus]);
   if (!show) return null;
   return <ProjectCard teamId={teamId} project={project} status={status} onDelete={onDelete} teamName={teamName} />;
 }
@@ -48,9 +53,14 @@ export function TeamTiles({ teamRef, filter, onCounts, onDeleteProject }: {
   }, []);
   const visible = visibleProjects(projects.data, statuses, filter);
   const visibleSlugs = new Set(visible.map((p) => p.slug));
+  // Counts go up only once every project's loops have reported ("settled") — GridNote
+  // must not announce hidden/empty totals while statuses are still arriving.
+  const settled = projects.data.every((p) => p.slug in statuses);
   useEffect(() => {
-    if (!projects.loading) onCounts(teamRef.teamId, { visible: visible.length, total: projects.data.length });
-  }, [teamRef.teamId, visible.length, projects.data.length, projects.loading, onCounts]);
+    if (!projects.loading && settled) {
+      onCounts(teamRef.teamId, { visible: visible.length, total: projects.data.length });
+    }
+  }, [teamRef.teamId, visible.length, projects.data.length, projects.loading, settled, onCounts]);
   const teamName = team.data?.name ?? teamRef.teamId;
   return (
     <>

@@ -36,8 +36,10 @@ describe("visibleProjects — the filter keys on the EFFECTIVE status the badge 
     const statuses = { a: "completed", b: "running" };
     expect(visibleProjects(projects, statuses, "running").map((p) => p.slug)).toEqual(["b"]);
   });
-  it("falls back to stored status only while a project has not reported", () => {
-    expect(visibleProjects(projects, {}, "running").map((p) => p.slug)).toEqual(["a"]);
+  it("unreported projects are NOT shown under 'running' — tiles appear as statuses settle, never flash out", () => {
+    // On reload, before any loops snapshot arrives, nothing may show under the default
+    // filter from stored-status guesses (the wrong-then-corrected flash).
+    expect(visibleProjects(projects, {}, "running")).toEqual([]);
   });
   it("a reported undefined effective status does not fall back to stored", () => {
     expect(visibleProjects(projects, { a: undefined }, "running").map((p) => p.slug)).toEqual([]);
