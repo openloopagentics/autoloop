@@ -644,6 +644,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 .proj-head-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .proj-head-top > div:first-child { flex: 1; min-width: 0; }
 .proj-head-top .badge { flex-shrink: 0; }
+.proj-head-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.restart-pending { color: var(--fg-soft); }
 .proj-title { font-size: 27px; font-weight: 600; color: var(--fg); margin: 0; letter-spacing: -0.015em; line-height: 1.2; text-wrap: balance; }
 .proj-meta { display: flex; align-items: center; gap: 9px; margin-top: 12px; font-size: 12px; flex-wrap: wrap; }
 .proj-meta .dim, .proj-meta .chip { white-space: nowrap; }

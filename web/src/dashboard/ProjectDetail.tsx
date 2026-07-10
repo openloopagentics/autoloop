@@ -5,7 +5,7 @@ import {
   useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas, useVisionChanges, usePages, useComments, useMyTeams,
 } from "./hooks";
 import { auth } from "../firebase";
-import { postMessage, putUserIdea } from "./api";
+import { postMessage, putUserIdea, wakeProject } from "./api";
 import { buildLoopList, defaultSelectedLoop, loopArgFor, loopIsRunning, effectiveProjectStatus } from "./loopView";
 import { useLoopTrend } from "./useLoopTrend";
 import { buildTrend } from "./trendView";
@@ -119,7 +119,10 @@ export function ProjectDetail() {
         : project.data === null ? <EmptyState message="Project not found." />
         : (
           <>
-            {project.data && <ProjectHeader project={project.data} status={projStatus} />}
+            {project.data && (
+              <ProjectHeader project={project.data} status={projStatus}
+                onRestart={() => wakeProject(teamId, slug)} />
+            )}
             <Tabs active={tab} onChange={setTab} />
             {dataError && <ErrorNote message={dataError} />}
 

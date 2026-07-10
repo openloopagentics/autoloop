@@ -1594,6 +1594,16 @@ describe("relaunch decisions (pure)", () => {
     expect(decideWake({ lockState: "live-other", loopStatus: "paused", hasPendingMessages: false, hasOpenComments: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "running", hasPendingMessages: false, hasOpenComments: true }).wake).toBe(false);
   });
+
+  it("decideWake: an explicit dashboard restart request wakes ANY loop status (stuck included) — only a live lock gates it", () => {
+    // stuck: zombie 'running' with a dead session; blocked; even no loop at all
+    expect(decideWake({ lockState: "none", loopStatus: "running", hasPendingMessages: false, wakeRequested: true }).wake).toBe(true);
+    expect(decideWake({ lockState: "dead", loopStatus: "blocked", hasPendingMessages: false, wakeRequested: true }).wake).toBe(true);
+    expect(decideWake({ lockState: "none", loopStatus: undefined, hasPendingMessages: false, wakeRequested: true }).wake).toBe(true);
+    // a genuinely live session still wins — restart never kills or duplicates it
+    expect(decideWake({ lockState: "live-other", loopStatus: "paused", hasPendingMessages: false, wakeRequested: true }).wake).toBe(false);
+    expect(decideWake({ lockState: "ours", loopStatus: "running", hasPendingMessages: false, wakeRequested: true }).wake).toBe(false);
+  });
 });
 
 describe("parseEnvFile / loadAutoloopEnv (~/.autoloop/env)", () => {
@@ -1757,6 +1767,38 @@ describe("hook wake", () => {
     const s = setup();
     await run(["hook", "wake"], deps(s, fetchFor("paused", [], [])));
     expect(s.spawned.length).toBe(0);
+  });
+
+  // Route GETs like fetchFor, but the project carries wakeRequestedAt and non-GET calls are captured.
+  const fetchRestart = (loopStatus: string, posts: string[]) => async (url: string, init?: { method?: string }) => {
+    if (init?.method && init.method !== "GET") { posts.push(url); return { ok: true, status: 200, json: async () => ({ ok: true }) }; }
+    return {
+      ok: true, status: 200,
+      json: async () => url.includes("/comments")
+        ? { ok: true, comments: [] }
+        : url.endsWith("/messages")
+        ? { ok: true, messages: [] }
+        : { ok: true, state: { loop: { id: "l1", goal: "g", order: 1, status: loopStatus }, project: { slug: "web", currentLoopId: "l1", wakeRequestedAt: { _seconds: 1 } }, phases: [], tasks: [], scenarios: [], openBugs: [], pendingMessages: [] } },
+    };
+  };
+
+  it("dashboard restart: wakes a STUCK (running, dead-lock) loop when wakeRequestedAt is set, acking first", async () => {
+    const s = setup();
+    writeFileSync(s.lockFile, JSON.stringify({ pid: 111 })); // dead session left the lock behind
+    const posts: string[] = [];
+    expect(await run(["hook", "wake"], deps(s, fetchRestart("running", posts)))).toBe(0);
+    expect(s.spawned.length).toBe(1);
+    expect(existsSync(s.lockFile)).toBe(false);                       // stale lock stolen
+    expect(posts.some((u) => u.endsWith("/projects/web/wake-ack"))).toBe(true); // cleared before launch
+  });
+
+  it("dashboard restart: a LIVE session blocks the restart — no spawn, no ack (request stays visible)", async () => {
+    const s = setup();
+    writeFileSync(s.lockFile, JSON.stringify({ pid: 111 }));
+    const posts: string[] = [];
+    await run(["hook", "wake"], deps(s, fetchRestart("running", posts), { isAlive: () => true }));
+    expect(s.spawned.length).toBe(0);
+    expect(posts.length).toBe(0);
   });
 
   it("treats a comments-probe network failure as no open comments (messages behavior unchanged)", async () => {
