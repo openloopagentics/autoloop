@@ -8,6 +8,21 @@ struct ProjectRow: Identifiable, Equatable {
     var id: String { "\(teamId)/\(project.slug)" }
 }
 
+/// Dashboard quick-glance filter: what's running vs the full list (one tap away).
+enum ProjectFilter: String, CaseIterable, Identifiable {
+    case running = "Running"
+    case all = "All"
+    var id: String { rawValue }
+}
+
+/// Filters on the STORED project status (the loop keeps it current). The per-row badge
+/// still shows the loop-derived effective status, so a zombie loop surfaces under
+/// Running with a non-running badge — on purpose: it needs attention. Mirrors web's
+/// TeamSection filter.
+func visibleRows(_ rows: [ProjectRow], filter: ProjectFilter) -> [ProjectRow] {
+    filter == .all ? rows : rows.filter { $0.project.status == "running" }
+}
+
 @MainActor
 final class DashboardStore: ObservableObject {
     @Published var rows: [ProjectRow] = []
@@ -78,9 +93,10 @@ final class DashboardStore: ObservableObject {
         teams.first { $0.teamId == teamId }?.role
     }
 
-    /// Mirrors DashboardHome.tsx: owners and managers may delete projects.
+    /// Mirrors DashboardHome.tsx: owners and admins may delete projects.
+    /// ("manager" is not a real role — the vocabulary is owner|admin|member.)
     func canDelete(teamId: String) -> Bool {
         let r = role(forTeam: teamId)
-        return r == "owner" || r == "manager"
+        return r == "owner" || r == "admin"
     }
 }
