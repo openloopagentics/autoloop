@@ -626,6 +626,12 @@ ul { margin: 0; padding: 0; list-style: none; }
 .pcard-phase-meta { font-size: 11px; color: var(--fg-meta); }
 .pcard-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border-soft); margin-top: auto; }
 .pcard-slug { font-size: 11px; color: var(--fg-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Team label on the tile (single-grid dashboard, no per-team sections) */
+.pcard-team {
+  font-size: 10.5px; color: var(--fg-soft); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-full); padding: 1px 8px; white-space: nowrap;
+  letter-spacing: .02em; flex-shrink: 0;
+}
 
 /* ==========================================================================
    PROJECT DETAIL
