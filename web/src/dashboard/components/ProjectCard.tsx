@@ -11,8 +11,9 @@ const TrashIcon = () => (
   </svg>
 );
 
-export function ProjectCard({ teamId, project, status, onDelete }: {
+export function ProjectCard({ teamId, project, status, onDelete, teamName }: {
   teamId: string; project: Project; status?: string; onDelete?: () => void;
+  teamName?: string;  // small label on the tile (single-grid dashboard)
 }) {
   const shown = status ?? project.status;
   const alarm = shown === "blocked" || shown === "failed";
@@ -30,6 +31,7 @@ export function ProjectCard({ teamId, project, status, onDelete }: {
         </div>
         <div className="pcard-foot">
           <span className="pcard-slug mono">{project.slug}</span>
+          {teamName && <span className="pcard-team">{teamName}</span>}
         </div>
       </Link>
       {onDelete && (

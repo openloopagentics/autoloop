@@ -1,33 +1,32 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMyTeams, useTeam, useTeamProjects } from "./hooks";
-import { TeamSection, type ProjectFilter } from "./components/TeamSection";
+import { useMyTeams } from "./hooks";
+import { TeamTiles, type ProjectFilter } from "./components/TeamTiles";
 import { Spinner } from "./components/Spinner";
 import { ErrorNote } from "./components/ErrorNote";
 import { EmptyState } from "./components/EmptyState";
 import { NewProjectForm } from "./components/edit/NewProjectForm";
 import { putProject, deleteProject } from "./api";
-import type { TeamRef } from "./types";
 
-function TeamSectionContainer({ teamRef, onDeleteProject, filter, onShowAll }: {
-  teamRef: TeamRef;
-  onDeleteProject?: (slug: string) => void;
-  filter: ProjectFilter;
-  onShowAll: () => void;
+type Counts = { visible: number; total: number };
+
+/** The single note under the grid: empty / all-filtered / partly-filtered. Pure. */
+export function GridNote({ counts, teamCount, filter, onShowAll }: {
+  counts: Record<string, Counts>; teamCount: number; filter: ProjectFilter; onShowAll: () => void;
 }) {
-  const team = useTeam(teamRef.teamId);
-  const projects = useTeamProjects(teamRef.teamId);
+  // Only speak once every team has reported, so we never flash "no projects".
+  if (Object.keys(counts).length < teamCount) return null;
+  const all = Object.values(counts);
+  const total = all.reduce((n, c) => n + c.total, 0);
+  const visible = all.reduce((n, c) => n + c.visible, 0);
+  const hidden = total - visible;
+  if (total === 0) return <EmptyState message="No projects yet" />;
+  if (hidden === 0) return null;
+  const showAll = <button type="button" className="btn-link" onClick={onShowAll}>Show all</button>;
   return (
-    <TeamSection
-      teamId={teamRef.teamId}
-      team={team.data ?? {}}
-      projects={projects.data}
-      loading={team.loading || projects.loading}
-      error={team.error ?? projects.error}
-      onDeleteProject={onDeleteProject}
-      filter={filter}
-      onShowAll={onShowAll}
-    />
+    <p className="team-filter-note dim">
+      {visible === 0 ? <>No running projects · {hidden} hidden {showAll}</> : <>{hidden} hidden {showAll}</>}
+    </p>
   );
 }
 
@@ -37,6 +36,11 @@ export function DashboardHome() {
   const [showNew, setShowNew] = useState(false);
   // Quick glance at what's running; the full list is one tap away. Defaults to running.
   const [filter, setFilter] = useState<ProjectFilter>("running");
+  const [counts, setCounts] = useState<Record<string, Counts>>({});
+  const onCounts = useCallback((teamId: string, c: Counts) => {
+    setCounts((prev) => (prev[teamId]?.visible === c.visible && prev[teamId]?.total === c.total
+      ? prev : { ...prev, [teamId]: c }));
+  }, []);
 
   async function createProject({ teamId, slug, title }: { teamId: string; slug: string; title: string }) {
     await putProject(teamId, slug, { title });
@@ -74,22 +78,27 @@ export function DashboardHome() {
       {loading ? <Spinner />
         : error ? <ErrorNote message={error} />
         : teams.length === 0 ? <EmptyState message="You're not on a team yet." />
-        : teams.map((t) => {
-            const canDelete = t.role === "owner" || t.role === "admin";
-            async function handleDelete(slug: string) {
-              if (!window.confirm(`Delete project "${slug}"? This cannot be undone.`)) return;
-              try { await deleteProject(t.teamId, slug); } catch (e) { alert((e as Error).message); }
-            }
-            return (
-              <TeamSectionContainer
-                key={t.teamId}
-                teamRef={t}
-                onDeleteProject={canDelete ? handleDelete : undefined}
-                filter={filter}
-                onShowAll={() => setFilter("all")}
-              />
-            );
-          })}
+        : <>
+            <div className="pgrid">
+              {teams.map((t) => {
+                const canDelete = t.role === "owner" || t.role === "admin";
+                async function handleDelete(slug: string) {
+                  if (!window.confirm(`Delete project "${slug}"? This cannot be undone.`)) return;
+                  try { await deleteProject(t.teamId, slug); } catch (e) { alert((e as Error).message); }
+                }
+                return (
+                  <TeamTiles
+                    key={t.teamId}
+                    teamRef={t}
+                    filter={filter}
+                    onCounts={onCounts}
+                    onDeleteProject={canDelete ? handleDelete : undefined}
+                  />
+                );
+              })}
+            </div>
+            <GridNote counts={counts} teamCount={teams.length} filter={filter} onShowAll={() => setFilter("all")} />
+          </>}
     </div>
   );
 }
