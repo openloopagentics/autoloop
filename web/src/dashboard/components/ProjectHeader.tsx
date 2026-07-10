@@ -1,8 +1,28 @@
+import { useState } from "react";
 import { StatusBadge } from "./StatusBadge";
 import type { Project } from "../types";
 
-export function ProjectHeader({ project, status }: { project: Project; status?: string }) {
+/** Restart is offered whenever the loop isn't verifiably alive — i.e. the EFFECTIVE
+ *  status (loop-derived, zombie-aware) is anything but "running". */
+export function canRestart(effectiveStatus: string | undefined): boolean {
+  return effectiveStatus !== "running";
+}
+
+export function ProjectHeader({ project, status, onRestart }: {
+  project: Project; status?: string;
+  onRestart?: () => Promise<void>;   // "Restart loop" → POST /wake; the host wake job picks it up ≤5 min
+}) {
   const shown = status ?? project.status;
+  const requested = !!project.wakeRequestedAt;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function restart() {
+    if (!onRestart) return;
+    setBusy(true); setError(null);
+    try { await onRestart(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Restart failed"); }
+    finally { setBusy(false); }
+  }
   return (
     <header className="proj-head">
       <div className="proj-head-top">
@@ -12,8 +32,18 @@ export function ProjectHeader({ project, status }: { project: Project; status?: 
             <code className="chip">{project.slug}</code>
           </div>
         </div>
-        {shown && <StatusBadge status={shown} />}
+        <div className="proj-head-right">
+          {onRestart && canRestart(shown) && (
+            requested
+              ? <span className="chip restart-pending" title="The host wake job polls every ~5 minutes">restart requested</span>
+              : <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => void restart()}>
+                  {busy ? "Requesting…" : "Restart loop"}
+                </button>
+          )}
+          {shown && <StatusBadge status={shown} />}
+        </div>
       </div>
+      {error && <p className="team-filter-note dim" role="alert">{error}</p>}
 
       {project.design?.format === "url" ? (
         <a href={project.design.content} target="_blank" rel="noopener" className="doc-link card">

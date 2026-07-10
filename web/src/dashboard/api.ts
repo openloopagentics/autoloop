@@ -57,6 +57,12 @@ export async function postMessage(teamId: string, slug: string, text: string): P
   await ok(await fetch(u(teamId, slug, "/messages"), { method: "POST", headers: await headers(), body: JSON.stringify({ text }) }));
 }
 
+/** "Restart loop": stamps wakeRequestedAt; the project's host-side wake job relaunches
+ *  a headless driver on its next poll (≤5 min) if no live session holds the lock. */
+export async function wakeProject(teamId: string, slug: string): Promise<void> {
+  await ok(await fetch(u(teamId, slug, "/wake"), { method: "POST", headers: await headers(), body: JSON.stringify({}) }));
+}
+
 export async function postComment(teamId: string, slug: string, body: { pageId: string; anchor: { exact: string; prefix: string; suffix: string }; body: string; severity: "advisory" | "blocking"; targetScenarioId?: string }): Promise<void> {
   await ok(await fetch(u(teamId, slug, "/comments"), { method: "POST", headers: await headers(), body: JSON.stringify(body) }));
 }

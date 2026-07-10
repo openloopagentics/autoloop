@@ -475,9 +475,13 @@ export function decideSessionEndRelaunch({ lockState, resumable, backoff }) {
 }
 
 /** Pure decision for the wake job: paused loop + pending work + no live lock. Pending work is a
- *  pending user message OR an open steering comment — either should wake a parked loop. */
-export function decideWake({ lockState, loopStatus, hasPendingMessages, hasOpenComments }) {
+ *  pending user message OR an open steering comment — either should wake a parked loop.
+ *  An explicit dashboard restart (wakeRequested) wakes regardless of loop status — that is the
+ *  recovery path for STUCK loops (zombie "running" with a dead session, blocked, etc.); only a
+ *  genuinely live session gates it. */
+export function decideWake({ lockState, loopStatus, hasPendingMessages, hasOpenComments, wakeRequested }) {
   if (lockState === "live-other" || lockState === "ours") return { wake: false, reason: "a live session holds the lock" };
+  if (wakeRequested) return { wake: true, reason: "dashboard restart requested — waking regardless of loop status" };
   if (loopStatus !== "paused") return { wake: false, reason: `loop status is ${loopStatus ?? "none"} — wake only resumes paused loops` };
   if (!hasPendingMessages && !hasOpenComments) return { wake: false, reason: "no pending user messages or open comments" };
   return { wake: true, reason: "paused loop with pending work (message or open comment) and no live lock" };
@@ -938,9 +942,19 @@ export async function run(argv, deps = {}) {
         const cmts = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments?status=open`, { env: henv, fetchImpl });
         const hasOpenComments = !!(cmts?.ok && Array.isArray(cmts.body?.comments) && cmts.body.comments.length > 0);
 
-        const d = decideWake({ lockState, loopStatus, hasPendingMessages, hasOpenComments });
-        hookLog(henv, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} comments=${hasOpenComments} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
+        // dashboard "restart loop": the user endpoint stamps wakeRequestedAt on the project doc,
+        // which rides the state fetch above.
+        const wakeRequested = !!fetched?.state?.project?.wakeRequestedAt;
+
+        const d = decideWake({ lockState, loopStatus, hasPendingMessages, hasOpenComments, wakeRequested });
+        hookLog(henv, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} comments=${hasOpenComments} restart=${wakeRequested} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
         if (!d.wake) return 0;
+        if (wakeRequested) {
+          // ack BEFORE launching so the next 5-min poll doesn't spawn a duplicate driver;
+          // best-effort — if the ack fails, the lock guard still prevents duplicates.
+          await report({ method: "POST", url: `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/wake-ack`, body: {} },
+            { env: henv, fetchImpl, err, strict: false, teamId: cfg.teamId });
+        }
         if (lockState === "dead") rmSync(lockFile);    // steal the stale lock; the new session re-acquires
         launchHeadless({ cwd, slug: cfg.projectSlug, env: henv, spawnImpl, log });
         return 0;

@@ -464,7 +464,12 @@ Then **end the session**. The launchd wake job (every 5 min) relaunches a headle
 driver when a dashboard message OR an open steering comment arrives for the paused
 loop; the new session's Step 0 resume check rebuilds the plan and acts on it. The
 SessionEnd hook will see the loop is `paused` and correctly NOT relaunch (pause is
-woken by pending messages or open comments only).
+woken by pending messages, open comments, or a dashboard restart only).
+
+The dashboard's **Restart loop** button stamps `wakeRequestedAt` on the project; the
+wake job honors it for ANY loop status — including a stuck/zombie `running` loop whose
+session died — as long as no live session holds the lock. It acks the request
+(`wake-ack`) before launching, so a request is consumed exactly once.
 
 **How the user actually stops Autoloop:** set the loop to a terminal status
 (send a shutdown message, or `autoloop loop set <loopId> --status cancelled`) — or

@@ -10,6 +10,7 @@ import { applyDocumentUpsert, deleteDocument } from "../services/documents.js";
 import { createMessage } from "../services/messages.js";
 import { upsertIdea } from "../services/ideas.js";
 import { rejectVisionChange } from "../services/visionChanges.js";
+import { requestWake } from "../services/wake.js";
 import { createComment, acceptComment } from "../services/comments.js";
 
 export const userProjectsRouter = Router({ mergeParams: true });
@@ -192,6 +193,18 @@ userProjectsRouter.post("/:slug/comments/:id/accept", async (req, res, next) => 
     const { teamId, slug, id } = req.params as Record<string, string>;
     if (!id || id.trim() === "") throw new AppError(400, "validation", "invalid id");
     await acceptComment(teamId, slug, id, (req as { uid?: string }).uid ?? "");
+    res.status(200).json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// wake: POST /:slug/wake — dashboard "restart loop" for stuck/paused loops.
+// Deliberately NO assertWebEditable (steering precedent): restarting must work
+// while the loop owns the project. The host-side wake job clears the flag.
+userProjectsRouter.post("/:slug/wake", async (req, res, next) => {
+  try {
+    ids(req, ["teamId", "slug"]);
+    const { teamId, slug } = req.params as Record<string, string>;
+    await requestWake(teamId, slug, (req as { uid?: string }).uid ?? "");
     res.status(200).json({ ok: true });
   } catch (err) { next(err); }
 });
