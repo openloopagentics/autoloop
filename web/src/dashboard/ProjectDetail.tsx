@@ -1,16 +1,16 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   useProject, usePhases, useCommits, useGoals, useScenarios, useTasks,
-  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas,
+  useScores, useTestRuns, useRevisions, useDocuments, useTaskCommits, useLoops, useBugs, useAllBugs, useAllScores, useAllTestRuns, useMessages, useVerifications, useIdeas, useVisionChanges, usePages, useComments, useMyTeams,
 } from "./hooks";
+import { auth } from "../firebase";
 import { postMessage, putUserIdea } from "./api";
-import { buildLoopList, defaultSelectedLoop, loopArgFor, loopIsRunning, effectiveProjectStatus, MAIN_ID } from "./loopView";
+import { buildLoopList, defaultSelectedLoop, loopArgFor, loopIsRunning, effectiveProjectStatus } from "./loopView";
 import { useLoopTrend } from "./useLoopTrend";
-import type { LoopSlice } from "./mapTimeline";
 import { buildTrend } from "./trendView";
 import { ProjectHeader } from "./components/ProjectHeader";
-import { Tabs, isTabKey, type TabKey } from "./components/Tabs";
+import { Tabs, isTabKey, wikiWideLayout, type TabKey } from "./components/Tabs";
 import { TaskItem } from "./components/TaskItem";
 import { PhaseItem } from "./components/PhaseItem";
 import { Spinner } from "./components/Spinner";
@@ -47,6 +47,9 @@ export function ProjectDetail() {
   const goals = useGoals(teamId, slug);
   const scenarios = useScenarios(teamId, slug);
   const documents = useDocuments(teamId, slug);
+  const pages = usePages(teamId, slug);
+  const comments = useComments(teamId, slug);
+  const teams = useMyTeams();
 
   // Project-direct reads: detect legacy data for `main` synthesis.
   const directPhases = usePhases(teamId, slug);
@@ -73,32 +76,27 @@ export function ProjectDetail() {
   const allTestRuns = useAllTestRuns(teamId, slug); // all test runs across every loop
   const messages = useMessages(teamId, slug);
   const ideas = useIdeas(teamId, slug);
+  const visionChanges = useVisionChanges(teamId, slug);
 
   const trend = useLoopTrend(teamId, slug, hasProjectDirectData);
   // Empty until every slice arrives — TrendsStrip hides itself below 2 points,
   // so partial fan-out data never renders a misleading half-trend.
   const trendPoints = trend.loading ? [] : buildTrend(trend.data, scenarios.data);
 
-  // Map tab replay data: undefined until the trend fan-out has fully arrived
-  // (MapTab hides the scrubber when slices === undefined).
-  const mapSlices: LoopSlice[] | undefined = useMemo(
-    () => trend.loading ? undefined
-        : trend.data.map((d) => ({
-            loopId: d.loop.id === MAIN_ID ? undefined : d.loop.id,
-            tasks: d.tasks, bugs: d.bugs, scores: d.scores, testRuns: d.testRuns,
-          })),
-    [trend.loading, trend.data]);
-
   // loopIsRunning applies the zombie rule — a loop stuck "running" but untouched for 3+ hours
   // does not claim an agent is listening.
   const agentActive = loops.data.some(loopIsRunning) || (loops.data.length === 0 && project.data?.status === "running");
   const editable = Boolean(project.data) && project.data?.visionOwner !== "loop";
+  const currentUid = auth.currentUser?.uid;
+  // Owner/admin on THIS team may accept any comment (backend enforces; UI mirrors).
+  const myRole = teams.data.find((t) => t.teamId === teamId)?.role;
+  const isAdmin = myRole === "owner" || myRole === "admin";
   const renderLegacyPhase = (p: Phase) => <LegacyPhase teamId={teamId} slug={slug} phase={p} loopId={loopArg} />;
   const renderTask = (t: Task, isCurrent: boolean) => <PlanTask teamId={teamId} slug={slug} task={t} loopId={loopArg} isCurrent={isCurrent} />;
 
   // Surface (don't swallow) load errors from any of the project's data sources.
   const dataError = loops.error || phases.error || tasks.error || scores.error || testRuns.error
-    || revisions.error || verifications.error || bugs.error || loopBugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || trend.error || null;
+    || revisions.error || verifications.error || bugs.error || loopBugs.error || allTestRuns.error || goals.error || scenarios.error || documents.error || ideas.error || trend.error || pages.error || comments.error || null;
   // Show a spinner only on a source's FIRST load (loading + still empty), so switching
   // loops — which keeps prior data until the new snapshot arrives — doesn't flash.
   const tabLoading =
@@ -109,10 +107,12 @@ export function ProjectDetail() {
     : tab === "ideas" ? (ideas.loading && ideas.data.length === 0)
     : tab === "messages" ? (messages.loading && messages.data.length === 0)
     : tab === "map" ? (goals.loading && goals.data.length === 0)
-    : (scenarios.loading && scenarios.data.length === 0); // vision
+    : (scenarios.loading && scenarios.data.length === 0) || (pages.loading && pages.data.length === 0); // vision (pages gate the wiki)
+
+  const wideLayout = wikiWideLayout(tab, pages.data.length > 0);
 
   return (
-    <div className="main main--narrow">
+    <div className={`main${wideLayout ? "" : " main--narrow"}`}>
       <Link to="/dashboard" className="back">← back to dashboard</Link>
       {project.loading ? <Spinner />
         : project.error ? <ErrorNote message={project.error} />
@@ -128,12 +128,13 @@ export function ProjectDetail() {
                 {tab === "dashboard" && (
                   <DashboardTab loops={loopList} selected={selected} status={projStatus}
                     phases={phases.data} tasks={tasks.data} scenarios={scenarios.data} scores={scores.data} testRuns={testRuns.data}
-                    trendPoints={trendPoints} />
+                    verifications={verifications.data} trendPoints={trendPoints} />
                 )}
                 {tab === "vision" && (
                   <VisionTab teamId={teamId} slug={slug} editable={editable}
                     goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data} documents={documents.data}
-                    verifications={verifications.data} />
+                    verifications={verifications.data} pages={pages.data} comments={comments.data}
+                    currentUid={currentUid} isAdmin={isAdmin} />
                 )}
                 {tab === "loops" && (
                   <LoopsTab teamId={teamId} slug={slug} loops={loopList} scenarios={scenarios.data}
@@ -144,11 +145,11 @@ export function ProjectDetail() {
                 {tab === "tests" && <TestsTab scenarios={scenarios.data} testRuns={allTestRuns.data} />}
                 {tab === "bugs" && <BugsTab bugs={bugs.data} />}
                 {tab === "map" && (
-                  <MapTab loops={loopList} selectedId={selectedId} onSelect={setPicked}
+                  <MapTab teamId={teamId} slug={slug} loops={loopList} selectedId={selectedId} loopArg={loopArg} onSelect={setPicked}
                     goals={goals.data} scenarios={scenarios.data} scores={allScores.data} testRuns={allTestRuns.data}
                     tasks={tasks.data} bugs={loopBugs.data} currentTaskId={selected?.currentTaskId}
-                    verifications={verifications.data} slices={mapSlices} projectCreatedAt={project.data?.createdAt}
-                    productMap={documents.data.find((d) => d.id === "product-map")?.content} />
+                    verifications={verifications.data} revisions={revisions.data} visionChanges={visionChanges.data}
+                    ideas={ideas.data} projectCreatedAt={project.data?.createdAt} />
                 )}
                 {tab === "ideas" && <IdeasTab ideas={ideas.data} onPut={(id, body) => putUserIdea(teamId, slug, id, body)} />}
                 {tab === "messages" && <MessagesTab teamId={teamId} slug={slug} messages={messages.data} onSend={(t) => postMessage(teamId, slug, t)} agentActive={agentActive} />}

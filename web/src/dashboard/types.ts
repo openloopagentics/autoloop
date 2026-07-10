@@ -1,4 +1,6 @@
-export interface TeamRef { teamId: string; role: string; }
+import type { Role } from "../teams/types";
+
+export interface TeamRef { teamId: string; role: Role; }
 export interface Team { name?: string; }
 export interface Project { slug: string; title?: string; status?: string; visionOwner?: "web" | "loop"; currentPhaseId?: string | null; currentTaskId?: string | null; currentLoopId?: string | null; design?: { format: "markdown" | "url"; content: string } | null; createdAt?: unknown; }
 
@@ -27,13 +29,23 @@ export interface Verification {
   verdict?: "confirmed" | "refuted"; summary?: string; by?: string; createdAt?: unknown;
 }
 export interface RevisionChange { op: string; taskId: string; [k: string]: unknown; }
-export interface Revision { id: string; trigger?: { scenarioId?: string; reason?: string }; changes?: RevisionChange[]; }
+export interface Revision { id: string; trigger?: { scenarioId?: string; reason?: string }; changes?: RevisionChange[]; createdAt?: unknown; }
 export interface DocumentRec { id: string; kind?: string; title?: string; format?: "markdown" | "url" | "json"; content?: string; }
 export interface VisionChange {
   id: string; op?: "upsert-goal" | "upsert-scenario"; targetId?: string;
   payload?: Record<string, unknown>; prior?: Record<string, unknown> | null;
   reason?: string; originLoopId?: string; status?: "applied" | "rejected";
   createdAt?: unknown; decidedAt?: unknown;
+}
+export interface Decision {
+  id: string;
+  kind?: "goal-pick" | "approach" | "stuck";
+  summary?: string;
+  rationale?: string;
+  alternatives?: string[];
+  refs?: { scenarioIds?: string[]; taskIds?: string[]; commitShas?: string[] };
+  by?: string;
+  createdAt?: unknown;
 }
 export interface Bug {
   id: string; title?: string; description?: string; scenarioId?: string; taskId?: string;
@@ -48,6 +60,15 @@ export interface Idea {
   createdAt?: unknown; updatedAt?: unknown; decidedAt?: unknown;
 }
 export interface Message { id: string; text: string; author: "user" | "agent"; status?: "pending" | "delivered"; createdAt?: unknown; deliveredAt?: unknown; }
+export interface Page { id: string; path?: string; title?: string; order?: number; markdown?: string; contentHash?: string; goalIds?: string[]; scenarioIds?: string[]; updatedAt?: unknown; }
+export interface CommentThreadEntry { by: "user" | "agent"; text: string; at?: unknown; }
+export interface PageComment {
+  id: string; pageId?: string; anchor?: { exact: string; prefix?: string; suffix?: string };
+  targetScenarioId?: string; body?: string; author?: string;
+  severity?: "advisory" | "blocking"; status?: "open" | "resolved" | "declined";
+  accepted?: boolean; acceptedBy?: string; thread?: CommentThreadEntry[];
+  createdAt?: unknown; resolvedAt?: unknown;
+}
 
 export type SessionEntry =
   | { kind: "user";      text: string; ts: number }

@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { usePhases, useScores, useTestRuns } from "../hooks";
+import { usePhases, useScores, useTestRuns, useVerifications } from "../hooks";
 import { phaseProgress, loopArgFor, groupLoopRuns, type SelectableLoop } from "../loopView";
 import { summarize } from "../scenarioState";
 import { LoopRow } from "./LoopRow";
@@ -12,10 +12,11 @@ function LoopRowContainer({ teamId, slug, loop, scenarios, selected, expanded, o
   const phases = usePhases(teamId, slug, arg);
   const scores = useScores(teamId, slug, arg);
   const testRuns = useTestRuns(teamId, slug, arg);
+  const verifications = useVerifications(teamId, slug, arg);
   return (
     <LoopRow loop={loop} selected={selected} expanded={expanded}
       progress={phaseProgress(phases.data)}
-      met={summarize(scenarios, scores.data, testRuns.data)}
+      met={summarize(scenarios, scores.data, testRuns.data, verifications.data)}
       onSelect={onSelect} />
   );
 }

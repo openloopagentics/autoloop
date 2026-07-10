@@ -621,6 +621,302 @@ describe("event + vision verbs (request shapes)", () => {
   });
 });
 
+describe("vision sync / vision migrate verbs", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {} });
+    return dir;
+  }
+
+  // A vision/ dir with two valid pages: overview + a goal page carrying one goal + one scenario.
+  function writeVisionDir(dir: string, subdir = "vision") {
+    const vdir = join(dir, subdir);
+    mkdirSync(vdir, { recursive: true });
+    writeFileSync(join(vdir, "overview.md"), [
+      "---",
+      "id: overview",
+      "title: Overview",
+      "order: 0",
+      "---",
+      "",
+      "The project overview.",
+      "",
+    ].join("\n"));
+    writeFileSync(join(vdir, "g1.md"), [
+      "---",
+      "id: g1",
+      "title: Ship it",
+      "order: 1",
+      "---",
+      "",
+      "Ship the thing.",
+      "",
+      "```goal",
+      JSON.stringify({ id: "g1", title: "Ship it", order: 1 }),
+      "```",
+      "",
+      "Log in works.",
+      "",
+      "```scenario",
+      JSON.stringify({ id: "s1", goalId: "g1", title: "Login", test: { command: "npm test -- login" }, rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } }),
+      "```",
+      "",
+    ].join("\n"));
+    return vdir;
+  }
+
+  // Route mock: GET /pages returns `serverPages`; PUT/DELETE record + succeed.
+  function cap(serverPages: { id: string; contentHash: string }[] = []) {
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => {
+      const method = init?.method ?? "GET";
+      c.calls.push({ url, method, init });
+      if (method === "GET" && url.endsWith("/pages")) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, pages: serverPages }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, id: "01XYZ" }) };
+    };
+    return c;
+  }
+  const base = (dir: string, c: any, errsOut: string[] = []) => ({
+    cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errsOut.push(m), fetchImpl: c.fetchImpl,
+  });
+  const puts = (c: any) => c.calls.filter((x: any) => x.method === "PUT");
+  const deletes = (c: any) => c.calls.filter((x: any) => x.method === "DELETE");
+
+  it("sync PUTs new pages (body carries contentHash/goalIds/scenarioIds, no id) + upserts goals/scenarios (test stripped)", async () => {
+    const dir = initDir(); writeVisionDir(dir); const c = cap([]);
+    const code = await run(["vision", "sync"], base(dir, c));
+    expect(code).toBe(0);
+    const pagePuts = puts(c).filter((x: any) => x.url.includes("/pages/"));
+    expect(pagePuts.map((x: any) => x.url).sort()).toEqual([
+      "http://api/v1/teams/acme/projects/web/pages/g1",
+      "http://api/v1/teams/acme/projects/web/pages/overview",
+    ]);
+    const g1Body = JSON.parse(pagePuts.find((x: any) => x.url.endsWith("/pages/g1")).init.body);
+    expect(g1Body).toMatchObject({ path: "g1.md", title: "Ship it", order: 1, goalIds: ["g1"], scenarioIds: ["s1"] });
+    expect(g1Body.contentHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(g1Body.markdown).toContain("```goal");
+    expect("id" in g1Body).toBe(false);
+    // goal + scenario upserts through the existing endpoints
+    const urls = c.calls.map((x: any) => x.url);
+    expect(urls).toContain("http://api/v1/teams/acme/projects/web/goals/g1");
+    expect(urls).toContain("http://api/v1/teams/acme/projects/web/scenarios/s1");
+    const scnBody = JSON.parse(puts(c).find((x: any) => x.url.endsWith("/scenarios/s1")).init.body);
+    expect("test" in scnBody).toBe(false); // loop-local test stripped before upload
+    expect(scnBody).toMatchObject({ goalId: "g1", title: "Login" });
+  });
+
+  it("sync skips page PUTs whose server hash matches, but still upserts goals/scenarios (idempotent)", async () => {
+    const dir = initDir(); const vdir = writeVisionDir(dir);
+    // Server already holds the exact current hashes -> zero page PUTs.
+    const { parsePages, readVisionDir } = await import("../../cli/vision-pages.mjs");
+    const parsed = parsePages(readVisionDir(vdir));
+    const serverPages = parsed.pages.map((p: any) => ({ id: p.id, contentHash: p.contentHash }));
+    const c = cap(serverPages);
+    const code = await run(["vision", "sync"], base(dir, c));
+    expect(code).toBe(0);
+    expect(puts(c).filter((x: any) => x.url.includes("/pages/"))).toHaveLength(0);
+    expect(deletes(c)).toHaveLength(0);
+    // goals/scenarios still upserted
+    expect(c.calls.map((x: any) => x.url)).toContain("http://api/v1/teams/acme/projects/web/goals/g1");
+    expect(c.calls.map((x: any) => x.url)).toContain("http://api/v1/teams/acme/projects/web/scenarios/s1");
+  });
+
+  it("sync DELETEs server pages not present on disk", async () => {
+    const dir = initDir(); writeVisionDir(dir);
+    const c = cap([{ id: "stale", contentHash: "deadbeef" }]);
+    const code = await run(["vision", "sync"], base(dir, c));
+    expect(code).toBe(0);
+    expect(deletes(c).map((x: any) => x.url)).toContain("http://api/v1/teams/acme/projects/web/pages/stale");
+  });
+
+  it("sync uploads NOTHING on a parse error (exit 1, fetchImpl never called)", async () => {
+    const dir = initDir();
+    const vdir = join(dir, "vision");
+    mkdirSync(vdir, { recursive: true });
+    writeFileSync(join(vdir, "broken.md"), "no frontmatter here\n"); // fails parsePages
+    const errs: string[] = [];
+    const code = await run(["vision", "sync"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toMatch(/broken\.md:\d+:/);
+  });
+
+  it("sync errors (UsageError) when the vision dir is missing / empty", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["vision", "sync"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m),
+      fetchImpl: async () => { throw new Error("should not be called"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/no vision pages found/);
+  });
+
+  it("migrate writes overview.md + one page per goal, round-trips through parsePages, keeps scenario test", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      title: "My Product",
+      goals: [
+        { id: "g1", title: "Ship", order: 1, description: "Ship the thing" },
+        { id: "g2", title: "Grow", order: 2 },
+      ],
+      scenarios: [
+        { id: "s1", goalId: "g1", title: "Login", description: "user logs in", test: { command: "npm test -- login" }, rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } },
+        { id: "s2", goalId: "g2", title: "Signup", rubric: { criteria: [{ id: "c2", name: "C", weight: 1, max: 5 }] } },
+      ],
+    }));
+    const code = await run(["vision", "migrate"], base(dir, cap()));
+    expect(code).toBe(0);
+    const vdir = join(dir, "vision");
+    expect(existsSync(join(vdir, "overview.md"))).toBe(true);
+    expect(existsSync(join(vdir, "g1.md"))).toBe(true);
+    expect(existsSync(join(vdir, "g2.md"))).toBe(true);
+    // migrate output keeps the loop-local test in the scenario block
+    expect(readFileSync(join(vdir, "g1.md"), "utf8")).toContain("npm test -- login");
+    // round-trip: parsing the generated wiki recovers the same goal/scenario ids
+    const { parsePages, readVisionDir } = await import("../../cli/vision-pages.mjs");
+    const parsed = parsePages(readVisionDir(vdir));
+    expect(parsed.ok).toBe(true);
+    expect(parsed.goals.map((g: any) => g.id).sort()).toEqual(["g1", "g2"]);
+    expect(parsed.scenarios.map((s: any) => s.id).sort()).toEqual(["s1", "s2"]);
+    expect(parsed.scenarios.find((s: any) => s.id === "s1").test).toEqual({ command: "npm test -- login" });
+  });
+
+  it("migrate refuses to overwrite an existing vision dir (UsageError)", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({ goals: [], scenarios: [] }));
+    mkdirSync(join(dir, "vision"), { recursive: true });
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); },
+    });
+    expect(code).toBe(1);
+  });
+
+  it("sync exits 1 in strict mode when the GET /pages list fails (HTTP 500)", async () => {
+    const dir = initDir(); writeVisionDir(dir);
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => {
+      const method = init?.method ?? "GET";
+      c.calls.push({ url, method, init });
+      if (method === "GET" && url.endsWith("/pages")) return { ok: false, status: 500, json: async () => ({ ok: false }) };
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    const errs: string[] = [];
+    const code = await run(["vision", "sync", "--strict"], base(dir, c, errs));
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/500/); // surfaces the status
+    // strict abort happens before any write
+    expect(c.calls.filter((x: any) => x.method !== "GET")).toHaveLength(0);
+  });
+
+  it("sync (non-strict) treats a GET /pages failure as an empty server list and re-uploads all pages", async () => {
+    const dir = initDir(); writeVisionDir(dir);
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => {
+      const method = init?.method ?? "GET";
+      c.calls.push({ url, method, init });
+      if (method === "GET" && url.endsWith("/pages")) return { ok: false, status: 500, json: async () => ({ ok: false }) };
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    const code = await run(["vision", "sync"], base(dir, c));
+    expect(code).toBe(0);
+    // every page re-uploaded (server treated as empty)
+    expect(puts(c).filter((x: any) => x.url.includes("/pages/")).map((x: any) => x.url).sort()).toEqual([
+      "http://api/v1/teams/acme/projects/web/pages/g1",
+      "http://api/v1/teams/acme/projects/web/pages/overview",
+    ]);
+    expect(deletes(c)).toHaveLength(0); // no server list => nothing to delete
+  });
+
+  it("migrate FAILS LOUDLY (not exit 0) when a description with an unbalanced fence would swallow a goal block", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      title: "Prod",
+      // g1's description contains a stray ``` opener that, emitted raw, would swallow the ```goal fence.
+      goals: [{ id: "g1", title: "Ship", order: 1, description: "Example:\n```js\nconst x = 1;" }],
+      scenarios: [],
+    }));
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("net"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toMatch(/g1/); // actionable, names the goal
+    expect(errs.join("\n")).not.toMatch(/internal bug/);
+  });
+
+  it("migrate FAILS LOUDLY naming the scenario when a scenario description would swallow its block", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      goals: [{ id: "g1", title: "Ship", order: 1 }],
+      scenarios: [{ id: "s1", goalId: "g1", title: "Login", description: "Example:\n```js\nconst x = 1;", rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } }],
+    }));
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("net"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toMatch(/scenario 's1'/); // names the entity kind + id, not "goal"
+  });
+
+  it("migrate warns and drops an orphan scenario (goalId matches no goal) without failing", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      goals: [{ id: "g1", title: "Ship", order: 1 }],
+      scenarios: [
+        { id: "s1", goalId: "g1", title: "Login", rubric: { criteria: [{ id: "c1", name: "C", weight: 1, max: 5 }] } },
+        { id: "orphan", goalId: "ghost", title: "Nowhere", rubric: { criteria: [{ id: "c2", name: "C", weight: 1, max: 5 }] } },
+      ],
+    }));
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("net"); },
+    });
+    expect(code).toBe(0);
+    expect(errs.join("\n")).toMatch(/orphan/);
+    expect(errs.join("\n")).toMatch(/ghost/);
+    const { parsePages, readVisionDir } = await import("../../cli/vision-pages.mjs");
+    const parsed = parsePages(readVisionDir(join(dir, "vision")));
+    expect(parsed.ok).toBe(true);
+    expect(parsed.scenarios.map((s: any) => s.id)).toEqual(["s1"]); // orphan not emitted
+  });
+
+  it("migrate quotes a numeric/boolean-looking title so it round-trips as a string", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      title: "true",
+      goals: [{ id: "g1", title: "2048", order: 1 }, { id: "g2", title: "null", order: 2 }],
+      scenarios: [],
+    }));
+    const code = await run(["vision", "migrate"], base(dir, cap()));
+    expect(code).toBe(0);
+    const { parsePages, readVisionDir } = await import("../../cli/vision-pages.mjs");
+    const parsed = parsePages(readVisionDir(join(dir, "vision")));
+    expect(parsed.ok).toBe(true);
+    expect(parsed.pages.find((p: any) => p.id === "g1").title).toBe("2048");
+    expect(parsed.pages.find((p: any) => p.id === "g2").title).toBe("null");
+    expect(parsed.pages.find((p: any) => p.id === "overview").title).toBe("true");
+  });
+
+  it("migrate rejects a title containing a double-quote or newline with an actionable UsageError naming the goal", async () => {
+    const dir = initDir();
+    writeFileSync(join(dir, "vision.json"), JSON.stringify({
+      goals: [{ id: "g1", title: 'has "quote"', order: 1 }],
+      scenarios: [],
+    }));
+    const errs: string[] = [];
+    const code = await run(["vision", "migrate"], {
+      cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("net"); },
+    });
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toMatch(/g1/);
+  });
+});
+
 describe("bug add/set verbs", () => {
   function initDir(extra: Record<string, unknown> = {}) {
     const dir = tmp();
@@ -755,6 +1051,114 @@ describe("messages pull/ack/send verbs", () => {
     const code = await run(["messages", "pull", "--check"],
       { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("net"); } });
     expect(code).toBe(1);
+  });
+});
+
+describe("comments pull/reply/resolve verbs", () => {
+  function initDir(extra: Record<string, unknown> = {}) {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentPhaseId: "p1", currentTaskId: "t1", currentLoopId: null, loops: {}, phases: {}, tasks: {}, ...extra });
+    return dir;
+  }
+  const cap = (jsonBody: any = { ok: true }) => {
+    const c: any = { calls: [] };
+    c.fetchImpl = async (url: string, init: any) => { c.calls.push({ url, init }); c.url = url; c.init = init; return { ok: true, status: 200, json: async () => jsonBody }; };
+    return c;
+  };
+  const base = (dir: string, c: any, logsOut: string[] = [], errsOut: string[] = []) => ({
+    cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" },
+    log: (m: string) => logsOut.push(m),
+    err: (m: string) => errsOut.push(m),
+    fetchImpl: c.fetchImpl,
+  });
+
+  it("comments pull GETs project-level /comments?status=open and prints JSON (no loopSeg even with currentLoopId)", async () => {
+    const dir = initDir({ currentLoopId: "l1" });
+    const c = cap({ ok: true, comments: [{ id: "01JXKM8F3XABCDE12345", text: "steer left" }] });
+    const logs: string[] = [];
+    const code = await run(["comments", "pull"], base(dir, c, logs));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/comments?status=open");
+    expect(c.init.method).toBe("GET");
+    // print just the comments array (like `messages pull`), not the {ok,comments} envelope —
+    // pins the render override so it can't silently regress to the whole envelope / default fallback.
+    expect(JSON.parse(logs.join("\n"))).toEqual([{ id: "01JXKM8F3XABCDE12345", text: "steer left" }]);
+  });
+
+  it("comments pull --check exits 0 silently when open comments exist (GET only, never mutates)", async () => {
+    const dir = initDir(); const c = cap({ ok: true, comments: [{ id: "c1", text: "x" }] });
+    const logs: string[] = [];
+    expect(await run(["comments", "pull", "--check"], base(dir, c, logs))).toBe(0);
+    expect(logs.length).toBe(0);
+    expect(c.calls.length).toBe(1);
+    expect(c.calls[0].init.method).toBe("GET");
+    expect(c.calls[0].url).toBe("http://api/v1/teams/acme/projects/web/comments?status=open");
+  });
+
+  it("comments pull --check exits 1 when there are no open comments", async () => {
+    const dir = initDir(); const c = cap({ ok: true, comments: [] });
+    expect(await run(["comments", "pull", "--check"], base(dir, c))).toBe(1);
+  });
+
+  it("comments pull --check exits 1 on a network error", async () => {
+    const dir = initDir();
+    const code = await run(["comments", "pull", "--check"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("net"); } });
+    expect(code).toBe(1);
+  });
+
+  it("comments pull --check exits 1 when the body is a bare array (probe requires the {ok,comments} envelope)", async () => {
+    // Regression guard: the server returns {ok,comments:[...]}, NOT a top-level array. A probe
+    // that read a bare array would exit 1 here too — but this pins that the envelope is required.
+    const dir = initDir(); const c = cap([{ id: "c1", text: "x" }]);
+    expect(await run(["comments", "pull", "--check"], base(dir, c))).toBe(1);
+  });
+
+  it("comments reply POSTs to project-level /comments/:id/reply with {text}", async () => {
+    const dir = initDir({ currentLoopId: "l1" }); const c = cap();
+    const code = await run(["comments", "reply", "01JXKM8F3XABCDE12345", "--text", "on it"], base(dir, c));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/comments/01JXKM8F3XABCDE12345/reply");
+    expect(c.init.method).toBe("POST");
+    expect(JSON.parse(c.init.body)).toMatchObject({ text: "on it" });
+  });
+
+  it("comments reply requires a non-empty id", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["comments", "reply", "--text", "hi"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/id/i);
+  });
+
+  it("comments reply requires --text", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["comments", "reply", "01JXKM8F3XABCDE12345"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/--text/);
+  });
+
+  it("comments resolve POSTs default body {resolution:'resolved'}", async () => {
+    const dir = initDir(); const c = cap();
+    const code = await run(["comments", "resolve", "01JXKM8F3XABCDE12345"], base(dir, c));
+    expect(code).toBe(0);
+    expect(c.url).toBe("http://api/v1/teams/acme/projects/web/comments/01JXKM8F3XABCDE12345/resolve");
+    expect(c.init.method).toBe("POST");
+    const body = JSON.parse(c.init.body);
+    expect(body).toEqual({ resolution: "resolved" });
+  });
+
+  it("comments resolve --declined sends {resolution:'declined'} and passes --note through", async () => {
+    const dir = initDir(); const c = cap();
+    const code = await run(["comments", "resolve", "01JXKM8F3XABCDE12345", "--declined", "--note", "out of scope"], base(dir, c));
+    expect(code).toBe(0);
+    expect(JSON.parse(c.init.body)).toEqual({ resolution: "declined", note: "out of scope" });
+  });
+
+  it("comments resolve requires a non-empty id", async () => {
+    const dir = initDir(); const errs: string[] = [];
+    const code = await run(["comments", "resolve"], { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: (m: string) => errs.push(m), fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+    expect(errs.join(" ")).toMatch(/id/i);
   });
 });
 
@@ -1176,13 +1580,19 @@ describe("relaunch decisions (pure)", () => {
     expect(decideSessionEndRelaunch({ lockState: "ours", resumable: true, backoff: false }).relaunch).toBe(true);
   });
 
-  it("decideWake: wake only when no live lock AND loop is paused AND messages are pending", () => {
+  it("decideWake: wake only when no live lock AND loop is paused AND there is pending work (message OR open comment)", () => {
     expect(decideWake({ lockState: "live-other", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "running", hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: false }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: undefined, hasPendingMessages: true }).wake).toBe(false);
     expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
     expect(decideWake({ lockState: "dead", loopStatus: "paused", hasPendingMessages: true }).wake).toBe(true);
+    // open steering comments are pending work too: they wake a paused loop even with no messages …
+    expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: false, hasOpenComments: true }).wake).toBe(true);
+    // … but neither messages nor comments ⇒ no wake, and a live lock / non-paused loop still gates it.
+    expect(decideWake({ lockState: "none", loopStatus: "paused", hasPendingMessages: false, hasOpenComments: false }).wake).toBe(false);
+    expect(decideWake({ lockState: "live-other", loopStatus: "paused", hasPendingMessages: false, hasOpenComments: true }).wake).toBe(false);
+    expect(decideWake({ lockState: "none", loopStatus: "running", hasPendingMessages: false, hasOpenComments: true }).wake).toBe(false);
   });
 });
 
@@ -1278,10 +1688,12 @@ describe("hook wake", () => {
     mkdirSync(join(home, ".autoloop", "run"), { recursive: true }); // tests write the lockfile directly
     return { home, dir, spawned, spawnImpl, lockFile: join(home, ".autoloop", "run", "acme-web.lock") };
   }
-  // Route the two GETs by URL: …/state → loop status; …/messages → pending list.
-  const fetchFor = (loopStatus: string, messages: unknown[]) => async (url: string) => ({
+  // Route the GETs by URL: …/state → loop status; …/messages → pending list; …/comments → open list.
+  const fetchFor = (loopStatus: string, messages: unknown[], comments: unknown[] = []) => async (url: string) => ({
     ok: true, status: 200,
-    json: async () => url.endsWith("/messages")
+    json: async () => url.includes("/comments")
+      ? { ok: true, comments }
+      : url.endsWith("/messages")
       ? { ok: true, messages }
       : { ok: true, state: { loop: { id: "l1", goal: "g", order: 1, status: loopStatus }, project: { slug: "web", currentLoopId: "l1" }, phases: [], tasks: [], scenarios: [], openBugs: [], pendingMessages: [] } },
   });
@@ -1332,6 +1744,34 @@ describe("hook wake", () => {
     await run(["hook", "wake"], deps(s, fetchFor("running", [{ id: "m1", text: "go" }])));
     expect(s.spawned.length).toBe(0);
     await run(["hook", "wake"], deps(s, fetchFor("paused", [])));
+    expect(s.spawned.length).toBe(0);
+  });
+
+  it("wakes a paused loop when an open steering comment exists even with no messages", async () => {
+    const s = setup();
+    expect(await run(["hook", "wake"], deps(s, fetchFor("paused", [], [{ id: "c1", text: "steer" }])))).toBe(0);
+    expect(s.spawned.length).toBe(1);
+  });
+
+  it("does NOT wake when neither messages nor open comments are pending", async () => {
+    const s = setup();
+    await run(["hook", "wake"], deps(s, fetchFor("paused", [], [])));
+    expect(s.spawned.length).toBe(0);
+  });
+
+  it("treats a comments-probe network failure as no open comments (messages behavior unchanged)", async () => {
+    const s = setup();
+    // Comments GET rejects; messages/state resolve normally. No messages either ⇒ no wake, no throw.
+    const fetchImpl = async (url: string) => {
+      if (url.includes("/comments")) throw new Error("net");
+      return {
+        ok: true, status: 200,
+        json: async () => url.endsWith("/messages")
+          ? { ok: true, messages: [] }
+          : { ok: true, state: { loop: { id: "l1", goal: "g", order: 1, status: "paused" }, project: { slug: "web", currentLoopId: "l1" }, phases: [], tasks: [], scenarios: [], openBugs: [], pendingMessages: [] } },
+      };
+    };
+    expect(await run(["hook", "wake"], deps(s, fetchImpl))).toBe(0);
     expect(s.spawned.length).toBe(0);
   });
 });
@@ -1452,5 +1892,35 @@ describe("init --relaunch / --uninstall / status", () => {
     expect(existsSync(s.envFile)).toBe(false);                // holds the API key — removed
     expect(loadConfig(s.dir).relaunch).toBeUndefined();
     expect(s.execs.some((e) => e.cmd === "launchctl" && e.args[0] === "unload")).toBe(true);
+  });
+});
+
+describe("decision add", () => {
+  function initDir() {
+    const dir = tmp();
+    saveConfig(dir, { apiUrl: "http://api", teamId: "acme", projectSlug: "web", currentLoopId: "l1", loops: {}, phases: {}, tasks: {} });
+    return dir;
+  }
+  it("POSTs a loop-scoped decision with mapped fields", async () => {
+    const dir = initDir(); let cap: any;
+    const code = await run(["decision","add","--kind","goal-pick","--summary","s","--reason","r","--scenario","s1","--scenario","s2","--alt","tried X"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {},
+        fetchImpl: async (url: string, init: any) => { cap = { url, method: init.method, body: JSON.parse(init.body) }; return { ok: true, status: 200, json: async () => ({ ok: true, id: "01ABC" }) }; } });
+    expect(code).toBe(0);
+    expect(cap.method).toBe("POST");
+    expect(cap.url).toBe("http://api/v1/teams/acme/projects/web/loops/l1/decisions");
+    expect(cap.body).toMatchObject({ kind: "goal-pick", summary: "s", rationale: "r", refs: { scenarioIds: ["s1","s2"] }, alternatives: ["tried X"] });
+  });
+  it("rejects a bad --kind before any network call", async () => {
+    const dir = initDir();
+    const code = await run(["decision","add","--kind","bogus","--summary","s","--reason","r"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
+  });
+  it("requires --summary and --reason", async () => {
+    const dir = initDir();
+    const code = await run(["decision","add","--kind","stuck"],
+      { cwd: dir, env: { AUTOLOOP_API_KEY: "al_k" }, log: () => {}, err: () => {}, fetchImpl: async () => { throw new Error("should not be called"); } });
+    expect(code).toBe(1);
   });
 });

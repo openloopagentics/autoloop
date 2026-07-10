@@ -106,6 +106,19 @@ export const taskBody = z.object({
   scenarioIds: z.array(id).optional(),
 });
 
+// Wiki page synced up from the loop's markdown. All fields required — the CLI always
+// sends a full page (contentHash gates the sync diff), so there is no partial-patch mode.
+export const pageBody = z.object({
+  path: z.string().min(1),
+  title: z.string().min(1),
+  order: z.number().int(),
+  markdown: z.string().max(CONTENT_MAX_BYTES, "page.markdown exceeds 100KB"),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/, "contentHash must be a sha256 hex digest"),
+  goalIds: z.array(id),
+  scenarioIds: z.array(id),
+});
+export type PageBody = z.infer<typeof pageBody>;
+
 export const documentBody = z.object({
   kind: z.string().min(1).optional(),
   title: z.string().min(1).optional(),
@@ -151,6 +164,23 @@ export const revisionBody = z.object({
   changes: z.array(z.object({ op: z.enum(["add", "replace", "reorder", "drop"]), taskId: id }).passthrough()).min(1),
 });
 
+// Decision: append-only reasoning event for the three "why" moments the loop can't
+// otherwise record (goal choice, task approach, dead-ends). Plan changes live in
+// revisionBody; vision changes in visionChangeBody. Server stamps id (ULID) + createdAt.
+export const decisionBody = z.object({
+  kind: z.enum(["goal-pick", "approach", "stuck"]),
+  summary: z.string().min(1).max(200),
+  rationale: z.string().min(1).max(4096),
+  alternatives: z.array(z.string().min(1).max(500)).max(10).optional(),
+  refs: z.object({
+    scenarioIds: z.array(id).optional(),
+    taskIds: z.array(id).optional(),
+    commitShas: z.array(id).optional(),
+  }).optional(),
+  by: z.string().max(200).optional(),
+});
+export type DecisionBody = z.infer<typeof decisionBody>;
+
 // Vision change: propose-and-apply event. `payload` is re-validated per-op in the
 // service with goalBody/scenarioBody so error messages match direct upserts.
 export const visionChangeBody = z.object({
@@ -186,6 +216,31 @@ export type KeyMintBody = z.infer<typeof keyMintBody>;
 
 export const messageBody = z.object({ text: z.string().min(1).max(8192) });
 export type MessageBody = z.infer<typeof messageBody>;
+
+// Steering comment: user anchors a note to wiki-page text; the loop triages it.
+// pageId/targetScenarioId are client ids (idPattern); the comment's own id is a
+// server ULID stamped in the service.
+export const commentBody = z.object({
+  pageId: id,
+  anchor: z.object({
+    exact: z.string().min(1).max(2000),
+    prefix: z.string().max(200),
+    suffix: z.string().max(200),
+  }),
+  body: z.string().min(1).max(10_000),
+  severity: z.enum(["advisory", "blocking"]),
+  targetScenarioId: id.optional(),
+});
+export type CommentBody = z.infer<typeof commentBody>;
+
+export const commentReplyBody = z.object({ text: z.string().min(1).max(10_000) });
+export type CommentReplyBody = z.infer<typeof commentReplyBody>;
+
+export const commentResolveBody = z.object({
+  resolution: z.enum(["resolved", "declined"]),
+  note: z.string().min(1).max(10_000).optional(),
+});
+export type CommentResolveBody = z.infer<typeof commentResolveBody>;
 
 const sessionEntry = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("user"),      text: z.string().max(500), ts: z.number() }),

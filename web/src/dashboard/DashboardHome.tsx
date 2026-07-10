@@ -59,7 +59,7 @@ export function DashboardHome() {
         : error ? <ErrorNote message={error} />
         : teams.length === 0 ? <EmptyState message="You're not on a team yet." />
         : teams.map((t) => {
-            const canDelete = t.role === "owner" || t.role === "manager";
+            const canDelete = t.role === "owner" || t.role === "admin";
             async function handleDelete(slug: string) {
               if (!window.confirm(`Delete project "${slug}"? This cannot be undone.`)) return;
               try { await deleteProject(t.teamId, slug); } catch (e) { alert((e as Error).message); }

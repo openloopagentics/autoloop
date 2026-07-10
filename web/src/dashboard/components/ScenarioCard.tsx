@@ -1,10 +1,10 @@
-import { deriveScenarioState, DEFAULT_THRESHOLD } from "../scenarioState";
+import { scenarioStatus, DEFAULT_THRESHOLD } from "../scenarioState";
 import { scenarioVerification } from "../verificationView";
 import { VerificationBadge } from "./VerificationBadge";
 import type { Scenario, Score, TestRun, Verification } from "../types";
 
-export function ScenarioCard({ scenario, scores, testRuns, verifications = [] }: { scenario: Scenario; scores: Score[]; testRuns: TestRun[]; verifications?: Verification[] }) {
-  const { state, latestComposite, latestTest } = deriveScenarioState(scenario, scores, testRuns);
+export function ScenarioCard({ scenario, scores, testRuns, verifications = [], blockedIds }: { scenario: Scenario; scores: Score[]; testRuns: TestRun[]; verifications?: Verification[]; blockedIds?: Set<string> }) {
+  const { state, latestComposite, latestTest, reasons } = scenarioStatus(scenario, scores, testRuns, verifications, blockedIds);
   const verdict = scenarioVerification(scenario.id, latestTest?.id ?? null, verifications);
   const threshold = scenario.threshold ?? DEFAULT_THRESHOLD;
   const pct = Math.max(0, Math.min(100, latestComposite ?? 0));
@@ -27,6 +27,16 @@ export function ScenarioCard({ scenario, scores, testRuns, verifications = [] }:
       <div className="scncard-test dim">
         {latestTest ? <>tests: <span className="tnum">{latestTest.passed ?? 0}</span> passed, <span className="tnum">{latestTest.failed ?? 0}</span> failed</> : "no test run yet"}
       </div>
+      {reasons.length > 0 && (
+        <ul className="scncard-reasons">
+          {reasons.map((r, i) => (
+            <li key={i} className={`scnreason ${r.ok ? "scnreason-ok" : "scnreason-fail"}`}>
+              <span className={`scnbadge scn-${r.ok ? "met" : "unmet"}`}>{r.ok ? "✓" : "✗"}</span>
+              {" "}{r.text}
+            </li>
+          ))}
+        </ul>
+      )}
       {history.length > 1 && (
         <details className="scncard-hist">
           <summary>score history ({history.length})</summary>

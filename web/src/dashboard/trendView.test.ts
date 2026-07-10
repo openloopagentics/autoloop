@@ -9,11 +9,11 @@ const scenarios = [
 ] as Scenario[];
 
 function runData(over: Partial<LoopRunData> & { loop: Loop }): LoopRunData {
-  return { scores: [], testRuns: [], bugs: [], taskCommits: [], tasks: [], ...over };
+  return { scores: [], testRuns: [], bugs: [], taskCommits: [], tasks: [], verifications: [], ...over };
 }
 
 describe("buildTrend", () => {
-  it("counts met via deriveScenarioState over THIS loop's events only (latest by id)", () => {
+  it("counts met via scenarioStatus over THIS loop's events only (latest by id)", () => {
     const d = runData({
       loop: { id: "l1", order: 1 },
       tasks: [{ id: "t1", scenarioIds: ["s1", "s2"] }],
@@ -90,6 +90,17 @@ describe("buildTrend", () => {
     ], scenarios);
     expect(points.map((p) => p.loopId)).toEqual(["main", "l1", "l2"]);
     expect(points[0].order).toBe(MAIN_TREND_ORDER);
+  });
+
+  it("refuted-but-high scenario counts as unmet in metCount", () => {
+    const d = runData({
+      loop: { id: "l1", order: 1 },
+      tasks: [{ id: "t1", scenarioIds: ["s1"] }],
+      scores: [{ id: "01A", scenarioId: "s1", composite: 95 }],
+      testRuns: [{ id: "01B", scenarioId: "s1", passed: 3, failed: 0 }],
+      verifications: [{ id: "01V", scenarioId: "s1", verdict: "refuted" }],
+    });
+    expect(buildTrend([d], scenarios)[0].metCount).toBe(0);
   });
 });
 

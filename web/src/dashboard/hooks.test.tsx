@@ -18,7 +18,8 @@ vi.mock("firebase/firestore", () => ({
 }));
 
 import { renderHook } from "@testing-library/react";
-import { useGoals } from "./hooks";
+import { collection, documentId, orderBy } from "firebase/firestore";
+import { useComments, useGoals, usePages } from "./hooks";
 
 describe("listener hooks surface errors", () => {
   it("exposes the error and stops loading when onSnapshot errors", () => {
@@ -26,5 +27,22 @@ describe("listener hooks surface errors", () => {
     expect(result.current.error).toBe("listener boom");
     expect(result.current.loading).toBe(false);
     expect(result.current.data).toEqual([]);
+  });
+});
+
+describe("usePages", () => {
+  it("subscribes to the project pages collection, ordered by 'order'", () => {
+    renderHook(() => usePages("t1", "web"));
+    expect(collection).toHaveBeenCalledWith({}, "teams", "t1", "projects", "web", "pages");
+    expect(orderBy).toHaveBeenCalledWith("order");
+  });
+});
+
+describe("useComments", () => {
+  it("subscribes to the project comments collection, ordered by documentId()", () => {
+    renderHook(() => useComments("t1", "web"));
+    expect(collection).toHaveBeenCalledWith({}, "teams", "t1", "projects", "web", "comments");
+    expect(documentId).toHaveBeenCalled();
+    expect(orderBy).toHaveBeenCalledWith("id");
   });
 });

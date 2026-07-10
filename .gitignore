@@ -1,6 +1,10 @@
 .firebase/
 *.log
+.superpowers/
 
 # macOS
 .DS_Store
 **/.DS_Store
+
+# git worktrees (superpowers workflow)
+.worktrees/

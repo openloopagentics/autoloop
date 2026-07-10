@@ -6,9 +6,13 @@ description: Use when running a development loop that should report its status (
 # Autoloop Reporting
 
 Report the loop's status to Autoloop as you work, using the bundled **`autoloop`**
-CLI (this plugin adds it to your `PATH`; it needs Node 22+, no other deps).
-Reporting is **best-effort observability** — it must never block or derail the
-actual development work.
+CLI (Node 22+, no other deps). Reporting is **best-effort observability** — it must
+never block or derail the actual development work.
+
+Invoke it as `autoloop` when it's on your `PATH` (the plugin install adds it there).
+Otherwise call the bundled copy directly:
+`node "${CLAUDE_PLUGIN_ROOT}/bin/autoloop"` (plugin) or
+`node "$HOME/.claude/skills/autoloop-reporting/autoloop.mjs"` (curl install).
 
 ## Prerequisites (set up once)
 
@@ -42,6 +46,35 @@ actual development work.
 - A `phaseId` is yours to choose (e.g. `build`, `design`); `phase set` reuses the
   name/order you gave at `phase start`.
 
+## Vision wiki (push the repo `vision/` pages)
+
+| Moment | Command |
+|---|---|
+| Push the vision wiki | `autoloop vision sync [--dir vision] [--strict]` |
+| Convert a legacy `vision.json` → wiki | `autoloop vision migrate [--file vision.json] [--dir vision]` |
+| Legacy: push a `vision.json` | `autoloop vision import --file vision.json` |
+
+- `vision sync` parses `vision/*.md` locally first (fails fast with `file:line` on any
+  parse/validation error, uploading nothing), then diffs page hashes against the server
+  — PUTting changed pages, DELETEing pages removed from disk, and upserting the
+  extracted goals/scenarios. Run it whenever the wiki changes. `--strict` makes a
+  server-list failure fatal instead of re-uploading everything best-effort.
+- `vision migrate` is purely local (no network): it writes `vision/*.md` from a legacy
+  `vision.json`, refuses to overwrite an existing `vision/`, and self-checks the
+  round-trip. Review + commit the pages, then `vision sync`.
+
+## Steering comments (the loop answers user comments on Vision pages)
+
+| Moment | Command |
+|---|---|
+| List open comments | `autoloop comments pull` (add `--check` for a silent exit-0-iff-any probe) |
+| Reply to a comment | `autoloop comments reply <id> --text "<message>"` |
+| Resolve a comment | `autoloop comments resolve <id> [--declined] [--note "<text>"]` |
+
+- `comments resolve` marks the comment `resolved` (or `declined` with `--declined`);
+  `--note` records why. A **blocking** comment suppresses its target scenario's met
+  until it is resolved AND accepted by the author/team admin.
+
 ## Rules
 
 - **Best-effort:** if a `autoloop` command prints a warning (bad key, not a team
@@ -67,8 +100,5 @@ autoloop commit
 autoloop phase set build --status completed
 autoloop project set --status completed
 ```
-
-> If `autoloop` isn't found on your `PATH`, invoke it directly:
-> `node "${CLAUDE_PLUGIN_ROOT}/bin/autoloop" …`
 
 See `CODEX.md` in this directory for the same commands framed for a Codex-driven loop.

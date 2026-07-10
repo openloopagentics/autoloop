@@ -1,5 +1,5 @@
-import type { Bug, Commit, Loop, Scenario, Score, Task, TestRun } from "./types";
-import { deriveScenarioState, latestById } from "./scenarioState";
+import type { Bug, Commit, Loop, Scenario, Score, Task, TestRun, Verification } from "./types";
+import { scenarioStatus, latestById } from "./scenarioState";
 import { MAIN_ID } from "./loopView";
 
 /** The implicit `main` loop predates loop-level adoption and has no `order` —
@@ -17,6 +17,7 @@ export interface LoopRunData {
   bugs: Bug[];
   taskCommits: Commit[];
   tasks: Task[];
+  verifications: Verification[];
 }
 
 export interface TrendPoint {
@@ -40,7 +41,7 @@ export function trendWindow(loops: Loop[], includeMain: boolean): Loop[] {
 
 /** Per-loop trend series, ascending by order (main first). A loop is judged on what it
  *  attempted: only scenarios tagged in ITS tasks count, and met-state is derived from
- *  ITS loop-scoped events via the existing deriveScenarioState predicate (no refactor). */
+ *  ITS loop-scoped events via the verification-aware scenarioStatus predicate. */
 export function buildTrend(loops: LoopRunData[], scenarios: Scenario[]): TrendPoint[] {
   const points = loops.map((d) => {
     const tagged = new Set(d.tasks.flatMap((t) => t.scenarioIds ?? []));
@@ -48,7 +49,7 @@ export function buildTrend(loops: LoopRunData[], scenarios: Scenario[]): TrendPo
     let metCount = 0;
     const composites: number[] = [];
     for (const s of taggedScenarios) {
-      if (deriveScenarioState(s, d.scores, d.testRuns).state === "met") metCount++;
+      if (scenarioStatus(s, d.scores, d.testRuns, d.verifications).state === "met") metCount++;
       const latest = latestById(d.scores.filter((sc) => sc.scenarioId === s.id));
       if (latest?.composite !== undefined) composites.push(latest.composite);
     }

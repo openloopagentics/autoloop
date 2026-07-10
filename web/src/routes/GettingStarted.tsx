@@ -73,8 +73,9 @@ export function GettingStarted() {
         <Step n={4} title="Author your vision">
           <p>
             In your project directory, run <code>/autoloop-vision</code> in Claude Code. It interviews you
-            and writes a <code>vision.json</code> — the goals and scenarios (with scoring rubrics) that
-            define what "done" means. This is what the loop builds toward and scores against.
+            and writes a <code>vision/</code> wiki — pages describing the product with goals and scenarios
+            (and scoring rubrics) embedded, defining what "done" means. This is what the loop builds toward
+            and scores against.
           </p>
         </Step>
 
@@ -88,8 +89,9 @@ export function GettingStarted() {
             runs, your{" "}
             <Link className="gs-link" to="/dashboard">Dashboard</Link> updates in real time — scenarios
             turning met/unmet, the <strong>Tests</strong> and <strong>Bugs</strong> tabs, per-commit token
-            counts, and the <strong>Session Log</strong>. Send the loop a message from the dashboard any
-            time to steer or pause it.
+            counts, and the <strong>Session Log</strong>. Send the loop a message any time to steer or pause
+            it, or comment on any <strong>Vision</strong> page to steer it in place — a blocking comment
+            holds a scenario back until the loop resolves it.
           </p>
         </Step>
       </div>

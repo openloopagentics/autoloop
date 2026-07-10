@@ -247,6 +247,27 @@ export async function getJson(url, deps) {
 }
 
 /**
+ * Upsert extracted goals then scenarios through the project-direct vision endpoints (shared by
+ * `vision import` and `vision sync` so the two can't drift). Strips the loop-local scenario `test`
+ * field client-side. `proj` is the .../projects/:slug base; returns the worst report exit code.
+ */
+export async function upsertGoalsScenarios(proj, goals, scenarios, reportDeps, reportImpl = report) {
+  let worst = 0;
+  for (const g of goals) {
+    validateId("goalId", g.id);
+    const { id, ...body } = g;
+    worst = Math.max(worst, await reportImpl({ method: "PUT", url: `${proj}/goals/${id}`, body }, reportDeps));
+  }
+  for (const s of scenarios) {
+    validateId("scenarioId", s.id);
+    // `test` is a loop-local hint (how the loop tests the scenario), never part of the contract.
+    const { id, test, ...body } = s;
+    worst = Math.max(worst, await reportImpl({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
+  }
+  return worst;
+}
+
+/**
  * Fetch the resume state bundle, following the loopId fallback chain:
  * explicit → cfg.currentLoopId → the server project's currentLoopId (one extra hop via the
  * project-direct /state). Returns { state, loopId } or null on any network/HTTP failure.
@@ -453,12 +474,13 @@ export function decideSessionEndRelaunch({ lockState, resumable, backoff }) {
   return { relaunch: true, reason: "resumable loop, no live lock, under backoff" };
 }
 
-/** Pure decision for the wake job: paused loop + pending message + no live lock. */
-export function decideWake({ lockState, loopStatus, hasPendingMessages }) {
+/** Pure decision for the wake job: paused loop + pending work + no live lock. Pending work is a
+ *  pending user message OR an open steering comment — either should wake a parked loop. */
+export function decideWake({ lockState, loopStatus, hasPendingMessages, hasOpenComments }) {
   if (lockState === "live-other" || lockState === "ours") return { wake: false, reason: "a live session holds the lock" };
   if (loopStatus !== "paused") return { wake: false, reason: `loop status is ${loopStatus ?? "none"} — wake only resumes paused loops` };
-  if (!hasPendingMessages) return { wake: false, reason: "no pending user messages" };
-  return { wake: true, reason: "paused loop with pending messages and no live lock" };
+  if (!hasPendingMessages && !hasOpenComments) return { wake: false, reason: "no pending user messages or open comments" };
+  return { wake: true, reason: "paused loop with pending work (message or open comment) and no live lock" };
 }
 
 /** Launch the headless driver, fully detached (nohup-equivalent): stdin /dev/null, output
@@ -912,9 +934,12 @@ export async function run(argv, deps = {}) {
         const api = resolveApiUrl(cfg, henv, undefined);
         const msgs = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`, { env: henv, fetchImpl });
         const hasPendingMessages = !!(msgs?.ok && Array.isArray(msgs.body?.messages) && msgs.body.messages.length > 0);
+        // open steering comments — same probe as `comments pull --check` (GET only; any failure ⇒ none)
+        const cmts = await getJson(`${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments?status=open`, { env: henv, fetchImpl });
+        const hasOpenComments = !!(cmts?.ok && Array.isArray(cmts.body?.comments) && cmts.body.comments.length > 0);
 
-        const d = decideWake({ lockState, loopStatus, hasPendingMessages });
-        hookLog(henv, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
+        const d = decideWake({ lockState, loopStatus, hasPendingMessages, hasOpenComments });
+        hookLog(henv, "wake", `lock=${lockState} loop=${loopStatus ?? "none"} pending=${hasPendingMessages} comments=${hasOpenComments} → ${d.wake ? "WAKE" : "skip"} (${d.reason})`, now());
         if (!d.wake) return 0;
         if (lockState === "dead") rmSync(lockFile);    // steal the stale lock; the new session re-acquires
         launchHeadless({ cwd, slug: cfg.projectSlug, env: henv, spawnImpl, log });
@@ -1033,6 +1058,23 @@ export async function run(argv, deps = {}) {
         const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/bugs/${id}`;
         return report({ method: "PUT", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "decision add": {
+        const kind = flags.kind;
+        if (!kind) throw new UsageError("decision add requires --kind <goal-pick|approach|stuck>");
+        if (!["goal-pick","approach","stuck"].includes(kind)) throw new UsageError(`--kind must be goal-pick|approach|stuck, got '${kind}'`);
+        if (!flags.summary) throw new UsageError("decision add requires --summary <s>");
+        if (!flags.reason) throw new UsageError("decision add requires --reason <r>");
+        const body = { kind, summary: oneFlag("summary", flags.summary), rationale: oneFlag("reason", flags.reason) };
+        const alts = asArray(flags.alt); if (alts.length) body.alternatives = alts;
+        const refs = {};
+        const scen = asArray(flags.scenario); if (scen.length) { scen.forEach((s) => validateId("scenario", s)); refs.scenarioIds = scen; }
+        const tsk = asArray(flags.task); if (tsk.length) { tsk.forEach((t) => validateId("task", t)); refs.taskIds = tsk; }
+        const com = asArray(flags.commit); if (com.length) { com.forEach((c) => validateId("commit", c)); refs.commitShas = com; }
+        if (Object.keys(refs).length) body.refs = refs;
+        const cfg = loadConfig(cwd);
+        const url = `${resolveApiUrl(cfg, env, flags.url)}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}${loopSeg(cfg)}/decisions`;
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "idea add": {
         const id = positionals[2]; validateId("ideaId", id);
@@ -1200,19 +1242,7 @@ export async function run(argv, deps = {}) {
         const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
         const reportDeps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
         const proj = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
-        let worst = 0;
-        for (const g of vision.goals ?? []) {
-          validateId("goalId", g.id);
-          const { id, ...body } = g;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/goals/${id}`, body }, reportDeps));
-        }
-        for (const s of vision.scenarios ?? []) {
-          validateId("scenarioId", s.id);
-          // `test` is a loop-local hint (how /autoloop-loop tests the scenario), not part
-          // of the contract — strip it client-side so the import body never carries it.
-          const { id, test, ...body } = s;
-          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/scenarios/${id}`, body }, reportDeps));
-        }
+        let worst = await upsertGoalsScenarios(proj, vision.goals ?? [], vision.scenarios ?? [], reportDeps);
         for (const d of vision.documents ?? []) {
           validateId("docId", d.id);
           const { id, ...body } = d;
@@ -1240,6 +1270,155 @@ export async function run(argv, deps = {}) {
         return report({ method: "POST", url, body },
           { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
+      case "vision sync": {
+        // Read the repo vision wiki (vision/*.md), diff page hashes against the server, and
+        // push only what changed: PUT new/changed pages, DELETE server pages gone from disk,
+        // then upsert the extracted goals/scenarios through the same endpoints as vision import.
+        const dir = oneFlag("dir", flags.dir) || "vision";
+        const { parsePages, readVisionDir } = await import("./vision-pages.mjs");
+        let files;
+        try { files = readVisionDir(join(cwd, dir)); }
+        catch (e) {
+          if (e?.code === "ENOENT") files = []; // missing dir → treat as empty, handled below
+          else throw new UsageError(`could not read '${dir}/': ${e.message}`); // EACCES etc. — a real error, not "no pages"
+        }
+        if (files.length === 0) throw new UsageError(`no vision pages found in '${dir}/' — author pages or run vision migrate`);
+
+        const parsed = parsePages(files);
+        if (!parsed.ok) {
+          // Print each error as file:line: message and abort — NOTHING uploads on a parse failure.
+          for (const e of parsed.errors) err(`${e.file}:${e.line}: ${e.message}`);
+          return 1;
+        }
+
+        const cfg = loadConfig(cwd);
+        const apiBase = resolveApiUrl(cfg, env, flags.url);
+        const strict = !!flags.strict || env.AUTOLOOP_STRICT === "1";
+        const reportDeps = { env, fetchImpl, err, strict, teamId: cfg.teamId };
+        const proj = `${apiBase}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}`;
+
+        // Server page list (id + contentHash only). Best-effort like other reads: on a network/HTTP
+        // failure, non-strict treats the server as empty (everything re-uploads); strict fails.
+        const res = await getJson(`${proj}/pages`, { env, fetchImpl });
+        let serverPages;
+        if (res?.ok && Array.isArray(res.body?.pages)) {
+          serverPages = res.body.pages;
+        } else if (strict) {
+          err(`autoloop: vision sync failed to list server pages (strict)${res ? ` — HTTP ${res.status}` : " — network error"}`);
+          return 1;
+        } else {
+          err("autoloop: could not list server pages — re-uploading all (best-effort)");
+          serverPages = [];
+        }
+        const serverHash = new Map(serverPages.map((p) => [p.id, p.contentHash]));
+
+        let worst = 0;
+        // Upload each new/changed page (body = page minus id).
+        for (const page of parsed.pages) {
+          if (serverHash.get(page.id) === page.contentHash) continue; // unchanged
+          const { id, ...body } = page;
+          worst = Math.max(worst, await report({ method: "PUT", url: `${proj}/pages/${id}`, body }, reportDeps));
+        }
+        // Delete server pages that no longer exist on disk.
+        const diskIds = new Set(parsed.pages.map((p) => p.id));
+        for (const sp of serverPages) {
+          if (!diskIds.has(sp.id)) worst = Math.max(worst, await report({ method: "DELETE", url: `${proj}/pages/${sp.id}` }, reportDeps));
+        }
+        // Upsert the extracted goals then scenarios (shared with vision import; test stripped).
+        worst = Math.max(worst, await upsertGoalsScenarios(proj, parsed.goals, parsed.scenarios, reportDeps));
+        return worst;
+      }
+      case "vision migrate": {
+        // Purely local: turn a legacy vision.json into a repo vision wiki (vision/*.md) for the
+        // author to review + commit, then `autoloop vision sync`. No network.
+        const file = oneFlag("file", flags.file) || "vision.json";
+        const dir = oneFlag("dir", flags.dir) || "vision";
+        let vision;
+        try { vision = JSON.parse(readFileSync(join(cwd, file), "utf8")); }
+        catch (e) { throw new UsageError(`could not read --file '${file}': ${e.message}`); }
+        const outDir = join(cwd, dir);
+        if (existsSync(outDir)) throw new UsageError(`'${dir}/' already exists — remove it or pass --dir <other>`);
+
+        const goals = vision.goals ?? [];
+        const scenarios = vision.scenarios ?? [];
+        const { parsePages, readVisionDir, coerceScalar } = await import("./vision-pages.mjs");
+
+        // Emit a frontmatter title verbatim, but quote it when it would otherwise parse as a
+        // non-string (2048 → number, true/null → boolean/null). Reject titles with a `"` or newline
+        // rather than silently mangle them — the frontmatter subset has no escaping.
+        const fmTitle = (title, id) => {
+          const t = String(title);
+          if (t.includes('"') || /[\r\n]/.test(t)) throw new UsageError(`goal '${id}' title contains a double-quote or newline — rename it (frontmatter can't escape those)`);
+          return coerceScalar(t) === t ? t : `"${t}"`;
+        };
+        const fence = (kind, obj) => ["```" + kind, JSON.stringify(obj), "```"].join("\n");
+        // A description whose own line opens a fence (```) would, emitted raw, swallow the real
+        // ```goal/```scenario block — refuse it with an actionable message instead.
+        const assertNoFence = (kind, text, id) => {
+          if (/^```/m.test(String(text))) throw new UsageError(`${kind} '${id}' description contains a line starting with \`\`\` — remove or indent the fence (it would swallow the goal/scenario block)`);
+        };
+
+        // Bucket scenarios by goal; warn on + drop orphans (goalId matching no goal).
+        const byGoal = new Map(goals.map((g) => [g.id, []]));
+        const keptScenarioIds = new Set();
+        for (const s of scenarios) {
+          if (byGoal.has(s.goalId)) { byGoal.get(s.goalId).push(s); keptScenarioIds.add(s.id); }
+          else err(`autoloop: dropping orphan scenario '${s.id}' — its goalId '${s.goalId}' matches no goal`);
+        }
+
+        // Validate every title + description BEFORE writing anything, so a bad input throws with an
+        // empty target dir (a partial write would leave the "already exists" guard tripped on retry).
+        fmTitle(vision.title ?? "Overview", "overview");
+        for (const g of goals) {
+          fmTitle(g.title ?? g.id, g.id);
+          if (g.description) assertNoFence("goal", g.description, g.id);
+          for (const s of byGoal.get(g.id) ?? []) if (s.description) assertNoFence("scenario", s.description, s.id);
+        }
+
+        mkdirSync(outDir, { recursive: true });
+        const written = [];
+        const overviewBody = [
+          `# ${vision.title ?? "Overview"}`,
+          "",
+          ...goals.map((g) => `- ${g.title ?? g.id}`),
+          "",
+        ].join("\n");
+        const overview = [`---`, `id: overview`, `title: ${fmTitle(vision.title ?? "Overview", "overview")}`, `order: 0`, `---`, ``, overviewBody].join("\n");
+        writeFileSync(join(outDir, "overview.md"), overview);
+        written.push("overview.md");
+
+        for (const g of goals) {
+          const lines = [`---`, `id: ${g.id}`, `title: ${fmTitle(g.title ?? g.id, g.id)}`, `order: ${Number.isInteger(g.order) ? g.order : 0}`, `---`, ``];
+          if (g.description) lines.push(g.description, "");
+          lines.push(fence("goal", g), "");
+          for (const s of byGoal.get(g.id) ?? []) {
+            if (s.description) lines.push(s.description, "");
+            lines.push(fence("scenario", s), ""); // KEEP test — it's loop-local and stays in the repo
+          }
+          const fname = `${g.id}.md`;
+          writeFileSync(join(outDir, fname), lines.join("\n"));
+          written.push(fname);
+        }
+
+        // Load-bearing self-check: re-parse the generated wiki and confirm it recovers EXACTLY the
+        // goal ids and (kept) scenario ids we fed in. A parse-clean wiki that lost a block to a
+        // stray fence would still fail here — this converts every silent-loss variant into a hard
+        // error, not a success exit.
+        const check = parsePages(readVisionDir(outDir));
+        if (!check.ok) {
+          for (const e of check.errors) err(`${e.file}:${e.line}: ${e.message}`);
+          throw new UsageError("vision migrate produced an unparseable wiki — check the goal/scenario descriptions above");
+        }
+        const setEq = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
+        const gotGoals = new Set(check.goals.map((x) => x.id));
+        const gotScenarios = new Set(check.scenarios.map((x) => x.id));
+        const wantGoals = new Set(goals.map((x) => x.id));
+        if (!setEq(gotGoals, wantGoals) || !setEq(gotScenarios, keptScenarioIds)) {
+          throw new UsageError(`vision migrate lost content — recovered goals [${[...gotGoals].sort()}] scenarios [${[...gotScenarios].sort()}] but expected goals [${[...wantGoals].sort()}] scenarios [${[...keptScenarioIds].sort()}]`);
+        }
+        log(`migrated ${written.length} pages — review, commit, and run: autoloop vision sync`);
+        return 0;
+      }
       case "messages pull": {
         const cfg = loadConfig(cwd);
         const api = resolveApiUrl(cfg, env, flags.url);
@@ -1266,6 +1445,36 @@ export async function run(argv, deps = {}) {
         const api = resolveApiUrl(cfg, env, flags.url);
         const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/messages`;
         return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "comments pull": {
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments?status=open`;
+        if (flags.check) {
+          // silent probe: exit 0 iff open steering comments exist.
+          // GET only — pulling NEVER mutates; any failure ⇒ 1 (can't confirm open).
+          const res = await getJson(url, { env, fetchImpl });
+          return res?.ok && Array.isArray(res.body?.comments) && res.body.comments.length > 0 ? 0 : 1;
+        }
+        return fetchJson({ method: "GET", url }, { env, fetchImpl, log, err, label: "comments pull", render: (body) => JSON.stringify(body.comments ?? body, null, 2) });
+      }
+      case "comments reply": {
+        const id = positionals[2];
+        if (!id || typeof id !== "string" || id.trim() === "") throw new UsageError("comments reply requires a non-empty comment id");
+        if (!flags.text) throw new UsageError("comments reply requires --text");
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments/${id}/reply`;
+        return report({ method: "POST", url, body: { text: flags.text } }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
+      }
+      case "comments resolve": {
+        const id = positionals[2];
+        if (!id || typeof id !== "string" || id.trim() === "") throw new UsageError("comments resolve requires a non-empty comment id");
+        const cfg = loadConfig(cwd);
+        const api = resolveApiUrl(cfg, env, flags.url);
+        const url = `${api}/v1/teams/${cfg.teamId}/projects/${cfg.projectSlug}/comments/${id}/resolve`;
+        const body = { resolution: flags.declined ? "declined" : "resolved", ...(flags.note && { note: flags.note }) };
+        return report({ method: "POST", url, body }, { env, fetchImpl, err, strict: !!flags.strict || env.AUTOLOOP_STRICT === "1", teamId: cfg.teamId });
       }
       case "state": {
         const cfg = loadConfig(cwd);
