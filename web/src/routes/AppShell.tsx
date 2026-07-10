@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/context";
-import { LoopMark } from "../ui/LoopMark";
 import { NotificationsBell } from "../notifications/NotificationsBell";
 import { THEMES, getTheme, applyTheme } from "../ui/theme";
 
@@ -39,7 +38,8 @@ export function AppShell() {
     <div className="app">
       <header className="hdr">
         <NavLink to="/dashboard" className="brand">
-          <LoopMark size={24} />
+          {/* the rendered brand icon (same asset as the favicon) */}
+          <img src="/icon-512.png" alt="" className="brand-icon" width={24} height={24} />
           <span className="wordmark">autoloop</span>
         </NavLink>
 

@@ -287,6 +287,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   color: var(--fg);
 }
 .loop { width: 24px; height: 24px; display: block; flex-shrink: 0; }
+.brand-icon { width: 24px; height: 24px; display: block; flex-shrink: 0; }
 
 .nav { display: flex; align-items: center; gap: 2px; }
 .nav a {
