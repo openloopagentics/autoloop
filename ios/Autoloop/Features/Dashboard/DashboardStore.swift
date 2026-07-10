@@ -15,24 +15,31 @@ enum ProjectFilter: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Filters on the STORED project status (the loop keeps it current). The per-row badge
-/// still shows the loop-derived effective status, so a zombie loop surfaces under
-/// Running with a non-running badge — on purpose: it needs attention. Mirrors web's
-/// TeamSection filter.
-func visibleRows(_ rows: [ProjectRow], filter: ProjectFilter) -> [ProjectRow] {
-    filter == .all ? rows : rows.filter { $0.project.status == "running" }
+/// Filters on the EFFECTIVE status — the same loop-derived value the row badge shows
+/// (never the stored project status alone, which is stale whenever a project has loops).
+/// Falls back to the stored status only while a project's loops haven't reported yet
+/// (loopsByRow missing/empty → effectiveProjectStatus returns projectStatus). Mirrors
+/// web's visibleProjects.
+func visibleRows(_ rows: [ProjectRow], loopsByRow: [String: [StatusLoop]],
+                 filter: ProjectFilter, now: Date = Date()) -> [ProjectRow] {
+    filter == .all ? rows : rows.filter {
+        effectiveProjectStatus(loopsByRow[$0.id] ?? [], projectStatus: $0.project.status, now: now) == "running"
+    }
 }
 
 @MainActor
 final class DashboardStore: ObservableObject {
     @Published var rows: [ProjectRow] = []
     @Published private(set) var teams: [TeamRef] = []
+    /// Per-row loops (rowId → StatusLoops) so the filter can use the effective status.
+    @Published private(set) var loopsByRow: [String: [StatusLoop]] = [:]
     @Published var loading = true
     @Published var error: String?
 
     private let db = Firestore.firestore()
     private let teamsListener = QueryListener<[TeamRef]>()
     private var projectListeners: [String: ListenerRegistration] = [:]
+    private var loopsListeners: [String: ListenerRegistration] = [:]
     private var byTeam: [String: [ProjectRow]] = [:]
 
     func start() {
@@ -80,12 +87,36 @@ final class DashboardStore: ObservableObject {
 
     private func rebuild() {
         rows = byTeam.values.flatMap { $0 }.sorted { $0.id < $1.id }
+        reconcileLoopsListeners()
+    }
+
+    /// One loops listener per row (same query the row badge uses), so filtering by
+    /// effective status works even for rows the filter currently hides.
+    private func reconcileLoopsListeners() {
+        let ids = Set(rows.map(\.id))
+        for (id, reg) in loopsListeners where !ids.contains(id) {
+            reg.remove(); loopsListeners[id] = nil; loopsByRow[id] = nil
+        }
+        for row in rows where loopsListeners[row.id] == nil {
+            let rowId = row.id
+            loopsListeners[rowId] = loopsQuery(teamId: row.teamId, slug: row.project.slug)
+                .addSnapshotListener { [weak self] snap, err in
+                    Task { @MainActor in
+                        guard let self, err == nil else { return }
+                        self.loopsByRow[rowId] = (snap?.documents ?? []).map {
+                            Loop(id: $0.documentID, data: $0.data()).asStatusLoop
+                        }
+                    }
+                }
+        }
     }
 
     func stop() {
         teamsListener.stop()
         projectListeners.values.forEach { $0.remove() }
         projectListeners.removeAll(); byTeam.removeAll()
+        loopsListeners.values.forEach { $0.remove() }
+        loopsListeners.removeAll(); loopsByRow.removeAll()
     }
 
     /// The user's role on a team, if they're a member.

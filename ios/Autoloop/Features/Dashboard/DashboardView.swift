@@ -12,7 +12,7 @@ struct DashboardView: View {
     // Quick glance at what's running; the full list is one tap away. Defaults to running.
     @State private var filter: ProjectFilter = .running
 
-    private var visible: [ProjectRow] { visibleRows(store.rows, filter: filter) }
+    private var visible: [ProjectRow] { visibleRows(store.rows, loopsByRow: store.loopsByRow, filter: filter) }
 
     var body: some View {
         Group {

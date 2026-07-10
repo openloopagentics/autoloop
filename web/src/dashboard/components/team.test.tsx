@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ProjectCard } from "./ProjectCard";
-import { TeamSection } from "./TeamSection";
+import { TeamSection, visibleProjects } from "./TeamSection";
 
 function wrap(node: React.ReactNode) { return render(<MemoryRouter>{node}</MemoryRouter>); }
 
@@ -63,5 +63,28 @@ describe("TeamSection", () => {
   it("empty team keeps its normal empty state regardless of filter", () => {
     wrap(<TeamSection team={team} projects={[]} loading={false} error={null} filter="running" />);
     expect(screen.getByText(/no projects yet/i)).toBeInTheDocument();
+  });
+});
+
+describe("visibleProjects — the filter keys on the EFFECTIVE status the badge shows", () => {
+  const projects = [
+    { slug: "a", status: "running" },   // stored says running…
+    { slug: "b", status: "paused" },    // stored says paused…
+  ];
+  it("effective status beats stored in both directions", () => {
+    // a's loops are all done (effective completed) → hidden despite stored "running";
+    // b has a live loop (effective running) → shown despite stored "paused".
+    const statuses = { a: "completed", b: "running" };
+    expect(visibleProjects(projects, statuses, "running").map((p) => p.slug)).toEqual(["b"]);
+  });
+  it("falls back to stored status only while a project has not reported", () => {
+    expect(visibleProjects(projects, {}, "running").map((p) => p.slug)).toEqual(["a"]);
+  });
+  it("a reported undefined effective status does not fall back to stored", () => {
+    // loops exist but derive no status → not running; stored "running" must not resurrect it
+    expect(visibleProjects(projects, { a: undefined }, "running").map((p) => p.slug)).toEqual([]);
+  });
+  it("'all' ignores statuses entirely", () => {
+    expect(visibleProjects(projects, { a: "completed", b: "failed" }, "all")).toHaveLength(2);
   });
 });
