@@ -28,11 +28,17 @@ struct DashboardView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 8)
                     if visible.isEmpty {
-                        VStack(spacing: 10) {
-                            EmptyState(text: "No running projects · \(store.rows.count) hidden")
-                            Button("Show all") { filter = .all }
+                        // Statuses still settling → neutral spinner, never a premature
+                        // "no running projects" (or a flash of soon-to-vanish rows).
+                        if store.settled {
+                            VStack(spacing: 10) {
+                                EmptyState(text: "No running projects · \(store.rows.count) hidden")
+                                Button("Show all") { filter = .all }
+                            }
+                            .frame(maxHeight: .infinity)
+                        } else {
+                            Spinner(label: "Checking status…").frame(maxHeight: .infinity)
                         }
-                        .frame(maxHeight: .infinity)
                     } else {
                         projectList
                     }

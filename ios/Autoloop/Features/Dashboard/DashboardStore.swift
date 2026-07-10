@@ -17,13 +17,16 @@ enum ProjectFilter: String, CaseIterable, Identifiable {
 
 /// Filters on the EFFECTIVE status — the same loop-derived value the row badge shows
 /// (never the stored project status alone, which is stale whenever a project has loops).
-/// Falls back to the stored status only while a project's loops haven't reported yet
-/// (loopsByRow missing/empty → effectiveProjectStatus returns projectStatus). Mirrors
-/// web's visibleProjects.
+/// A row whose loops HAVEN'T reported yet (no loopsByRow entry) is NOT shown under
+/// .running: rows must only ever appear as statuses settle, never flash in from a
+/// stored-status guess and then disappear. Once a row's (possibly empty) loops snapshot
+/// arrives, effectiveProjectStatus applies its stored fallback for genuinely loop-less
+/// projects. Mirrors web's visibleProjects.
 func visibleRows(_ rows: [ProjectRow], loopsByRow: [String: [StatusLoop]],
                  filter: ProjectFilter, now: Date = Date()) -> [ProjectRow] {
     filter == .all ? rows : rows.filter {
-        effectiveProjectStatus(loopsByRow[$0.id] ?? [], projectStatus: $0.project.status, now: now) == "running"
+        guard let loops = loopsByRow[$0.id] else { return false }
+        return effectiveProjectStatus(loops, projectStatus: $0.project.status, now: now) == "running"
     }
 }
 
@@ -117,6 +120,11 @@ final class DashboardStore: ObservableObject {
         projectListeners.removeAll(); byTeam.removeAll()
         loopsListeners.values.forEach { $0.remove() }
         loopsListeners.removeAll(); loopsByRow.removeAll()
+    }
+
+    /// True once every row's loops snapshot has arrived — the filter's statuses are settled.
+    var settled: Bool {
+        rows.allSatisfy { loopsByRow[$0.id] != nil }
     }
 
     /// The user's role on a team, if they're a member.

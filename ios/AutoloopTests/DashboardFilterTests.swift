@@ -23,13 +23,22 @@ final class DashboardFilterTests: XCTestCase {
         XCTAssertEqual(visibleRows(rows, loopsByRow: loops, filter: .running, now: now).map(\.project.slug), ["b"])
     }
 
-    func testFallsBackToStoredStatusUntilLoopsReport() {
+    func testUnreportedRowsHiddenUnderRunning() {
+        // Before a row's loops snapshot arrives, it must NOT appear under .running from a
+        // stored-status guess (the reload wrong-then-corrected flash).
         let rows = [row("a", "running"), row("b", "paused")]
-        XCTAssertEqual(visibleRows(rows, loopsByRow: [:], filter: .running, now: now).map(\.project.slug), ["a"])
+        XCTAssertTrue(visibleRows(rows, loopsByRow: [:], filter: .running, now: now).isEmpty)
+    }
+
+    func testReportedEmptyLoopsFallBackToStoredStatus() {
+        // Once the (empty) snapshot arrives, a genuinely loop-less project uses its stored status.
+        let rows = [row("a", "running"), row("b", "paused")]
+        let loops: [String: [StatusLoop]] = ["t1/a": [], "t1/b": []]
+        XCTAssertEqual(visibleRows(rows, loopsByRow: loops, filter: .running, now: now).map(\.project.slug), ["a"])
     }
 
     func testNilStoredStatusExcludedUnderRunning() {
-        XCTAssertTrue(visibleRows([row("a", nil)], loopsByRow: [:], filter: .running, now: now).isEmpty)
+        XCTAssertTrue(visibleRows([row("a", nil)], loopsByRow: ["t1/a": []], filter: .running, now: now).isEmpty)
     }
 
     func testAllPassesEverythingThrough() {
