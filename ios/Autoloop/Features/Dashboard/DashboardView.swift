@@ -9,6 +9,10 @@ struct DashboardView: View {
     @State private var showNew = false
     @State private var createdTarget: ProjectRow?
     @State private var deleting: ProjectRow?
+    // Quick glance at what's running; the full list is one tap away. Defaults to running.
+    @State private var filter: ProjectFilter = .running
+
+    private var visible: [ProjectRow] { visibleRows(store.rows, filter: filter) }
 
     var body: some View {
         Group {
@@ -16,36 +20,23 @@ struct DashboardView: View {
             else if let e = store.error { ErrorNote(message: e) }
             else if store.rows.isEmpty { EmptyState(text: "No projects yet.") }
             else {
-                List(store.rows) { row in
-                    NavigationLink {
-                        ProjectDetailView(teamId: row.teamId, slug: row.project.slug)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(row.project.title ?? row.project.slug)
-                                    .font(.serif(16)).foregroundStyle(palette.fg)
-                                Text(row.teamId).font(.caption).foregroundStyle(palette.fgMeta)
-                            }
-                            Spacer()
-                            ProjectStatusBadge(teamId: row.teamId, slug: row.project.slug,
-                                               fallback: row.project.status)
-                        }
+                VStack(spacing: 0) {
+                    Picker("Project filter", selection: $filter) {
+                        ForEach(ProjectFilter.allCases) { f in Text(f.rawValue).tag(f) }
                     }
-                    .listRowBackground(palette.surfaceRaised)
-                    .listRowSeparatorTint(palette.borderSoft)
-                    .swipeActions {
-                        Button("Rename") { renaming = row; newTitle = row.project.title ?? "" }
-                        if store.canDelete(teamId: row.teamId) {
-                            Button("Delete", role: .destructive) { deleting = row }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    if visible.isEmpty {
+                        VStack(spacing: 10) {
+                            EmptyState(text: "No running projects · \(store.rows.count) hidden")
+                            Button("Show all") { filter = .all }
                         }
-                    }
-                    .contextMenu {
-                        if store.canDelete(teamId: row.teamId) {
-                            Button("Delete", role: .destructive) { deleting = row }
-                        }
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        projectList
                     }
                 }
-                .scrollContentBackground(.hidden)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -90,6 +81,47 @@ struct DashboardView: View {
         .alert("Write failed", isPresented: Binding(get: { writeError != nil }, set: { if !$0 { writeError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(writeError ?? "") }
+    }
+
+    private var projectList: some View {
+        List {
+            ForEach(visible) { row in
+                NavigationLink {
+                    ProjectDetailView(teamId: row.teamId, slug: row.project.slug)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.project.title ?? row.project.slug)
+                                .font(.serif(16)).foregroundStyle(palette.fg)
+                            Text(row.teamId).font(.caption).foregroundStyle(palette.fgMeta)
+                        }
+                        Spacer()
+                        ProjectStatusBadge(teamId: row.teamId, slug: row.project.slug,
+                                           fallback: row.project.status)
+                    }
+                }
+                .listRowBackground(palette.surfaceRaised)
+                .listRowSeparatorTint(palette.borderSoft)
+                .swipeActions {
+                    Button("Rename") { renaming = row; newTitle = row.project.title ?? "" }
+                    if store.canDelete(teamId: row.teamId) {
+                        Button("Delete", role: .destructive) { deleting = row }
+                    }
+                }
+                .contextMenu {
+                    if store.canDelete(teamId: row.teamId) {
+                        Button("Delete", role: .destructive) { deleting = row }
+                    }
+                }
+            }
+            let hidden = store.rows.count - visible.count
+            if hidden > 0 {
+                Text("\(hidden) hidden")
+                    .font(.caption).foregroundStyle(palette.fgMeta)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .scrollContentBackground(.hidden)
     }
 
     private func save() async {
